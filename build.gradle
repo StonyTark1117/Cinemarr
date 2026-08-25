@@ -90,7 +90,24 @@ var generateGameTestTemplate = tasks.register('generateGameTestTemplate') {
 }
 sourceSets.main.resources.srcDir(generateGameTestTemplate)
 
+configurations { javacvFacade }
+def extractJavaCvFacade = tasks.register('extractJavaCvFacade', Sync) {
+    from { configurations.javacvFacade.collect { zipTree(it) } }
+    include 'org/bytedeco/javacv/Frame.class', 'org/bytedeco/javacv/Frame$*.class',
+            'org/bytedeco/javacv/FrameGrabber.class', 'org/bytedeco/javacv/FrameGrabber$*.class',
+            'org/bytedeco/javacv/FFmpegFrameGrabber.class', 'org/bytedeco/javacv/FFmpegFrameGrabber$*.class',
+            'org/bytedeco/javacv/FFmpegLogCallback.class'
+    into(layout.buildDirectory.dir('generated/javacvFacade'))
+}
+// JavaCV's module descriptor requires every optional capture backend. Embed
+// only the Apache-licensed FFmpeg facade classes instead, keeping those
+// unrelated modules off both clients and dedicated servers.
+sourceSets.main.output.dir(extractJavaCvFacade)
+
 dependencies {
+    def javaCppVersion = '1.5.14'
+    def ffmpegVersion = '8.1.2-1.5.14'
+    def javaCvVersion = '1.5.14'
     jarJar(implementation(project(':core')))
     additionalRuntimeClasspath(project(':core'))
     neoForgeTestLibraries(project(':core'))
@@ -100,6 +117,21 @@ dependencies {
     // dedicated development run unless they are added to this classpath.
     additionalRuntimeClasspath('javazoom:jlayer:1.0.1')
     additionalRuntimeClasspath('de.sciss:jump3r:1.0.5')
+    // The ordinary (non -gpl) FFmpeg preset is LGPL. Keep every component
+    // explicit so an all-platform or GPL-enabled artifact cannot enter the
+    // release transitively.
+    javacvFacade("org.bytedeco:javacv:${javaCvVersion}") { transitive = false }
+    compileOnly("org.bytedeco:javacv:${javaCvVersion}") { transitive = false }
+    jarJar(implementation("org.bytedeco:javacpp:${javaCppVersion}") { transitive = false })
+    jarJar(implementation("org.bytedeco:ffmpeg:${ffmpegVersion}") { transitive = false })
+    ['linux-x86_64', 'linux-arm64', 'windows-x86_64'].each { platform ->
+        jarJar(implementation("org.bytedeco:javacpp:${javaCppVersion}:${platform}") { transitive = false })
+        jarJar(implementation("org.bytedeco:ffmpeg:${ffmpegVersion}:${platform}") { transitive = false })
+        additionalRuntimeClasspath("org.bytedeco:javacpp:${javaCppVersion}:${platform}")
+        additionalRuntimeClasspath("org.bytedeco:ffmpeg:${ffmpegVersion}:${platform}")
+    }
+    additionalRuntimeClasspath("org.bytedeco:javacpp:${javaCppVersion}") { transitive = false }
+    additionalRuntimeClasspath("org.bytedeco:ffmpeg:${ffmpegVersion}") { transitive = false }
     testImplementation(platform('org.junit:junit-bom:5.10.2'))
     testImplementation('org.junit.jupiter:junit-jupiter')
     testRuntimeOnly('org.junit.platform:junit-platform-launcher')
@@ -126,12 +158,24 @@ tasks.named('jar', Jar) {
     from('LICENSE-LGPL-2.1-or-later.txt') {
         into('META-INF')
     }
+    from('LICENSE-Apache-2.0.txt') {
+        into('META-INF')
+    }
 }
 
 def releaseArchive = tasks.named('jar', Jar).flatMap { it.archiveFile }
 def coreJarEntry = "META-INF/jarjar/stonytark.core-${mod_version}.jar".toString()
 def releaseEntries = [coreJarEntry, 'META-INF/jarjar/jlayer-1.0.1.jar', 'META-INF/jarjar/jump3r-1.0.5.jar',
-                      'META-INF/LICENSE-Cinemarr-CC0-1.0.txt', 'META-INF/LICENSE-LGPL-2.1-or-later.txt',
+                      'org/bytedeco/javacv/FFmpegFrameGrabber.class', 'org/bytedeco/javacv/Frame.class',
+                      'META-INF/jarjar/javacpp-1.5.14.jar',
+                      'META-INF/jarjar/ffmpeg-8.1.2-1.5.14.jar',
+                      'META-INF/jarjar/javacpp-1.5.14-linux-x86_64.jar',
+                      'META-INF/jarjar/javacpp-1.5.14-linux-arm64.jar',
+                      'META-INF/jarjar/javacpp-1.5.14-windows-x86_64.jar',
+                      'META-INF/jarjar/ffmpeg-8.1.2-1.5.14-linux-x86_64.jar',
+                      'META-INF/jarjar/ffmpeg-8.1.2-1.5.14-linux-arm64.jar',
+                      'META-INF/jarjar/ffmpeg-8.1.2-1.5.14-windows-x86_64.jar',
+                      'META-INF/LICENSE-Cinemarr-CC0-1.0.txt', 'META-INF/LICENSE-LGPL-2.1-or-later.txt', 'META-INF/LICENSE-Apache-2.0.txt',
                       'META-INF/THIRD_PARTY_NOTICES.md', 'META-INF/neoforge.mods.toml',
                       'assets/cinemarr/lang/en_us.json', 'cinemarr.mixins.json', 'cinemarr.png']
 tasks.register('verifyRelease') {
@@ -159,6 +203,9 @@ tasks.register('verifyRelease') {
                 if (text.contains('pampmod') || text.contains('pamp_')) {
                     throw new org.gradle.api.GradleException("Release archive still contains the old PAmpMod identifier in ${entry}")
                 }
+            }
+            found.findAll { it.startsWith('META-INF/jarjar/ffmpeg-') }.each { entry ->
+                if (entry.contains('-gpl')) throw new org.gradle.api.GradleException("Release archive contains GPL FFmpeg artifact ${entry}")
             }
         }
     }

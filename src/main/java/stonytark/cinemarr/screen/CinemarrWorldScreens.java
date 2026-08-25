@@ -180,6 +180,10 @@ public final class CinemarrWorldScreens extends SavedData {
         public ScreenFacing facing() { return facing; }
         public int minimumU() { return minimumU; }
         public int minimumV() { return minimumV; }
+        public int plane() {
+            if (pixels.isEmpty()) throw new IllegalStateException("Television has no pixels");
+            return CinemarrWorldScreens.plane(BlockPos.of(pixels.iterator().next()), Direction.valueOf(facing.name()));
+        }
         public PresentationMode presentationMode() { return presentationMode; }
         public String sessionName() { return sessionName; }
         void save(CompoundTag tag) {

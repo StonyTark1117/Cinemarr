@@ -62,7 +62,7 @@ def main() -> None:
             path = request.path
             if path == "/library/sections":
                 body = {"MediaContainer": {"Directory": [
-                    {"type": "artist", "key": "1", "title": "Music"}
+                    {"type": "movie", "key": "1", "title": "Movies"}
                 ]}}
             elif path == "/":
                 body = {"MediaContainer": {

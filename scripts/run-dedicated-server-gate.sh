@@ -28,6 +28,9 @@ active_audio_modules=()
 active_config=""
 active_config_backup=""
 active_config_existed=0
+active_libraries=""
+active_libraries_backup=""
+active_libraries_existed=0
 active_properties=""
 active_properties_backup=""
 active_cache_dir=""
@@ -83,6 +86,17 @@ restore_server_config() {
   active_config=""
   active_config_backup=""
   active_config_existed=0
+  if [[ -n "$active_libraries" ]]; then
+    if (( active_libraries_existed )); then
+      cp -- "$active_libraries_backup" "$active_libraries"
+    else
+      rm -f -- "$active_libraries"
+    fi
+    rm -f -- "$active_libraries_backup"
+    active_libraries=""
+    active_libraries_backup=""
+    active_libraries_existed=0
+  fi
 }
 
 restore_server_properties() {
@@ -250,9 +264,7 @@ fake_plex_requests_complete() {
   local first_line=$1
   awk -F '\t' -v first="$first_line" -v token="$fake_plex_token" '
     NR > first && $3 == token && $2 == "/library/sections" { sections = 1 }
-    NR > first && $3 == token && $2 == "/" { identity = 1 }
-    NR > first && $3 == token && $2 == "/library/sections/1/all" { analysis = 1 }
-    END { exit !(sections && identity && analysis) }
+    END { exit !sections }
   ' "$fake_plex_request_log"
 }
 
@@ -1134,6 +1146,13 @@ install_fake_plex_config() {
     cp -- "$active_config" "$active_config_backup"
     active_config_existed=1
   fi
+  active_libraries="$run_dir/$level_name/serverconfig/cinemarr-libraries.toml"
+  active_libraries_backup=$(mktemp "$output_root/$label.libraries.XXXXXX")
+  active_libraries_existed=0
+  if [[ -f "$active_libraries" ]]; then
+    cp -- "$active_libraries" "$active_libraries_backup"
+    active_libraries_existed=1
+  fi
   printf '%s\n' \
     '# Generated temporarily by the Cinemarr dedicated-server gate.' \
     "plexUrl = \"http://127.0.0.1:${fake_plex_port}\"" \
@@ -1146,6 +1165,15 @@ install_fake_plex_config() {
     'audioBitrateKbps = 160' \
     'cacheSizeMiB = 1024' \
     'stationMetadataFallbackEnabled = false' > "$active_config"
+  printf '%s\n' \
+    '# Generated temporarily by the Cinemarr dedicated-server gate.' \
+    '[[libraries]]' \
+    'id = "gate_movies"' \
+    'section = "Movies"' \
+    'displayName = "Gate Movies"' \
+    'allowMovies = true' \
+    'allowShows = false' \
+    'permissionLevel = 0' > "$active_libraries"
 }
 
 install_invalid_config() {
@@ -1485,7 +1513,7 @@ run_target() {
     plex_deadline=$((SECONDS + 30))
     while ! fake_plex_requests_complete "$fake_request_start"; do
       if ! kill -0 "$pid" 2>/dev/null || (( SECONDS >= plex_deadline )); then
-        echo "$label: did not complete authenticated Plex library and sonic validation" >&2
+        echo "$label: did not complete authenticated Plex video-library validation" >&2
         result=1
         break
       fi

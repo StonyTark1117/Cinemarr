@@ -3,6 +3,7 @@ package stonytark.cinemarr.core.protocol;
 import org.junit.jupiter.api.Test;
 import stonytark.cinemarr.core.library.MediaKind;
 import stonytark.cinemarr.core.library.VideoMediaItem;
+import stonytark.cinemarr.core.screen.ScreenFacing;
 import stonytark.cinemarr.core.video.PresentationMode;
 
 import java.util.Arrays;
@@ -15,11 +16,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class VideoPacketCodecTest {
     @Test void sessionStateRoundTripsExactScreenAndTimelineState() {
         UUID tv=UUID.randomUUID(), session=UUID.randomUUID(); byte[] mask={1,2,3};
-        VideoPackets.SessionState value=new VideoPackets.SessionState(tv,session,9,VideoPackets.SessionStatus.PLAYING,item(),1234,90000,false,PresentationMode.FILL,17,11,mask,4567,true,"ok");
+        VideoPackets.SessionState value=new VideoPackets.SessionState(tv,session,9,VideoPackets.SessionStatus.PLAYING,item(),1234,90000,false,PresentationMode.FILL,17,11,mask,ScreenFacing.EAST,22,-3,7,4567,true,"ok");
         VideoPackets.SessionState decoded=roundTrip(VideoPackets.SESSION_STATE,value);
         assertEquals(tv,decoded.televisionId()); assertEquals(session,decoded.sessionId()); assertEquals(9,decoded.generation());
         assertEquals(17,decoded.screenWidth()); assertEquals(11,decoded.screenHeight()); assertArrayEquals(mask,decoded.visibilityMask());
         assertEquals("Movie",decoded.item().title()); assertEquals(PresentationMode.FILL,decoded.presentationMode());
+        assertEquals(ScreenFacing.EAST,decoded.screenFacing()); assertEquals(22,decoded.screenPlane());
     }
 
     @Test void segmentManifestAndChunkRoundTrip() {

@@ -12,6 +12,7 @@ import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.InputEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
+import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import net.neoforged.neoforge.client.event.sound.SoundEngineLoadEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import org.lwjgl.glfw.GLFW;
@@ -23,6 +24,9 @@ import stonytark.cinemarr.network.CinemarrPayloads;
 @Mod(value = Cinemarr.MODID, dist = net.neoforged.api.distmarker.Dist.CLIENT)
 public final class CinemarrClient {
     private static final KeyMapping OPEN = new KeyMapping("key.cinemarr.open", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_P, "key.categories.cinemarr");
+    private static final CinemarrVideoPlayback VIDEO = new CinemarrVideoPlayback();
+    private static final CinemarrVideoRenderer VIDEO_RENDERER = new CinemarrVideoRenderer();
+    private static final CinemarrVideoAudio VIDEO_AUDIO = new CinemarrVideoAudio();
     private boolean openOnNextTick;
 
     public CinemarrClient(IEventBus modBus, ModContainer container) {
@@ -52,8 +56,12 @@ public final class CinemarrClient {
                     "Cinemarr: use a TV Controller to open its video controls"), false);
         }
         CinemarrClientState.INSTANCE.tick();
+        VIDEO.tick(CinemarrVideoClientState.INSTANCE);
+        VIDEO_AUDIO.tick(VIDEO, CinemarrVideoClientState.INSTANCE);
+        VIDEO.sendHealth(CinemarrVideoClientState.INSTANCE, VIDEO_AUDIO.underruns());
     }
-    @SubscribeEvent public void logout(ClientPlayerNetworkEvent.LoggingOut event) { CinemarrClientState.INSTANCE.stop(); }
+    @SubscribeEvent public void renderLevel(RenderLevelStageEvent event) { VIDEO_RENDERER.render(event, VIDEO, CinemarrVideoClientState.INSTANCE); }
+    @SubscribeEvent public void logout(ClientPlayerNetworkEvent.LoggingOut event) { VIDEO_AUDIO.reset(); VIDEO.reset(); CinemarrClientState.INSTANCE.stop(); }
     @SubscribeEvent public void login(ClientPlayerNetworkEvent.LoggingIn event) { CinemarrClientState.INSTANCE.hello(); }
-    private void soundEngineLoaded(SoundEngineLoadEvent event) { CinemarrClientState.INSTANCE.audioEngineReloaded(); }
+    private void soundEngineLoaded(SoundEngineLoadEvent event) { VIDEO_AUDIO.audioEngineReloaded(); CinemarrClientState.INSTANCE.audioEngineReloaded(); }
 }

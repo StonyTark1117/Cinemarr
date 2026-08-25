@@ -9,6 +9,7 @@ import stonytark.cinemarr.core.library.MediaKind;
 import stonytark.cinemarr.core.library.VideoMediaItem;
 import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.core.protocol.VideoPackets;
+import stonytark.cinemarr.core.screen.ScreenFacing;
 import stonytark.cinemarr.core.video.PresentationMode;
 
 import java.util.List;
@@ -21,9 +22,10 @@ class VideoPayloadsTest {
     @Test void protocolSixIsAdvertisedAndSessionStateRoundTripsThroughNeoForge(){
         assertEquals(6,ProtocolLimits.VERSION);UUID tv=UUID.randomUUID(),session=UUID.randomUUID();
         VideoPackets.SessionState state=new VideoPackets.SessionState(tv,session,2,VideoPackets.SessionStatus.PLAYING,
-                new VideoMediaItem(MediaKind.MOVIE,"1","Movie","","PG",0,90_000),1_000,90_000,false,PresentationMode.FIT,17,11,new byte[]{3,4},5_000,true,"ok");
+                new VideoMediaItem(MediaKind.MOVIE,"1","Movie","","PG",0,90_000),1_000,90_000,false,PresentationMode.FIT,17,11,new byte[]{3,4},ScreenFacing.NORTH,42,-8,10,5_000,true,"ok");
         VideoPayloads.SessionState decoded=roundTrip(VideoPayloads.SessionState.CODEC,new VideoPayloads.SessionState(state));
         assertEquals(tv,decoded.value().televisionId());assertEquals("Movie",decoded.value().item().title());assertArrayEquals(new byte[]{3,4},decoded.value().visibilityMask());
+        assertEquals(ScreenFacing.NORTH,decoded.value().screenFacing());assertEquals(42,decoded.value().screenPlane());
     }
     @Test void browseAndManifestRoundTrip(){
         VideoPackets.BrowseResults browse=new VideoPackets.BrowseResults("movies","","q",0,false,List.of(new VideoMediaItem(MediaKind.MOVIE,"1","Movie","","PG",0,1)));

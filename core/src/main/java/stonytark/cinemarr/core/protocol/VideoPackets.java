@@ -2,6 +2,7 @@ package stonytark.cinemarr.core.protocol;
 
 import stonytark.cinemarr.core.library.MediaKind;
 import stonytark.cinemarr.core.library.VideoMediaItem;
+import stonytark.cinemarr.core.screen.ScreenFacing;
 import stonytark.cinemarr.core.video.PresentationMode;
 
 import java.util.ArrayList;
@@ -87,16 +88,20 @@ public final class VideoPackets {
             boolean hasItem = in.readBoolean(); VideoMediaItem item = hasItem ? readItem(in) : null;
             long position = in.readVarLong(), duration = in.readVarLong(); boolean paused = in.readBoolean();
             PresentationMode mode = readEnum(in, PresentationMode.class); int width = in.readVarInt(), height = in.readVarInt();
-            byte[] mask = in.readByteArray(ProtocolLimits.MAX_SCREEN_MASK_BYTES); long epoch = in.readLong(); boolean control = in.readBoolean();
+            byte[] mask = in.readByteArray(ProtocolLimits.MAX_SCREEN_MASK_BYTES);
+            ScreenFacing facing = readEnum(in, ScreenFacing.class); int plane = in.readVarInt(), minimumU = in.readVarInt(), minimumV = in.readVarInt();
+            long epoch = in.readLong(); boolean control = in.readBoolean();
             String message = in.readUtf(256);
-            return new SessionState(tv, session, generation, status, item, position, duration, paused, mode, width, height, mask, epoch, control, message);
+            return new SessionState(tv, session, generation, status, item, position, duration, paused, mode, width, height, mask,
+                    facing, plane, minimumU, minimumV, epoch, control, message);
         }
         @Override public void encode(WireOutput out, SessionState value) {
             out.writeUuid(value.televisionId()); out.writeUuid(value.sessionId()); out.writeVarLong(value.generation()); writeEnum(out, value.status());
             out.writeBoolean(value.item() != null); if (value.item() != null) writeItem(out, value.item());
             out.writeVarLong(value.positionMs()); out.writeVarLong(value.durationMs()); out.writeBoolean(value.paused());
             writeEnum(out, value.presentationMode()); out.writeVarInt(value.screenWidth()); out.writeVarInt(value.screenHeight());
-            out.writeByteArray(value.visibilityMask(), ProtocolLimits.MAX_SCREEN_MASK_BYTES); out.writeLong(value.serverEpochMs());
+            out.writeByteArray(value.visibilityMask(), ProtocolLimits.MAX_SCREEN_MASK_BYTES); writeEnum(out, value.screenFacing());
+            out.writeVarInt(value.screenPlane()); out.writeVarInt(value.minimumU()); out.writeVarInt(value.minimumV()); out.writeLong(value.serverEpochMs());
             out.writeBoolean(value.canControl()); out.writeUtf(value.message(), 256);
         }
     };
@@ -215,9 +220,10 @@ public final class VideoPackets {
     }
     public static final class SessionState implements CinemarrMessage {
         private final UUID televisionId,sessionId; private final long generation; private final SessionStatus status; private final VideoMediaItem item;
-        private final long positionMs,durationMs; private final boolean paused; private final PresentationMode mode; private final int width,height; private final byte[] mask; private final long serverEpochMs; private final boolean canControl; private final String message;
-        public SessionState(UUID tv,UUID session,long generation,SessionStatus status,VideoMediaItem item,long position,long duration,boolean paused,PresentationMode mode,int width,int height,byte[] mask,long epoch,boolean control,String message){this.televisionId=tv;this.sessionId=session;this.generation=generation;this.status=status;this.item=item;this.positionMs=position;this.durationMs=duration;this.paused=paused;this.mode=mode;this.width=width;this.height=height;this.mask=mask==null?new byte[0]:mask.clone();this.serverEpochMs=epoch;this.canControl=control;this.message=safe(message);}
-        public UUID televisionId(){return televisionId;} public UUID sessionId(){return sessionId;} public long generation(){return generation;} public SessionStatus status(){return status;} public VideoMediaItem item(){return item;} public long positionMs(){return positionMs;} public long durationMs(){return durationMs;} public boolean paused(){return paused;} public PresentationMode presentationMode(){return mode;} public int screenWidth(){return width;} public int screenHeight(){return height;} public byte[] visibilityMask(){return mask.clone();} public long serverEpochMs(){return serverEpochMs;} public boolean canControl(){return canControl;} public String message(){return message;}
+        private final long positionMs,durationMs; private final boolean paused; private final PresentationMode mode; private final int width,height; private final byte[] mask;
+        private final ScreenFacing facing; private final int plane,minimumU,minimumV; private final long serverEpochMs; private final boolean canControl; private final String message;
+        public SessionState(UUID tv,UUID session,long generation,SessionStatus status,VideoMediaItem item,long position,long duration,boolean paused,PresentationMode mode,int width,int height,byte[] mask,ScreenFacing facing,int plane,int minimumU,int minimumV,long epoch,boolean control,String message){this.televisionId=tv;this.sessionId=session;this.generation=generation;this.status=status;this.item=item;this.positionMs=position;this.durationMs=duration;this.paused=paused;this.mode=mode;this.width=width;this.height=height;this.mask=mask==null?new byte[0]:mask.clone();this.facing=facing;this.plane=plane;this.minimumU=minimumU;this.minimumV=minimumV;this.serverEpochMs=epoch;this.canControl=control;this.message=safe(message);}
+        public UUID televisionId(){return televisionId;} public UUID sessionId(){return sessionId;} public long generation(){return generation;} public SessionStatus status(){return status;} public VideoMediaItem item(){return item;} public long positionMs(){return positionMs;} public long durationMs(){return durationMs;} public boolean paused(){return paused;} public PresentationMode presentationMode(){return mode;} public int screenWidth(){return width;} public int screenHeight(){return height;} public byte[] visibilityMask(){return mask.clone();} public ScreenFacing screenFacing(){return facing;} public int screenPlane(){return plane;} public int minimumU(){return minimumU;} public int minimumV(){return minimumV;} public long serverEpochMs(){return serverEpochMs;} public boolean canControl(){return canControl;} public String message(){return message;}
     }
     public static final class SegmentDescriptor {
         private final int index,byteLength; private final long pts,duration; private final boolean keyframe; private final String sha;
