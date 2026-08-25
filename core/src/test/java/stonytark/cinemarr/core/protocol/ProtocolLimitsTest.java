@@ -16,9 +16,9 @@ class ProtocolLimitsTest {
         System.clearProperty(ProtocolLimits.ACCEPTANCE_AUDIO_CONTROL_FILE_PROPERTY);
     }
 
-    @Test void productionClientHelloIsAlwaysProtocolFive() {
+    @Test void productionClientHelloIsAlwaysCurrentProtocol() {
         System.setProperty(ProtocolLimits.ACCEPTANCE_CLIENT_PROTOCOL_PROPERTY, "4");
-        assertEquals(5, ProtocolLimits.clientHelloVersion());
+        assertEquals(ProtocolLimits.VERSION, ProtocolLimits.clientHelloVersion());
     }
 
     @Test void explicitAcceptanceGateCanOfferAnIncompatibleProtocol() {
@@ -27,12 +27,12 @@ class ProtocolLimitsTest {
         assertEquals(4, ProtocolLimits.clientHelloVersion());
     }
 
-    @Test void invalidAcceptanceOverridesFailClosedToProtocolFive() {
+    @Test void invalidAcceptanceOverridesFailClosedToCurrentProtocol() {
         System.setProperty(ProtocolLimits.ACCEPTANCE_ENABLED_PROPERTY, "true");
         System.setProperty(ProtocolLimits.ACCEPTANCE_CLIENT_PROTOCOL_PROPERTY, "not-a-number");
-        assertEquals(5, ProtocolLimits.clientHelloVersion());
+        assertEquals(ProtocolLimits.VERSION, ProtocolLimits.clientHelloVersion());
         System.setProperty(ProtocolLimits.ACCEPTANCE_CLIENT_PROTOCOL_PROPERTY, "-1");
-        assertEquals(5, ProtocolLimits.clientHelloVersion());
+        assertEquals(ProtocolLimits.VERSION, ProtocolLimits.clientHelloVersion());
     }
 
     @Test void helloSuppressionRequiresTheExplicitAcceptanceGate() {

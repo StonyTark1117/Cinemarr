@@ -34,6 +34,10 @@ public final class CinemarrClientState {
 
     public void accept(CinemarrMessage payload) {
         Minecraft minecraft = Minecraft.getInstance();
+        if (CinemarrVideoClientState.INSTANCE.accept(payload)) {
+            refreshScreen(minecraft);
+            return;
+        }
         if (payload instanceof CinemarrPayloads.OpenScreen) {
             minecraft.setScreen(new CinemarrScreen(this));
             CinemarrNetwork.sendToServer(new CinemarrPayloads.BrowseRequest(CinemarrPayloads.BrowseKind.SEARCH, "", 0));
@@ -126,6 +130,7 @@ public final class CinemarrClientState {
     public void audioEngineReloaded() { audio.audioEngineReloaded(); }
     public void stop() {
         audio.stop(); clock.reset(); notice = ""; lastTimeSync = 0;
+        CinemarrVideoClientState.INSTANCE.reset();
         nonOperatorCommandsVerified = false; operatorCommandsVerified = false;
         acceptanceAudioQueued = false; lastAcceptanceAudioState = null;
         acceptanceControl.reset();

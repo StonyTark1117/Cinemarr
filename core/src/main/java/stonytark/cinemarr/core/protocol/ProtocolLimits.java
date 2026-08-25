@@ -1,7 +1,7 @@
 package stonytark.cinemarr.core.protocol;
 
 public final class ProtocolLimits {
-    public static final int VERSION = 5;
+    public static final int VERSION = 6;
     public static final String ACCEPTANCE_ENABLED_PROPERTY = "cinemarr.acceptance.enabled";
     public static final String ACCEPTANCE_CLIENT_PROTOCOL_PROPERTY = "cinemarr.acceptance.clientProtocol";
     public static final String ACCEPTANCE_SUPPRESS_HELLO_PROPERTY = "cinemarr.acceptance.suppressClientHello";
@@ -15,10 +15,14 @@ public final class ProtocolLimits {
     public static final int MAX_STATION_PREVIEW = 3;
     public static final int MAX_ADVENTURE_PATH = 100;
     public static final int MAX_AUDIO_CHUNK_BYTES = 16_384;
+    public static final int MAX_VIDEO_LIBRARIES = 64;
+    public static final int MAX_VIDEO_SEGMENTS_PER_MANIFEST = 128;
+    public static final int MAX_SCREEN_MASK_BYTES = 8_192;
+    public static final int MAX_VIDEO_CHUNK_BYTES = 16_384;
 
     /**
      * Returns the protocol advertised by a real client during release acceptance.
-     * Production behavior remains fixed at protocol 5 unless the acceptance gate
+     * Production behavior remains fixed at the current protocol unless the acceptance gate
      * is explicitly enabled and supplies a non-negative integer override.
      */
     public static int clientHelloVersion() {

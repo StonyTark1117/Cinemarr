@@ -94,6 +94,15 @@ public final class PlexVideoService {
         return new Page(visible, hasMore);
     }
 
+    public VideoMediaItem metadata(String key) throws IOException {
+        if (key == null || key.trim().isEmpty()) throw new IllegalArgumentException("key");
+        JsonArray metadata = array(container(json("GET", "/library/metadata/" + encodePath(key.trim()), "")), "Metadata");
+        if (metadata.size() == 0) throw new PlexException(PlexException.Kind.NOT_FOUND, "Plex video item was not found");
+        VideoMediaItem value = item(metadata.get(0));
+        if (value == null) throw new PlexException(PlexException.Kind.INVALID_RESPONSE, "Plex item is not playable video metadata");
+        return value;
+    }
+
     public VideoSession start(VideoMediaItem item, RenditionPolicy.Dimensions rendition, long offsetMs,
                               Integer audioStreamId, Integer subtitleStreamId) throws IOException {
         if (item == null || rendition == null || item.key().isEmpty()) throw new IllegalArgumentException("Playable item required");

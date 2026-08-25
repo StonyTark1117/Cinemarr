@@ -12,9 +12,11 @@ import stonytark.cinemarr.Cinemarr;
 import stonytark.cinemarr.core.platform.CanonicalConfigFiles;
 import stonytark.cinemarr.core.platform.CinemarrSettings;
 import stonytark.cinemarr.network.CinemarrPayloads;
+import stonytark.cinemarr.network.CinemarrNetwork;
 import stonytark.cinemarr.core.library.LibraryAllowlistFiles;
 import stonytark.cinemarr.core.library.LibraryRule;
 import stonytark.cinemarr.core.server.PlexVideoService;
+import stonytark.cinemarr.core.protocol.VideoPackets;
 
 import java.util.Collections;
 import java.util.List;
@@ -24,6 +26,7 @@ public final class CinemarrServer {
     private GlobalPlayer player;
     private PlexVideoService videoService;
     private List<PlexVideoService.ResolvedLibrary> videoLibraries = Collections.emptyList();
+    private ServerVideoManager videoManager;
 
     public CinemarrServer() { INSTANCE = this; }
     public static CinemarrServer instance() { return INSTANCE; }
@@ -50,6 +53,7 @@ public final class CinemarrServer {
                 videoService = new PlexVideoService(CinemarrSettings.plexUrl(), CinemarrSettings.plexToken());
                 videoLibraries = videoService.resolveLibraries(libraryRules);
                 Cinemarr.LOGGER.info("Validated {} allowed Plex video libraries", videoLibraries.size());
+                videoManager = new ServerVideoManager(event.getServer(), videoService, videoLibraries);
             }
             // The inherited audio coordinator remains isolated while its payload/UI surface is
             // replaced by the video session protocol. It is not started as part of Cinemarr.
@@ -59,9 +63,10 @@ public final class CinemarrServer {
     }
     @SubscribeEvent public void stopping(ServerStoppingEvent event) {
         if (player != null) { player.close(); player = null; }
+        if (videoManager != null) { videoManager.close(); videoManager = null; }
         videoService = null; videoLibraries = Collections.emptyList();
     }
-    @SubscribeEvent public void tick(ServerTickEvent.Post event) { if (player != null) player.tick(); }
+    @SubscribeEvent public void tick(ServerTickEvent.Post event) { if (player != null) player.tick(); if (videoManager != null) videoManager.tick(); }
     @SubscribeEvent public void joined(PlayerEvent.PlayerLoggedInEvent event) { if (player != null && event.getEntity() instanceof ServerPlayer serverPlayer) player.playerJoined(serverPlayer); }
     @SubscribeEvent public void left(PlayerEvent.PlayerLoggedOutEvent event) { if (player != null && event.getEntity() instanceof ServerPlayer serverPlayer) player.playerLeft(serverPlayer); }
 
@@ -77,4 +82,13 @@ public final class CinemarrServer {
     public GlobalPlayer player() { return player; }
     public PlexVideoService videoService() { return videoService; }
     public List<PlexVideoService.ResolvedLibrary> videoLibraries() { return videoLibraries; }
+    public void videoLibraries(ServerPlayer player) {
+        if (videoManager != null) videoManager.sendLibraries(player);
+        else CinemarrNetwork.sendToPlayer(player, new stonytark.cinemarr.network.VideoPayloads.LibraryList(new VideoPackets.LibraryList(java.util.List.of())));
+    }
+    public void videoBrowse(ServerPlayer player, VideoPackets.BrowseRequest request) { if (videoManager != null) videoManager.browse(player, request); }
+    public void videoCommand(ServerPlayer player, VideoPackets.SessionCommand command) { if (videoManager != null) videoManager.command(player, command); }
+    public void videoSegments(ServerPlayer player, VideoPackets.SegmentRequest request) { if (videoManager != null) videoManager.segments(player, request); }
+    public void videoAcknowledge(ServerPlayer player, VideoPackets.SegmentAcknowledgement value) { if (videoManager != null) videoManager.acknowledge(player, value); }
+    public void videoHealth(ServerPlayer player, VideoPackets.ClientHealth value) { if (videoManager != null) videoManager.health(player, value); }
 }
