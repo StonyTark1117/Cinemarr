@@ -1,0 +1,172 @@
+plugins {
+    id 'java'
+    alias(libs.plugins.forgegradle)
+}
+
+group = 'stonytark'
+version = '1.0.0'
+def artifactVersion = version.toString()
+def expectedReleaseName = "cinemarr-${artifactVersion}+mc1.20.1-neoforge.jar"
+base { archivesName = "cinemarr-${artifactVersion}+mc1.20.1-neoforge" }
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(libs.versions.java.get().toInteger())
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+    withSourcesJar()
+}
+
+minecraft {
+    mappings channel: 'official', version: libs.versions.minecraft.get()
+    copyIdeResources = true
+    runs {
+        configureEach {
+            workingDirectory project.file('run')
+            buildAllProjects true
+            mods {
+                cinemarr {
+                    source sourceSets.main
+                }
+            }
+        }
+        client {
+            args '--mixin.config', 'cinemarr.mixins.json'
+            if (providers.gradleProperty('cinemarrAcceptanceServer').isPresent()) {
+                workingDirectory file(providers.gradleProperty('cinemarrAcceptanceGameDir').get())
+                args '--username', providers.gradleProperty('cinemarrAcceptanceUsername').get(),
+                        '--quickPlayMultiplayer', providers.gradleProperty('cinemarrAcceptanceServer').get()
+            }
+        }
+        server { args '--nogui' }
+    }
+}
+
+repositories {
+    mavenCentral()
+    maven { url = 'https://maven.neoforged.net/releases/' }
+}
+
+jarJar.enable()
+
+dependencies {
+    minecraft "net.neoforged:forge:${libs.versions.minecraft.get()}-${libs.versions.neoforge.loader.get()}"
+    implementation project(':core')
+    jarJar(project(':core')) { dependency -> jarJar.ranged(dependency, '[1.0.0,1.0.1)') }
+    implementation libs.jlayer
+    minecraftLibrary libs.jlayer
+    jarJar(libs.jlayer) { dependency -> jarJar.ranged(dependency, '[1.0.1,1.0.2)') }
+    implementation libs.jump3r
+    minecraftLibrary libs.jump3r
+    jarJar(libs.jump3r) { dependency -> jarJar.ranged(dependency, '[1.0.5,1.0.6)') }
+    testImplementation platform(libs.junit.bom)
+    testImplementation libs.junit.jupiter
+    testRuntimeOnly libs.junit.launcher
+}
+
+dependencyLocking { lockAllConfigurations() }
+
+sourceSets {
+    main {
+        java {
+            setSrcDirs([file('../../../src/main/java'), file('../common/src/main'), file('src/main')])
+            exclude 'stonytark/cinemarr/Cinemarr.java'
+            exclude 'stonytark/cinemarr/client/CinemarrClient.java'
+            exclude 'stonytark/cinemarr/client/CinemarrClientConfigScreen.java'
+            exclude 'stonytark/cinemarr/client/CinemarrScreen.java'
+            exclude 'stonytark/cinemarr/config/CinemarrConfig.java'
+            exclude 'stonytark/cinemarr/gametest/**'
+            exclude 'stonytark/cinemarr/network/CinemarrNetwork.java'
+            exclude 'stonytark/cinemarr/network/CinemarrPayloads.java'
+            exclude 'stonytark/cinemarr/network/MinecraftWireInput.java'
+            exclude 'stonytark/cinemarr/network/MinecraftWireOutput.java'
+            exclude 'stonytark/cinemarr/server/CinemarrCommands.java'
+            exclude 'stonytark/cinemarr/server/CinemarrServer.java'
+            exclude 'stonytark/cinemarr/server/CinemarrSavedData.java'
+        }
+        resources {
+            srcDir file('../../../src/main/resources')
+            exclude 'META-INF/neoforge.mods.toml'
+            exclude 'fabric.mod.json'
+        }
+    }
+}
+
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
+sourceSets.test.java.srcDir(file('../../../test-fixtures/java/mc1.20'))
+sourceSets.test.resources { srcDir file('../../../test-fixtures'); exclude 'java/**' }
+tasks.withType(Test).configureEach { useJUnitPlatform() }
+
+tasks.named('processResources') {
+    inputs.property 'version', artifactVersion
+    filesMatching('META-INF/mods.toml') { expand version: artifactVersion }
+    filesMatching('cinemarr.mixins.json') { filter { it.replace('"JAVA_21"', '"JAVA_17"') } }
+}
+
+tasks.named('jar', Jar) {
+    archiveClassifier = 'slim'
+    manifest.attributes('MixinConfigs': 'cinemarr.mixins.json')
+    from('../../../THIRD_PARTY_NOTICES.md') { into('META-INF') }
+    from('../../../LICENSE') {
+        into('META-INF')
+        rename { 'LICENSE-Cinemarr-CC0-1.0.txt' }
+    }
+    from('../../../LICENSE-LGPL-2.1-or-later.txt') { into('META-INF') }
+}
+
+tasks.named('jarJar') {
+    archiveFileName = expectedReleaseName
+    manifest.attributes('MixinConfigs': 'cinemarr.mixins.json')
+    from('../../../THIRD_PARTY_NOTICES.md') { into('META-INF') }
+    from('../../../LICENSE') {
+        into('META-INF')
+        rename { 'LICENSE-Cinemarr-CC0-1.0.txt' }
+    }
+    from('../../../LICENSE-LGPL-2.1-or-later.txt') { into('META-INF') }
+    finalizedBy('reobfJarJar')
+}
+
+tasks.named('build') { dependsOn(tasks.named('jarJar')) }
+
+def releaseArchive = tasks.named('jarJar').flatMap { it.archiveFile }
+def releaseEntries = ['META-INF/jarjar/core-1.0.0.jar', 'META-INF/jarjar/jlayer-1.0.1.jar',
+                      'META-INF/jarjar/jump3r-1.0.5.jar', 'META-INF/jarjar/metadata.json',
+                      'META-INF/LICENSE-Cinemarr-CC0-1.0.txt', 'META-INF/LICENSE-LGPL-2.1-or-later.txt',
+                      'META-INF/THIRD_PARTY_NOTICES.md', 'META-INF/mods.toml', 'cinemarr.mixins.json',
+                      'cinemarr.png', 'pack.mcmeta', 'assets/cinemarr/lang/en_us.json',
+                      'stonytark/cinemarr/Cinemarr.class', 'stonytark/cinemarr/client/CinemarrClient.class',
+                      'stonytark/cinemarr/network/CinemarrNetwork.class', 'stonytark/cinemarr/network/CinemarrPayloads.class']
+
+tasks.register('verifyRelease') {
+    group = 'verification'
+    dependsOn(tasks.named('build'), tasks.named('reobfJarJar'))
+    doLast {
+        def archive = releaseArchive.get().asFile
+        if (archive.name != expectedReleaseName) throw new GradleException("Unexpected release filename: ${archive.name}")
+        new java.util.zip.ZipFile(archive).withCloseable { zip ->
+            def found = zip.entries().collect { it.name } as Set
+            releaseEntries.each { entry ->
+                if (!found.contains(entry)) throw new GradleException("Release archive is missing ${entry}")
+            }
+            def metadata = zip.getInputStream(zip.getEntry('META-INF/mods.toml')).getText('UTF-8')
+            if (!metadata.contains('modId="cinemarr"') || !metadata.contains('versionRange="[1.20.1,1.20.2)"')
+                    || !metadata.contains('versionRange="[47.1.106,47.2)"') || !metadata.contains('displayTest="MATCH_VERSION"')) {
+                throw new GradleException('NeoForge metadata does not enforce the expected mod, Minecraft, and loader versions')
+            }
+            if (!zip.getInputStream(zip.getEntry('cinemarr.mixins.json')).getText('UTF-8').contains('"JAVA_17"')) {
+                throw new GradleException('NeoForge 1.20.1 mixin metadata does not target Java 17')
+            }
+            new java.util.zip.ZipInputStream(zip.getInputStream(zip.getEntry('META-INF/jarjar/core-1.0.0.jar'))).withCloseable { nested ->
+                boolean foundCoreClass = false
+                for (def entry = nested.nextEntry; entry != null; entry = nested.nextEntry) {
+                    if (entry.name == 'stonytark/cinemarr/core/server/ChunkTransferPolicy.class') {
+                        byte[] header = nested.readNBytes(8)
+                        int major = ((header[6] & 0xff) << 8) | (header[7] & 0xff)
+                        if (major != 52) throw new GradleException("Shared core is not Java 8 bytecode: class major ${major}")
+                        foundCoreClass = true
+                    }
+                }
+                if (!foundCoreClass) throw new GradleException('Release archive does not contain the shared transport core')
+            }
+        }
+    }
+}

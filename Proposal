@@ -1,0 +1,266 @@
+## Proposal: Cinemarr
+
+  Working title: Cinemarr, mod ID cinemarr. It fits alongside
+  Jammarr without placing the Plex trademark in the mod’s name.
+
+  Cinemarr would provide server-authoritative Plex movie and TV
+  playback on player-built screens. The dedicated server owns Plex
+  access, library permissions, playback sessions, and
+  synchronization; clients decode the stream and render it in-world.
+
+  Plex Media Server
+          ↓ one controlled transcode per active TV/session
+  Minecraft server
+          ↓ authenticated, bounded media segments
+  Tracking clients
+          ↓ decode once into a dynamic texture
+  Player-built pixel screen + positional audio
+
+  It should be a separate sibling repository, but reuse Jammarr’s
+  proven architectural ideas from PAmpMod/README.md: Java-8-
+  compatible shared policy code, platform adapters, server-owned
+  credentials, bounded chunk transport, hashing, retry gates, clock
+  synchronization, rate limiting, sanitized errors, and strong
+  release gates. It should not require Jammarr at runtime.
+
+  ## Building a TV
+
+  The basic blocks would be:
+
+  - Screen Pixel: one full block equals exactly one logical video
+    pixel.
+
+  - TV Controller: placed behind or beside the screen; holds
+    ownership, tuning, and playback state.
+
+  - Optional casing, speaker, remote, and redstone receiver blocks
+    that do not count toward resolution.
+
+  A 4×4 arrangement is therefore genuinely a 4×4 display. A 2000×20
+  arrangement is a 2000×20 display.
+
+  Screen rules:
+
+  - All pixels must lie on one plane and face the same direction.
+  - Any four-directionally connected shape is valid.
+  - Rectangles, L-shapes, circles, holes, notches, and other
+    connected silhouettes work.
+
+  - The shape’s bounding box defines its logical resolution; missing
+    blocks form a visibility mask.
+
+  - Disconnected islands are separate TVs unless joined with pixels.
+  - Screens can face north, south, east, west, upward, or downward.
+
+  Pixel membership should be recorded as blocks are placed or
+  removed in world saved data. Activation must not require all
+  chunks of a 2000-block-wide TV to be loaded simultaneously. Pixel
+  blocks should remain ordinary blocks, not 40,000 ticking block
+  entities.
+
+  On the client, each visible screen section is batched into a mesh
+  sampling one shared dynamic texture. No block states, light
+  updates, or world packets change every frame.
+
+  Suggested default construction limits:
+
+   Limit                            Default
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  ━━━━━━━━━
+   Minimum pixels                         4
+  ───────────────────────────────  ─────────
+   Maximum pixels per TV             65,536
+  ───────────────────────────────  ─────────
+   Maximum width or height            2,048
+  ───────────────────────────────  ─────────
+   Maximum concurrent active TVs          2
+  ───────────────────────────────  ─────────
+   Maximum screens per owner              4
+
+  That admits both 4×4 and 2000×20 while excluding multi-million-
+  block screens by default. Operators can change the limits.
+  Cinemarr would never force-load the whole structure; only
+  currently tracked portions render.
+
+  ## Exact and unusual resolutions
+
+  The TV has three presentation modes:
+
+  - Fit: preserve aspect ratio and letterbox.
+  - Fill: preserve aspect ratio and crop.
+  - Stretch: independently scale width and height to occupy every
+    constructed pixel.
+
+  Stretch makes a 2000×20 television intentionally produce an
+  extremely wide, distorted image. Fit and fill give less distorted
+  alternatives.
+
+  Plex can prepare compatible H.264/AAC streams and downscale source
+  media, but its documented automatic-quality behavior does not
+  upscale video. Exact arbitrary dimensions also should not be
+  treated as a stable Plex transcoder contract. Plex describes
+  transcoding as adapting resolution and codecs
+  (https://support.plex.tv/articles/200430303-streaming-overview/)
+  and explicitly says converted video is not upscaled beyond its
+  source resolution in automatic quality handling. Plex’s
+  transcoding behavior also depends on server capability and
+  configured limits (https://support.plex.tv/articles/transcoder/).
+
+  Therefore:
+
+  1. Cinemarr requests the nearest sensible Plex rendition using an
+     even, codec-safe resolution and bitrate.
+
+  2. The client decodes that rendition.
+  3. The client performs the final resampling into the exact TV
+     raster.
+
+  4. Odd encoded dimensions are padded to codec-safe dimensions and
+     cropped before display.
+
+  5. The screen mask removes pixels where the player did not place
+     blocks.
+
+  Examples:
+
+  - 4×4: Plex might supply a small conventional rendition such as
+    320×180; Cinemarr downsamples it to precisely 4×4.
+
+  - 2000×20: Plex supplies a practical rendition near the source
+    resolution; Cinemarr performs the final 2000×20 stretch, fit, or
+    crop.
+
+  - 17×11 L-shaped TV: Cinemarr produces a 17×11 frame and masks out
+    the absent blocks.
+
+  This supports arbitrary logical output without depending on
+  undocumented Plex behavior.
+
+  ## Plex libraries and controls
+
+  The server generates:
+
+  - world/serverconfig/cinemarr-server.toml
+  - world/serverconfig/cinemarr-libraries.toml
+
+  Credentials remain server-side, preferably through
+  CINEMARR_PLEX_TOKEN.
+
+  An allowlist entry could contain:
+
+  [[libraries]]
+  id = "family_movies"
+  section = "Movies"
+  displayName = "Family Movies"
+  allowMovies = true
+  allowShows = false
+  maximumContentRating = "PG-13"
+  permissionLevel = 0
+
+  [[libraries]]
+  id = "television"
+  section = "TV Shows"
+  displayName = "Television"
+  allowMovies = false
+  allowShows = true
+  permissionLevel = 0
+
+  Players only see configured libraries. The UI supports:
+
+  - Movie browsing and search.
+  - Shows → seasons → episodes.
+  - Continue from the current episode.
+  - Queue and now-playing views.
+  - Audio-track and subtitle selection.
+  - Fit/fill/stretch controls.
+  - Local volume and local screen-disable options.
+  - Operators or TV owners controlling play, pause, seek, skip,
+    stop, and queue mutation, according to config.
+
+  Multiple TVs may tune into the same named watch-party session.
+  Those TVs share one Plex transcode and timeline. Independent TVs
+  consume separate transcode slots.
+
+  ## Streaming architecture
+
+  The Minecraft server opens one Plex session per distinct active
+  playback session and keeps a short rolling cache of compressed
+  segments. Clients never receive the Plex URL or token and do not
+  need network access to Plex.
+
+  Transport should inherit Jammarr’s mechanics:
+
+  - Segments divided into Minecraft-safe payloads, likely 16 KiB.
+  - Per-segment SHA-256 verification.
+  - Pull-based acknowledged windows.
+  - Strict buffering, request-rate, and playback-lead limits.
+  - Keyframe index for late joins and seeking.
+  - Presentation timestamps and filtered server-clock estimation.
+  - Generation/session IDs so stale asynchronous work cannot start
+    an old video.
+
+  - Transcode shutdown when stopped or when no viewers remain for a
+    configurable period.
+
+  Audio is decoded from the same stream, synchronized to video, and
+  emitted positionally from the TV. For very large TVs, the sound
+  origin should be the nearest point on the screen rather than its
+  controller.
+
+  Only players tracking at least one screen chunk receive that TV’s
+  media. A single compressed stream is fetched from Plex, but
+  Minecraft-server upload still scales with the number of watching
+  clients.
+
+  ## Principal technical risk
+
+  Video decoding is substantially harder than Jammarr’s pure-Java
+  MP3 path. Minecraft does not expose a general video decoder.
+
+  The recommended implementation is an LGPL-compatible FFmpeg/
+  libavcodec client runtime with narrowly packaged native libraries
+  for supported operating systems and architectures. The server
+  merely relays compressed H.264/AAC segments and does not need
+  native decoding.
+
+  Before full implementation, a technical spike should prove:
+
+  - Plex H.264/AAC session creation and clean termination.
+  - Seekable/keyframed segment relay.
+  - Native decoder packaging on Linux and Windows.
+  - OpenGL texture upload without frame-time spikes.
+  - Audio/video synchronization across two clients.
+  - Licensing and final JAR size.
+
+  A pure-Java decoder could be evaluated, but I would not select it
+  without real 1080p performance and codec-compatibility evidence.
+  Forge 1.7.10 should consequently be the final port, not the
+  initial target.
+
+  ## Delivery plan
+
+  1. Feasibility spike: live Plex transcode, decoder, texture
+     upload, synchronized audio, 4×4 and 2000×20 synthetic screens.
+
+  2. NeoForge 1.21.1 MVP: movies/episodes, one TV session, planar
+     arbitrary shapes, fit/fill/stretch, server library allowlist,
+     positional audio.
+
+  3. Production hardening: multi-TV limits, watch parties, seeking,
+     subtitles, persistence, reconnects, rolling cache, diagnostics,
+     permissions.
+
+  4. Modern loader matrix: align with Jammarr’s Fabric/Quilt, Forge,
+     and NeoForge families.
+
+  5. Forge 1.7.10: isolated Java 8 adapter and decoder/renderer
+     validation.
+
+  6. Release gates: fake-Plex tests, geometry property tests,
+     GameTests, deterministic frame hashes, two-client A/V
+     synchronization, giant-screen chunk-boundary tests, malformed-
+     stream handling, and live Plex validation.
+
+  The most important acceptance test is visual: two real clients
+  must show the same identifiable frame with synchronized audible
+  output. Successful transcode startup or texture allocation alone
+  would not count.

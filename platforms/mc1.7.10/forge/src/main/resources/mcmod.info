@@ -1,0 +1,16 @@
+[
+  {
+    "modid": "cinemarr",
+    "name": "Cinemarr",
+    "description": "Streams a shared, synchronized Plex music queue to every player.",
+    "version": "${modVersion}",
+    "mcversion": "1.7.10",
+    "url": "",
+    "updateUrl": "",
+    "authorList": ["stonytark_mkii"],
+    "credits": "",
+    "logoFile": "cinemarr.png",
+    "screenshots": [],
+    "dependencies": []
+  }
+]

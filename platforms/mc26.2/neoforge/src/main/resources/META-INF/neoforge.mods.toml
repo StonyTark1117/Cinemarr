@@ -1,0 +1,26 @@
+license="CC0-1.0"
+
+[[mods]]
+modId="cinemarr"
+version="${version}"
+displayName="Cinemarr"
+iconFile="cinemarr.png"
+authors="stonytark_mkii"
+description='''Streams a shared, synchronized Plex music queue to every player.'''
+
+[[mixins]]
+config="cinemarr.mixins.json"
+
+[[dependencies.cinemarr]]
+modId="neoforge"
+type="required"
+versionRange="[26.2.0.67,26.3)"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.cinemarr]]
+modId="minecraft"
+type="required"
+versionRange="[26.2,26.3)"
+ordering="NONE"
+side="BOTH"

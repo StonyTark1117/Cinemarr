@@ -1,0 +1,50 @@
+plugins {
+    id 'java-library'
+}
+
+group = rootProject.group
+version = rootProject.version
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(8)
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+tasks.named('jar', Jar) {
+    manifest.attributes(
+            'FMLModType': 'GAMELIBRARY',
+            'Automatic-Module-Name': 'stonytark.cinemarr.core'
+    )
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation('javazoom:jlayer:1.0.1')
+    implementation('de.sciss:jump3r:1.0.5')
+    compileOnly('com.google.code.gson:gson:2.2.4')
+    testImplementation('com.google.code.gson:gson:2.2.4')
+    testImplementation(platform('org.junit:junit-bom:5.10.2'))
+    testImplementation('org.junit.jupiter:junit-jupiter')
+    testRuntimeOnly('org.junit.platform:junit-platform-launcher')
+}
+
+sourceSets {
+    test.resources.srcDir('../test-fixtures')
+}
+
+tasks.withType(Test).configureEach {
+    useJUnitPlatform()
+    inputs.property('cinemarrLiveTestEnabled', providers.environmentVariable('CINEMARR_LIVE_TEST').orElse('false'))
+    outputs.upToDateWhen { System.getenv('CINEMARR_LIVE_TEST') != 'true' }
+    outputs.cacheIf('credentialed Plex integration tests must execute live') {
+        System.getenv('CINEMARR_LIVE_TEST') != 'true'
+    }
+}

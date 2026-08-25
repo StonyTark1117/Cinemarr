@@ -1,0 +1,179 @@
+package stonytark.cinemarr.screen;
+
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.Tag;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.saveddata.SavedData;
+import stonytark.cinemarr.core.screen.ScreenFacing;
+import stonytark.cinemarr.core.screen.ScreenGeometry;
+import stonytark.cinemarr.core.screen.ScreenLimits;
+import stonytark.cinemarr.core.screen.ScreenPixel;
+import stonytark.cinemarr.core.screen.ScreenTopology;
+import stonytark.cinemarr.core.platform.CinemarrSettings;
+
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+
+/** Dimension-local durable index of pixels and activated televisions. */
+public final class CinemarrWorldScreens extends SavedData {
+    public static final int SCHEMA_VERSION = 1;
+    private static final Factory<CinemarrWorldScreens> FACTORY = new Factory<>(CinemarrWorldScreens::new,
+            CinemarrWorldScreens::load, null);
+    private final Map<Long, Direction> pixels = new HashMap<>();
+    private final Map<Long, Television> televisions = new HashMap<>();
+
+    public static CinemarrWorldScreens get(ServerLevel level) {
+        return level.getDataStorage().computeIfAbsent(FACTORY, "cinemarr_screens");
+    }
+
+    public void putPixel(BlockPos pos, Direction facing) {
+        pixels.put(pos.asLong(), facing);
+        invalidateContaining(pos.asLong());
+        setDirty();
+    }
+
+    public void removePixel(BlockPos pos) {
+        pixels.remove(pos.asLong());
+        invalidateContaining(pos.asLong());
+        setDirty();
+    }
+
+    public void removeController(BlockPos pos) { if (televisions.remove(pos.asLong()) != null) setDirty(); }
+
+    public Activation activate(BlockPos controller, UUID owner) {
+        BlockPos start = null;
+        for (Direction direction : Direction.values()) if (pixels.containsKey(controller.relative(direction).asLong())) {
+            start = controller.relative(direction); break;
+        }
+        if (start == null) return new Activation(false, "TV Controller must touch a Screen Pixel");
+        Set<Long> connected = connected(start);
+        List<ScreenPixel> values = new ArrayList<>(connected.size());
+        for (Long packed : connected) {
+            BlockPos pos = BlockPos.of(packed);
+            values.add(new ScreenPixel(pos.getX(), pos.getY(), pos.getZ(), facing(pixels.get(packed))));
+        }
+        try {
+            ScreenGeometry geometry = ScreenTopology.analyze(values, limits());
+            Television existing = televisions.get(controller.asLong());
+            UUID televisionId = existing == null ? UUID.randomUUID() : existing.id;
+            UUID televisionOwner = existing == null ? owner : existing.owner;
+            televisions.put(controller.asLong(), new Television(televisionId, televisionOwner, connected,
+                    geometry.width(), geometry.height()));
+            setDirty();
+            return new Activation(true, "Activated " + geometry.width() + "x" + geometry.height()
+                    + " TV with " + geometry.pixelCount() + " visible pixels");
+        } catch (IllegalArgumentException invalid) {
+            return new Activation(false, invalid.getMessage());
+        }
+    }
+
+    public Television television(BlockPos controller) { return televisions.get(controller.asLong()); }
+    public int pixelCount() { return pixels.size(); }
+
+    private Set<Long> connected(BlockPos start) {
+        Direction facing = pixels.get(start.asLong());
+        int plane = plane(start, facing);
+        Set<Long> found = new HashSet<>();
+        ArrayDeque<BlockPos> pending = new ArrayDeque<>();
+        pending.add(start);
+        while (!pending.isEmpty() && found.size() <= CinemarrSettings.maximumScreenPixels()) {
+            BlockPos current = pending.removeFirst();
+            long packed = current.asLong();
+            Direction currentFacing = pixels.get(packed);
+            if (currentFacing != facing || plane(current, facing) != plane || !found.add(packed)) continue;
+            for (Direction direction : Direction.values()) {
+                if (direction.getAxis() != facing.getAxis()) pending.add(current.relative(direction));
+            }
+        }
+        return found;
+    }
+
+    private void invalidateContaining(long pixel) {
+        List<Long> invalid = new ArrayList<>();
+        for (Map.Entry<Long, Television> entry : televisions.entrySet()) if (entry.getValue().pixels.contains(pixel)) invalid.add(entry.getKey());
+        for (Long controller : invalid) televisions.remove(controller);
+    }
+    private static int plane(BlockPos pos, Direction facing) {
+        switch (facing.getAxis()) { case X: return pos.getX(); case Y: return pos.getY(); default: return pos.getZ(); }
+    }
+    private static ScreenFacing facing(Direction value) { return ScreenFacing.valueOf(value.name()); }
+    private static ScreenLimits limits() {
+        return new ScreenLimits(CinemarrSettings.minimumScreenPixels(), CinemarrSettings.maximumScreenPixels(),
+                CinemarrSettings.maximumScreenDimension());
+    }
+
+    @Override public CompoundTag save(CompoundTag tag, HolderLookup.Provider registries) {
+        tag.putInt("schemaVersion", SCHEMA_VERSION);
+        ListTag pixelTags = new ListTag();
+        for (Map.Entry<Long, Direction> entry : pixels.entrySet()) {
+            CompoundTag value = new CompoundTag(); value.putLong("pos", entry.getKey()); value.putString("facing", entry.getValue().name()); pixelTags.add(value);
+        }
+        tag.put("pixels", pixelTags);
+        ListTag televisionTags = new ListTag();
+        for (Map.Entry<Long, Television> entry : televisions.entrySet()) {
+            CompoundTag value = new CompoundTag(); value.putLong("controller", entry.getKey()); entry.getValue().save(value); televisionTags.add(value);
+        }
+        tag.put("televisions", televisionTags);
+        return tag;
+    }
+
+    public static CinemarrWorldScreens load(CompoundTag tag, HolderLookup.Provider registries) {
+        CinemarrWorldScreens data = new CinemarrWorldScreens();
+        ListTag pixelTags = tag.getList("pixels", Tag.TAG_COMPOUND);
+        for (int index = 0; index < pixelTags.size(); index++) {
+            CompoundTag value = pixelTags.getCompound(index);
+            try { data.pixels.put(value.getLong("pos"), Direction.valueOf(value.getString("facing"))); }
+            catch (IllegalArgumentException ignored) {}
+        }
+        ListTag televisionTags = tag.getList("televisions", Tag.TAG_COMPOUND);
+        for (int index = 0; index < televisionTags.size(); index++) {
+            CompoundTag value = televisionTags.getCompound(index);
+            Television tv = Television.load(value);
+            if (tv != null) data.televisions.put(value.getLong("controller"), tv);
+        }
+        return data;
+    }
+
+    public static final class Television {
+        private final UUID id;
+        private final UUID owner;
+        private final Set<Long> pixels;
+        private final int width;
+        private final int height;
+        Television(UUID id, UUID owner, Set<Long> pixels, int width, int height) {
+            this.id = id; this.owner = owner; this.pixels = new HashSet<>(pixels); this.width = width; this.height = height;
+        }
+        public UUID id() { return id; }
+        public UUID owner() { return owner; }
+        public Set<Long> pixels() { return java.util.Collections.unmodifiableSet(pixels); }
+        public int width() { return width; }
+        public int height() { return height; }
+        void save(CompoundTag tag) {
+            tag.putUUID("id", id); tag.putUUID("owner", owner); tag.putInt("width", width); tag.putInt("height", height);
+            long[] values = new long[pixels.size()]; int index = 0; for (Long pixel : pixels) values[index++] = pixel; tag.putLongArray("pixels", values);
+        }
+        static Television load(CompoundTag tag) {
+            if (!tag.hasUUID("id") || !tag.hasUUID("owner")) return null;
+            Set<Long> pixels = new HashSet<>(); for (long pixel : tag.getLongArray("pixels")) pixels.add(pixel);
+            return new Television(tag.getUUID("id"), tag.getUUID("owner"), pixels, tag.getInt("width"), tag.getInt("height"));
+        }
+    }
+
+    public static final class Activation {
+        private final boolean success;
+        private final String message;
+        Activation(boolean success, String message) { this.success = success; this.message = message; }
+        public boolean success() { return success; }
+        public String message() { return message; }
+    }
+}
