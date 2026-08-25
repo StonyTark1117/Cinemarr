@@ -48,8 +48,8 @@ public final class CinemarrClient {
         openOnNextTick = false;
         while (OPEN.consumeClick()) { /* Prevent a duplicate open next tick. */ }
         if (openNow && minecraft.player != null) {
-            minecraft.setScreen(new CinemarrScreen(CinemarrClientState.INSTANCE));
-            CinemarrNetwork.sendToServer(new CinemarrPayloads.BrowseRequest(CinemarrPayloads.BrowseKind.SEARCH, "", 0));
+            minecraft.player.displayClientMessage(net.minecraft.network.chat.Component.literal(
+                    "Cinemarr: use a TV Controller to open its video controls"), false);
         }
         CinemarrClientState.INSTANCE.tick();
     }

@@ -14,6 +14,7 @@ import stonytark.cinemarr.core.screen.ScreenLimits;
 import stonytark.cinemarr.core.screen.ScreenPixel;
 import stonytark.cinemarr.core.screen.ScreenTopology;
 import stonytark.cinemarr.core.platform.CinemarrSettings;
+import stonytark.cinemarr.core.video.PresentationMode;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -65,10 +66,15 @@ public final class CinemarrWorldScreens extends SavedData {
         try {
             ScreenGeometry geometry = ScreenTopology.analyze(values, limits());
             Television existing = televisions.get(controller.asLong());
+            if (existing == null && ownedBy(owner) >= CinemarrSettings.maximumScreensPerOwner()) {
+                return new Activation(false, "Maximum screens per owner reached");
+            }
             UUID televisionId = existing == null ? UUID.randomUUID() : existing.id;
             UUID televisionOwner = existing == null ? owner : existing.owner;
             televisions.put(controller.asLong(), new Television(televisionId, televisionOwner, connected,
-                    geometry.width(), geometry.height()));
+                    geometry.width(), geometry.height(), geometry.visibilityMask().toByteArray(), geometry.facing(),
+                    geometry.minimumU(), geometry.minimumV(), existing == null ? PresentationMode.FIT : existing.presentationMode,
+                    existing == null ? "" : existing.sessionName));
             setDirty();
             return new Activation(true, "Activated " + geometry.width() + "x" + geometry.height()
                     + " TV with " + geometry.pixelCount() + " visible pixels");
@@ -79,6 +85,9 @@ public final class CinemarrWorldScreens extends SavedData {
 
     public Television television(BlockPos controller) { return televisions.get(controller.asLong()); }
     public int pixelCount() { return pixels.size(); }
+    private int ownedBy(UUID owner) { int count=0; for(Television value:televisions.values())if(value.owner.equals(owner))count++; return count; }
+    public void updatePresentation(BlockPos controller, PresentationMode mode) { Television value=televisions.get(controller.asLong()); if(value!=null&&mode!=null){value.presentationMode=mode;setDirty();} }
+    public void updateSession(BlockPos controller, String name) { Television value=televisions.get(controller.asLong()); if(value!=null){value.sessionName=name==null?"":name.trim();setDirty();} }
 
     private Set<Long> connected(BlockPos start) {
         Direction facing = pixels.get(start.asLong());
@@ -150,22 +159,44 @@ public final class CinemarrWorldScreens extends SavedData {
         private final Set<Long> pixels;
         private final int width;
         private final int height;
-        Television(UUID id, UUID owner, Set<Long> pixels, int width, int height) {
+        private final byte[] mask;
+        private final ScreenFacing facing;
+        private final int minimumU;
+        private final int minimumV;
+        private PresentationMode presentationMode;
+        private String sessionName;
+        Television(UUID id, UUID owner, Set<Long> pixels, int width, int height, byte[] mask, ScreenFacing facing,
+                   int minimumU, int minimumV, PresentationMode presentationMode, String sessionName) {
             this.id = id; this.owner = owner; this.pixels = new HashSet<>(pixels); this.width = width; this.height = height;
+            this.mask=mask==null?new byte[0]:mask.clone();this.facing=facing;this.minimumU=minimumU;this.minimumV=minimumV;
+            this.presentationMode=presentationMode;this.sessionName=sessionName==null?"":sessionName;
         }
         public UUID id() { return id; }
         public UUID owner() { return owner; }
         public Set<Long> pixels() { return java.util.Collections.unmodifiableSet(pixels); }
         public int width() { return width; }
         public int height() { return height; }
+        public byte[] mask() { return mask.clone(); }
+        public ScreenFacing facing() { return facing; }
+        public int minimumU() { return minimumU; }
+        public int minimumV() { return minimumV; }
+        public PresentationMode presentationMode() { return presentationMode; }
+        public String sessionName() { return sessionName; }
         void save(CompoundTag tag) {
             tag.putUUID("id", id); tag.putUUID("owner", owner); tag.putInt("width", width); tag.putInt("height", height);
+            tag.putByteArray("mask",mask);tag.putString("facing",facing.name());tag.putInt("minimumU",minimumU);tag.putInt("minimumV",minimumV);
+            tag.putString("presentationMode",presentationMode.name());tag.putString("sessionName",sessionName);
             long[] values = new long[pixels.size()]; int index = 0; for (Long pixel : pixels) values[index++] = pixel; tag.putLongArray("pixels", values);
         }
         static Television load(CompoundTag tag) {
             if (!tag.hasUUID("id") || !tag.hasUUID("owner")) return null;
             Set<Long> pixels = new HashSet<>(); for (long pixel : tag.getLongArray("pixels")) pixels.add(pixel);
-            return new Television(tag.getUUID("id"), tag.getUUID("owner"), pixels, tag.getInt("width"), tag.getInt("height"));
+            try {
+                ScreenFacing facing=ScreenFacing.valueOf(tag.getString("facing"));
+                PresentationMode mode=tag.contains("presentationMode")?PresentationMode.valueOf(tag.getString("presentationMode")):PresentationMode.FIT;
+                return new Television(tag.getUUID("id"), tag.getUUID("owner"), pixels, tag.getInt("width"), tag.getInt("height"),
+                        tag.getByteArray("mask"),facing,tag.getInt("minimumU"),tag.getInt("minimumV"),mode,tag.getString("sessionName"));
+            } catch(IllegalArgumentException invalid){return null;}
         }
     }
 

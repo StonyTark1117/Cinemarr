@@ -10,6 +10,9 @@ import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.core.platform.CinemarrSettings;
 import stonytark.cinemarr.network.CinemarrNetwork;
 import stonytark.cinemarr.network.CinemarrPayloads;
+import stonytark.cinemarr.network.VideoPayloads;
+import stonytark.cinemarr.core.protocol.VideoPackets;
+import stonytark.cinemarr.core.video.PresentationMode;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -38,7 +41,12 @@ public final class CinemarrClientState {
             refreshScreen(minecraft);
             return;
         }
-        if (payload instanceof CinemarrPayloads.OpenScreen) {
+        if (payload instanceof VideoPayloads.OpenVideoScreen value) {
+            CinemarrVideoClientState.INSTANCE.requestLibraries();
+            CinemarrVideoClientState.INSTANCE.command(new VideoPackets.SessionCommand(VideoPackets.SessionAction.TUNE,
+                    value.controllerPos(), "", "", "", PresentationMode.FIT, 0, 0, -1, -1));
+            minecraft.setScreen(new CinemarrVideoScreen(value.controllerPos(), CinemarrVideoClientState.INSTANCE));
+        } else if (payload instanceof CinemarrPayloads.OpenScreen) {
             minecraft.setScreen(new CinemarrScreen(this));
             CinemarrNetwork.sendToServer(new CinemarrPayloads.BrowseRequest(CinemarrPayloads.BrowseKind.SEARCH, "", 0));
         } else if (payload instanceof CinemarrPayloads.ServerHello value) {
@@ -236,6 +244,9 @@ public final class CinemarrClientState {
             Cinemarr.LOGGER.error("Acceptance control failed: {}", command, error);
         }
     }
-    private static void refreshScreen(Minecraft minecraft) { if (minecraft.screen instanceof CinemarrScreen screen) screen.resultsChanged(); }
+    private static void refreshScreen(Minecraft minecraft) {
+        if (minecraft.screen instanceof CinemarrScreen screen) screen.resultsChanged();
+        else if(minecraft.screen instanceof CinemarrVideoScreen screen)screen.stateChanged();
+    }
     private CinemarrClientState() {}
 }

@@ -34,6 +34,7 @@ public final class CinemarrNetwork {
         registrar.playToClient(CinemarrPayloads.AdventurePreview.TYPE, CinemarrPayloads.AdventurePreview.CODEC, CinemarrNetwork::client);
         registrar.playToClient(CinemarrPayloads.ErrorMessage.TYPE, CinemarrPayloads.ErrorMessage.CODEC, CinemarrNetwork::client);
         registrar.playToClient(VideoPayloads.LibraryList.TYPE, VideoPayloads.LibraryList.CODEC, CinemarrNetwork::client);
+        registrar.playToClient(VideoPayloads.OpenVideoScreen.TYPE, VideoPayloads.OpenVideoScreen.CODEC, CinemarrNetwork::client);
         registrar.playToClient(VideoPayloads.BrowseResults.TYPE, VideoPayloads.BrowseResults.CODEC, CinemarrNetwork::client);
         registrar.playToClient(VideoPayloads.SessionState.TYPE, VideoPayloads.SessionState.CODEC, CinemarrNetwork::client);
         registrar.playToClient(VideoPayloads.SegmentManifest.TYPE, VideoPayloads.SegmentManifest.CODEC, CinemarrNetwork::client);

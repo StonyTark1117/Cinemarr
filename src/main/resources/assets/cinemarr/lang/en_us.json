@@ -50,5 +50,14 @@
   "block.cinemarr.screen_pixel": "Screen Pixel",
   "block.cinemarr.tv_controller": "TV Controller",
   "block.cinemarr.tv_casing": "TV Casing",
-  "block.cinemarr.tv_speaker": "TV Speaker"
+  "block.cinemarr.tv_speaker": "TV Speaker",
+  "cinemarr.video.title": "Cinemarr TV",
+  "cinemarr.video.search": "Search movies and shows...",
+  "cinemarr.video.back": "Back",
+  "cinemarr.video.refresh": "Refresh",
+  "cinemarr.video.play": "Play",
+  "cinemarr.video.browse": "Browse",
+  "cinemarr.video.stop": "Stop",
+  "cinemarr.video.session": "Watch-party name",
+  "cinemarr.video.tune": "Tune"
 }

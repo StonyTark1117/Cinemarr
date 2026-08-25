@@ -20,6 +20,14 @@ public final class VideoPayloads {
         catch (ProtocolException malformed) { throw new DecoderException(malformed.getMessage(), malformed); }
     }
 
+    public record OpenVideoScreen(long controllerPos) implements CustomPacketPayload, CinemarrMessage {
+        public static final Type<OpenVideoScreen> TYPE=VideoPayloads.type("open_video_screen");
+        public static final StreamCodec<RegistryFriendlyByteBuf,OpenVideoScreen> CODEC=StreamCodec.ofMember(OpenVideoScreen::write,OpenVideoScreen::read);
+        private static OpenVideoScreen read(RegistryFriendlyByteBuf buffer){return new OpenVideoScreen(buffer.readLong());}
+        private void write(RegistryFriendlyByteBuf buffer){buffer.writeLong(controllerPos);}
+        @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
+    }
+
     public record LibraryListRequest() implements CustomPacketPayload, CinemarrMessage {
         public static final Type<LibraryListRequest> TYPE=VideoPayloads.type("video_library_list_request");
         public static final StreamCodec<RegistryFriendlyByteBuf,LibraryListRequest> CODEC=StreamCodec.unit(new LibraryListRequest());

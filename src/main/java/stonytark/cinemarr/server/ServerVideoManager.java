@@ -69,8 +69,9 @@ public final class ServerVideoManager implements AutoCloseable {
         if (!browseLimiter.allow(player.getUUID(), 8, System.currentTimeMillis())) { error(player, "Video browse rate limit exceeded"); return; }
         PlexVideoService.ResolvedLibrary library = library(request.libraryId(), player);
         if (library == null) return;
+        int playerPermission=permission(player);
         CompletableFuture.supplyAsync(() -> {
-            try { return plex.browse(library, request.parentKey(), request.query(), Math.max(0, request.page()), PAGE_SIZE, permission(player)); }
+            try { return plex.browse(library, request.parentKey(), request.query(), Math.max(0, request.page()), PAGE_SIZE, playerPermission); }
             catch (IOException failure) { throw new WrappedFailure(failure); }
         }, workers).whenComplete((page, failure) -> server.execute(() -> {
             if (failure != null) { failure(player, failure); return; }
@@ -87,8 +88,13 @@ public final class ServerVideoManager implements AutoCloseable {
             error(player, "Only the TV owner or an operator can control this TV"); return;
         }
         try {
-            VideoSessionCoordinator.Snapshot tuned = sessions.tune(television.id(), command.sessionName());
-            if (command.action() == VideoPackets.SessionAction.TUNE) { sendState(player, television, tuned, command.presentationMode(), "Tuned"); return; }
+            String requestedSession=command.sessionName().isBlank()?television.sessionName():command.sessionName();
+            VideoSessionCoordinator.Snapshot tuned = sessions.tune(television.id(), requestedSession);
+            CinemarrWorldScreens screenData=CinemarrWorldScreens.get(player.serverLevel());
+            screenData.updateSession(controller,tuned.name());
+            if(command.action()==VideoPackets.SessionAction.SET_PRESENTATION)screenData.updatePresentation(controller,command.presentationMode());
+            PresentationMode presentation=command.action()==VideoPackets.SessionAction.SET_PRESENTATION?command.presentationMode():television.presentationMode();
+            if (command.action() == VideoPackets.SessionAction.TUNE) { sendState(player, television, tuned, presentation, "Tuned"); return; }
             if (command.expectedGeneration() != tuned.generation()) { error(player, "TV state changed; refresh before controlling it"); return; }
             switch (command.action()) {
                 case PAUSE: sessions.pause(tuned.name(), System.currentTimeMillis()); sendState(player, television, sessions.snapshot(tuned.name(), System.currentTimeMillis()), command.presentationMode(), "Paused"); break;
@@ -96,7 +102,7 @@ public final class ServerVideoManager implements AutoCloseable {
                 case SEEK: asyncSeek(player, television, tuned, command); break;
                 case PLAY: asyncPlay(player, television, tuned, command); break;
                 case STOP: sessions.untune(television.id()); sendIdle(player, television, "Stopped"); break;
-                case SET_PRESENTATION: sendState(player, television, tuned, command.presentationMode(), "Presentation updated"); break;
+                case SET_PRESENTATION: sendState(player, television, tuned, presentation, "Presentation updated"); break;
                 case SET_STREAMS: asyncPlay(player, television, tuned, command); break;
                 default: error(player, "Unsupported TV action");
             }
@@ -106,11 +112,12 @@ public final class ServerVideoManager implements AutoCloseable {
     private void asyncPlay(ServerPlayer player, CinemarrWorldScreens.Television television,
                            VideoSessionCoordinator.Snapshot tuned, VideoPackets.SessionCommand command) {
         PlexVideoService.ResolvedLibrary library = library(command.libraryId(), player); if (library == null) return;
+        int playerPermission=permission(player);
         requestedRenditions.put(tuned.id(), RenditionPolicy.choose(television.width(), television.height(), 1920, 1080, 1920, 1080));
         CompletableFuture.supplyAsync(() -> {
             try {
                 VideoMediaItem item = plex.metadata(command.itemKey());
-                if (!library.rule().allows(item, permission(player))) throw new IOException("Video item is not allowed by this library policy");
+                if (!library.rule().allows(item, playerPermission)) throw new IOException("Video item is not allowed by this library policy");
                 return sessions.play(tuned.name(), item, command.seekPositionMs(), System.currentTimeMillis());
             } catch (IOException failure) { throw new WrappedFailure(failure); }
         }, workers).whenComplete((state, failure) -> server.execute(() -> {
@@ -155,14 +162,16 @@ public final class ServerVideoManager implements AutoCloseable {
     private VideoSessionCoordinator.MediaHandle startMedia(UUID sessionId,long generation,VideoMediaItem item,long offset) throws IOException {
         RenditionPolicy.Dimensions dimensions=requestedRenditions.remove(sessionId); if(dimensions==null) dimensions=RenditionPolicy.choose(1280,720,1920,1080,1920,1080);
         PlexVideoService.VideoSession plexSession=plex.start(item,dimensions,offset,null,null);
-        String variant=reference(plexSession.playlist()); byte[] mediaPlaylist=plex.fetch(plexSession,variant);
-        List<SegmentReference> references=parsePlaylist(new String(mediaPlaylist,StandardCharsets.UTF_8));
-        ActiveMedia media=new ActiveMedia(plex,plexSession,variant,references,dimensions); String key=key(sessionId,generation); active.put(key,media);
-        return ()->{active.remove(key);plex.stop(plexSession);};
+        try {
+            String variant=reference(plexSession.playlist()); byte[] mediaPlaylist=plex.fetch(plexSession,variant);
+            List<SegmentReference> references=parsePlaylist(new String(mediaPlaylist,StandardCharsets.UTF_8));
+            ActiveMedia media=new ActiveMedia(plex,plexSession,variant,references,dimensions); String key=key(sessionId,generation); active.put(key,media);
+            return ()->{active.remove(key);plex.stop(plexSession);};
+        } catch(IOException|RuntimeException failure){try{plex.stop(plexSession);}catch(IOException ignored){}throw failure;}
     }
     private void sendManifest(ServerPlayer player,VideoSessionCoordinator.Snapshot state){ActiveMedia media=active.get(key(state.id(),state.generation()));if(media==null)return;List<VideoPackets.SegmentDescriptor> descriptors=new ArrayList<>();for(int i=0;i<media.segments.size()&&i<ProtocolLimits.MAX_VIDEO_SEGMENTS_PER_MANIFEST;i++){SegmentReference ref=media.segments.get(i);descriptors.add(new VideoPackets.SegmentDescriptor(i,ref.pts,ref.duration,true,0,""));}CinemarrNetwork.sendToPlayer(player,new VideoPayloads.SegmentManifest(new VideoPackets.SegmentManifest(state.id(),state.generation(),media.dimensions.width(),media.dimensions.height(),"mpegts","h264","aac",state.item()==null?0:state.item().durationMs(),descriptors)));}
-    private void sendState(ServerPlayer player,CinemarrWorldScreens.Television tv,VideoSessionCoordinator.Snapshot state,PresentationMode mode,String message){VideoPackets.SessionStatus status=state.item()==null?VideoPackets.SessionStatus.IDLE:state.paused()?VideoPackets.SessionStatus.PAUSED:state.transcoding()?VideoPackets.SessionStatus.BUFFERING:VideoPackets.SessionStatus.IDLE;CinemarrNetwork.sendToPlayer(player,new VideoPayloads.SessionState(new VideoPackets.SessionState(tv.id(),state.id(),state.generation(),status,state.item(),state.positionMs(),state.item()==null?0:state.item().durationMs(),state.paused(),mode,tv.width(),tv.height(),new byte[0],System.currentTimeMillis(),true,message)));}
-    private void sendIdle(ServerPlayer player,CinemarrWorldScreens.Television tv,String message){CinemarrNetwork.sendToPlayer(player,new VideoPayloads.SessionState(new VideoPackets.SessionState(tv.id(),new UUID(0,0),0,VideoPackets.SessionStatus.IDLE,null,0,0,false,PresentationMode.FIT,tv.width(),tv.height(),new byte[0],System.currentTimeMillis(),true,message)));}
+    private void sendState(ServerPlayer player,CinemarrWorldScreens.Television tv,VideoSessionCoordinator.Snapshot state,PresentationMode mode,String message){VideoPackets.SessionStatus status=state.item()==null?VideoPackets.SessionStatus.IDLE:state.paused()?VideoPackets.SessionStatus.PAUSED:state.transcoding()?VideoPackets.SessionStatus.BUFFERING:VideoPackets.SessionStatus.IDLE;CinemarrNetwork.sendToPlayer(player,new VideoPayloads.SessionState(new VideoPackets.SessionState(tv.id(),state.id(),state.generation(),status,state.item(),state.positionMs(),state.item()==null?0:state.item().durationMs(),state.paused(),mode,tv.width(),tv.height(),tv.mask(),System.currentTimeMillis(),true,message)));}
+    private void sendIdle(ServerPlayer player,CinemarrWorldScreens.Television tv,String message){CinemarrNetwork.sendToPlayer(player,new VideoPayloads.SessionState(new VideoPackets.SessionState(tv.id(),new UUID(0,0),0,VideoPackets.SessionStatus.IDLE,null,0,0,false,tv.presentationMode(),tv.width(),tv.height(),tv.mask(),System.currentTimeMillis(),true,message)));}
     private PlexVideoService.ResolvedLibrary library(String id,ServerPlayer player){for(PlexVideoService.ResolvedLibrary value:libraries)if(value.rule().id().equals(id)){if(permission(player)<value.rule().permissionLevel()){error(player,"Library permission denied");return null;}return value;}error(player,"Unknown video library");return null;}
     private static int permission(ServerPlayer player){for(int level=4;level>=0;level--)if(player.createCommandSourceStack().hasPermission(level))return level;return 0;}
     private void error(ServerPlayer player,String message){CinemarrNetwork.sendToPlayer(player,new CinemarrPayloads.ErrorMessage(CinemarrPayloads.ErrorCode.INVALID_REQUEST,message));}

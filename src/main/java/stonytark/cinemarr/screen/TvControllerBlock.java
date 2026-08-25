@@ -3,6 +3,7 @@ package stonytark.cinemarr.screen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
@@ -10,6 +11,8 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
+import stonytark.cinemarr.network.CinemarrNetwork;
+import stonytark.cinemarr.network.VideoPayloads;
 
 /** Activates or refreshes an adjacent recorded pixel silhouette. */
 public final class TvControllerBlock extends Block {
@@ -20,6 +23,9 @@ public final class TvControllerBlock extends Block {
         if (level.isClientSide) return InteractionResult.SUCCESS;
         CinemarrWorldScreens.Activation result = CinemarrWorldScreens.get((ServerLevel) level).activate(pos, player.getUUID());
         player.displayClientMessage(Component.literal(result.message()), false);
+        if(result.success()&&player instanceof ServerPlayer serverPlayer){
+            CinemarrNetwork.sendToPlayer(serverPlayer,new VideoPayloads.OpenVideoScreen(pos.asLong()));
+        }
         return result.success() ? InteractionResult.SUCCESS : InteractionResult.FAIL;
     }
 
