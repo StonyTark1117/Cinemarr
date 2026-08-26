@@ -85,6 +85,7 @@ public final class CinemarrWorldScreens extends SavedData {
     }
 
     public Television television(BlockPos controller) { return televisions.get(controller.asLong()); }
+    public List<Television> televisions(){return java.util.Collections.unmodifiableList(new ArrayList<>(televisions.values()));}
     public List<Television> televisionsForChunk(ChunkPos chunk) {
         List<Television> found = new ArrayList<>();
         for (Television television : televisions.values()) {

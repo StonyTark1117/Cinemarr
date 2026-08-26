@@ -69,6 +69,7 @@ public final class VideoSessionCoordinator implements AutoCloseable {
         session.positionAtStartMs = Math.max(0, offsetMs);
         session.startedAtMs = nowMs;
         session.pausedAtMs = -1;
+        session.suspendedAtMs = -1;
         session.noViewersSinceMs = session.viewers.isEmpty() ? nowMs : -1;
         return session.snapshotAt(nowMs);
     }
@@ -99,12 +100,43 @@ public final class VideoSessionCoordinator implements AutoCloseable {
         play(name, value.item, Math.max(0, positionMs), nowMs, expectedGeneration);
     }
 
+    /** Restores durable playback metadata without contacting Plex until a viewer arrives. */
+    public synchronized Snapshot restore(String name, VideoMediaItem item, long positionMs, boolean paused, long nowMs) {
+        Session value = required(name);
+        if (value.media != null) throw new IllegalStateException("Cannot restore over active playback");
+        value.item = item;
+        value.positionAtStartMs = Math.max(0, positionMs);
+        value.startedAtMs = nowMs;
+        value.pausedAtMs = paused ? nowMs : -1;
+        value.suspendedAtMs = nowMs;
+        return value.snapshotAt(nowMs);
+    }
+
+    /** Restarts a restored or inactivity-suspended session at its frozen checkpoint. */
+    public synchronized Snapshot restart(String name, long nowMs, long expectedGeneration) throws IOException {
+        Session value = required(name);
+        if (value.media != null || value.item == null) return value.snapshotAt(nowMs);
+        boolean paused = value.pausedAtMs >= 0;
+        long position = value.snapshotAt(nowMs).positionMs();
+        Snapshot restarted = play(name, value.item, position, nowMs, expectedGeneration);
+        if (paused) { pause(name, nowMs); return required(name).snapshotAt(nowMs); }
+        return restarted;
+    }
+
+    public synchronized Snapshot stop(String name,long nowMs)throws IOException{
+        Session value=required(name);close(value.media);value.media=null;value.item=null;value.positionAtStartMs=0;value.startedAtMs=nowMs;value.pausedAtMs=-1;value.suspendedAtMs=-1;value.noViewersSinceMs=-1;value.generation++;return value.snapshotAt(nowMs);
+    }
+
     public synchronized void tick(long nowMs) throws IOException {
         for (Session session : sessions.values()) {
             if (session.media != null && session.viewers.isEmpty() && session.noViewersSinceMs >= 0
                     && nowMs - session.noViewersSinceMs >= inactiveGraceMs) {
                 close(session.media);
                 session.media = null;
+                Snapshot frozen = session.snapshotAt(nowMs);
+                session.positionAtStartMs = frozen.positionMs();
+                session.startedAtMs = nowMs;
+                session.suspendedAtMs = nowMs;
                 session.generation++;
             }
         }
@@ -129,6 +161,7 @@ public final class VideoSessionCoordinator implements AutoCloseable {
         return false;
     }
     public synchronized int sessionCount() { return sessions.size(); }
+    public synchronized Set<String> sessionNames(){return Collections.unmodifiableSet(new HashSet<String>(sessions.keySet()));}
 
     public synchronized void untune(UUID televisionId) throws IOException {
         String name = televisionSessions.remove(televisionId);
@@ -169,11 +202,12 @@ public final class VideoSessionCoordinator implements AutoCloseable {
         private long positionAtStartMs;
         private long startedAtMs;
         private long pausedAtMs = -1;
+        private long suspendedAtMs = -1;
         private long noViewersSinceMs = -1;
         private Session(UUID id, String name) { this.id = id; this.name = name; }
         private Snapshot snapshot() { return snapshotAt(startedAtMs); }
         private Snapshot snapshotAt(long nowMs) {
-            long clock = pausedAtMs >= 0 ? pausedAtMs : nowMs;
+            long clock = pausedAtMs >= 0 ? pausedAtMs : suspendedAtMs >= 0 ? suspendedAtMs : nowMs;
             long position = item == null ? 0 : positionAtStartMs + Math.max(0, clock - startedAtMs);
             if (item != null && item.durationMs() > 0) position = Math.min(position, item.durationMs());
             return new Snapshot(id, name, generation, item, position, pausedAtMs >= 0, media != null,

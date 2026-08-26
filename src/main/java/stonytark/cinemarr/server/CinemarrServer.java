@@ -54,7 +54,8 @@ public final class CinemarrServer {
                 videoService = new PlexVideoService(CinemarrSettings.plexUrl(), CinemarrSettings.plexToken());
                 videoLibraries = videoService.resolveLibraries(libraryRules);
                 Cinemarr.LOGGER.info("Validated {} allowed Plex video libraries", videoLibraries.size());
-                videoManager = new ServerVideoManager(event.getServer(), videoService, videoLibraries);
+                videoManager = new ServerVideoManager(event.getServer(), videoService, videoLibraries,
+                        CinemarrVideoSavedData.get(event.getServer()));
             }
             // The inherited audio coordinator remains isolated while its payload/UI surface is
             // replaced by the video session protocol. It is not started as part of Cinemarr.

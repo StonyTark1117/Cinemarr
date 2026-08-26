@@ -31,6 +31,7 @@ class VideoSessionCoordinatorTest {
         assertTrue(coordinator.snapshot("party", 31_999).transcoding());
         coordinator.tick(32_000);
         assertFalse(coordinator.snapshot("party", 32_000).transcoding());
+        assertEquals(coordinator.snapshot("party",32_000).positionMs(),coordinator.snapshot("party",60_000).positionMs());
         assertEquals(1, stops.get());
     }
 
@@ -69,6 +70,22 @@ class VideoSessionCoordinatorTest {
         assertEquals(playing.generation(), retained.generation());
         assertTrue(retained.transcoding());
         assertEquals(0, stops.get());
+    }
+
+    @Test void restoredSessionStaysFrozenUntilRestartedAtItsCheckpoint() throws Exception {
+        AtomicInteger starts=new AtomicInteger();
+        VideoSessionCoordinator coordinator=new VideoSessionCoordinator(2,30_000,
+                (session,generation,item,offset)->{starts.incrementAndGet();assertEquals(12_345,offset);return ()->{};});
+        coordinator.tune(UUID.randomUUID(),"saved");
+        VideoSessionCoordinator.Snapshot restored=coordinator.restore("saved",movie(),12_345,false,1_000);
+        assertFalse(restored.transcoding());assertEquals(12_345,coordinator.snapshot("saved",50_000).positionMs());
+        VideoSessionCoordinator.Snapshot restarted=coordinator.restart("saved",50_000,restored.generation());
+        assertTrue(restarted.transcoding());assertEquals(1,starts.get());assertEquals(12_345,restarted.positionMs());
+    }
+
+    @Test void stopClearsPlaybackButKeepsEveryTunedTelevision() throws Exception{
+        VideoSessionCoordinator coordinator=new VideoSessionCoordinator(2,0,(session,generation,item,offset)->()->{});UUID first=UUID.randomUUID(),second=UUID.randomUUID();coordinator.tune(first,"party");coordinator.tune(second,"party");coordinator.play("party",movie(),0,1_000);
+        VideoSessionCoordinator.Snapshot stopped=coordinator.stop("party",2_000);assertFalse(stopped.transcoding());assertEquals(null,stopped.item());assertEquals(2,stopped.televisions().size());assertTrue(coordinator.sessionNames().contains("party"));
     }
 
     private static VideoMediaItem movie() { return new VideoMediaItem(MediaKind.MOVIE, "1", "Movie", "", "PG", 0, 90_000); }
