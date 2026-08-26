@@ -7,81 +7,106 @@ import stonytark.cinemarr.network.CinemarrNetwork;
 import stonytark.cinemarr.network.VideoPayloads;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.UUID;
 
-/** Client-side generation gate and pull-window coordinator ahead of the native decoder. */
+/** All visible televisions plus one compressed/decode stream per distinct watch-party generation. */
 public final class CinemarrVideoClientState {
     public static final CinemarrVideoClientState INSTANCE=new CinemarrVideoClientState();
-    private final VideoSegmentAssembler assembler=new VideoSegmentAssembler();
-    private final Queue<VideoSegmentAssembler.CompletedSegment> ready=new ArrayDeque<>();
+    private final Map<Long,VideoPackets.SessionState> televisions=new LinkedHashMap<>();
+    private final Map<StreamKey,StreamState> streams=new LinkedHashMap<>();
     private VideoPackets.LibraryList libraries=new VideoPackets.LibraryList(Collections.emptyList());
     private VideoPackets.BrowseResults browse=new VideoPackets.BrowseResults("","","",0,false,Collections.emptyList());
-    private VideoPackets.SessionState session;
-    private VideoPackets.SegmentManifest manifest;
-    private long requestId;
-    private int requestedSegment=-1;
-    private int currentWindowEnd;
-    private int totalChunks;
 
     public boolean accept(CinemarrMessage payload){
         if(payload instanceof VideoPayloads.LibraryList value){libraries=value.value();return true;}
         if(payload instanceof VideoPayloads.BrowseResults value){browse=value.value();return true;}
-        if(payload instanceof VideoPayloads.SessionState value){
-            VideoPackets.SessionState next=value.value();
-            if(session==null||!session.sessionId().equals(next.sessionId())||session.generation()!=next.generation())resetMedia();
-            session=next;return true;
-        }
+        if(payload instanceof VideoPayloads.SessionState value){acceptSession(value.value());return true;}
+        if(payload instanceof VideoPayloads.TelevisionRemoved value){removeTelevision(value.value().controllerPos());return true;}
         if(payload instanceof VideoPayloads.SegmentManifest value){
-            VideoPackets.SegmentManifest next=value.value();
-            if(session==null||!session.sessionId().equals(next.sessionId())||session.generation()!=next.generation())return true;
-            manifest=next;ready.clear();int first=seekSegment(next,session.positionMs());request(first,0);return true;
+            VideoPackets.SegmentManifest next=value.value();StreamState stream=streams.get(new StreamKey(next.sessionId(),next.generation()));
+            if(stream!=null)stream.manifest(next);return true;
         }
-        if(payload instanceof VideoPayloads.SegmentChunk value){chunk(value.value());return true;}
+        if(payload instanceof VideoPayloads.SegmentChunk value){
+            StreamState stream=streams.get(new StreamKey(value.value().sessionId(),value.value().generation()));if(stream!=null)stream.chunk(value.value());return true;
+        }
         return false;
     }
 
-    private void chunk(VideoPackets.SegmentChunk value){
-        if(session==null||manifest==null||!session.sessionId().equals(value.sessionId())||session.generation()!=value.generation()
-                ||value.segmentIndex()!=requestedSegment||value.totalChunks()<1)return;
-        if(totalChunks==0){
-            totalChunks=value.totalChunks();assembler.begin(value.sessionId(),value.generation(),value.requestId(),value.segmentIndex(),
-                    value.totalChunks(),value.segmentSha256(),value.presentationTimeMs(),value.keyframe());
+    private void acceptSession(VideoPackets.SessionState next){
+        televisions.put(next.controllerPos(),next);
+        if(next.item()!=null&&!next.sessionId().equals(new UUID(0,0))){
+            StreamKey key=new StreamKey(next.sessionId(),next.generation());
+            streams.computeIfAbsent(key,ignored->new StreamState(key)).session(next);
         }
-        Optional<VideoSegmentAssembler.CompletedSegment> completed=assembler.accept(value.sessionId(),value.generation(),value.requestId(),
-                value.segmentIndex(),value.chunkIndex(),value.totalChunks(),value.segmentSha256(),value.presentationTimeMs(),value.keyframe(),value.data());
-        if(completed.isPresent()){
-            ready.add(completed.get());
-            CinemarrNetwork.sendToServer(new VideoPayloads.SegmentAcknowledgement(new VideoPackets.SegmentAcknowledgement(
-                    value.sessionId(),value.generation(),value.requestId(),value.segmentIndex(),value.totalChunks()-1,bufferedMs())));
-            if(value.segmentIndex()+1<manifest.segments().size())request(value.segmentIndex()+1,0);
-        }else if(value.chunkIndex()+1>=currentWindowEnd&&currentWindowEnd<totalChunks){request(value.segmentIndex(),currentWindowEnd);}
+        pruneStreams();
     }
 
-    private void request(int segment,int firstChunk){
-        if(manifest==null||segment<0||segment>=manifest.segments().size())return;
-        requestedSegment=segment;totalChunks=firstChunk==0?0:totalChunks;currentWindowEnd=firstChunk+8;
-        CinemarrNetwork.sendToServer(new VideoPayloads.SegmentRequest(new VideoPackets.SegmentRequest(
-                manifest.sessionId(),manifest.generation(),++requestId,segment,firstChunk,8)));
+    private void removeTelevision(long controllerPos){televisions.remove(controllerPos);pruneStreams();}
+    private void pruneStreams(){
+        List<StreamKey> referenced=new ArrayList<>();
+        for(VideoPackets.SessionState state:televisions.values())if(state.item()!=null&&!state.sessionId().equals(new UUID(0,0)))referenced.add(new StreamKey(state.sessionId(),state.generation()));
+        streams.entrySet().removeIf(entry->{if(referenced.contains(entry.getKey()))return false;entry.getValue().reset();return true;});
     }
 
-    private static int seekSegment(VideoPackets.SegmentManifest manifest,long positionMs){
-        int result=0;for(int index=0;index<manifest.segments().size();index++){
-            VideoPackets.SegmentDescriptor value=manifest.segments().get(index);
-            if(value.presentationTimeMs()>positionMs)break;if(value.keyframe())result=index;
-        }return result;
-    }
-    private long bufferedMs(){long total=0;for(VideoSegmentAssembler.CompletedSegment segment:ready){if(manifest!=null&&segment.segmentIndex()<manifest.segments().size())total+=manifest.segments().get(segment.segmentIndex()).durationMs();}return total;}
-    private void resetMedia(){assembler.reset();ready.clear();manifest=null;requestedSegment=-1;currentWindowEnd=0;totalChunks=0;}
-    public void reset(){libraries=new VideoPackets.LibraryList(Collections.emptyList());browse=new VideoPackets.BrowseResults("","","",0,false,Collections.emptyList());session=null;resetMedia();}
+    public void reset(){libraries=new VideoPackets.LibraryList(Collections.emptyList());browse=new VideoPackets.BrowseResults("","","",0,false,Collections.emptyList());televisions.clear();for(StreamState value:streams.values())value.reset();streams.clear();}
     public void requestLibraries(){CinemarrNetwork.sendToServer(new VideoPayloads.LibraryListRequest());}
     public void browse(String libraryId,String parentKey,String query,int page){CinemarrNetwork.sendToServer(new VideoPayloads.BrowseRequest(new VideoPackets.BrowseRequest(libraryId,parentKey,query,page)));}
     public void command(VideoPackets.SessionCommand command){CinemarrNetwork.sendToServer(new VideoPayloads.SessionCommand(command));}
     public VideoPackets.LibraryList libraries(){return libraries;} public VideoPackets.BrowseResults browse(){return browse;}
-    public VideoPackets.SessionState session(){return session;} public VideoPackets.SegmentManifest manifest(){return manifest;}
-    public VideoSegmentAssembler.CompletedSegment pollSegment(){return ready.poll();} public int readySegments(){return ready.size();}
+    public VideoPackets.SessionState session(long controllerPos){return televisions.get(controllerPos);}
+    public Collection<VideoPackets.SessionState> televisions(){return List.copyOf(televisions.values());}
+    Collection<StreamState> streamStates(){return List.copyOf(streams.values());}
+    StreamState stream(StreamKey key){return streams.get(key);}
+    List<VideoPackets.SessionState> televisionsForStream(StreamKey key){List<VideoPackets.SessionState> values=new ArrayList<>();for(VideoPackets.SessionState state:televisions.values())if(state.sessionId().equals(key.sessionId())&&state.generation()==key.generation())values.add(state);return values;}
+
+    record StreamKey(UUID sessionId,long generation) {}
+
+    static final class StreamState {
+        private final StreamKey key;
+        private final VideoSegmentAssembler assembler=new VideoSegmentAssembler();
+        private final Queue<VideoSegmentAssembler.CompletedSegment> ready=new ArrayDeque<>();
+        private VideoPackets.SessionState session;
+        private VideoPackets.SegmentManifest manifest;
+        private long requestId;
+        private int requestedSegment=-1,currentWindowEnd,totalChunks;
+
+        StreamState(StreamKey key){this.key=key;}
+        void session(VideoPackets.SessionState value){session=value;}
+        VideoPackets.SessionState session(){return session;}
+        StreamKey key(){return key;}
+
+        void manifest(VideoPackets.SegmentManifest next){
+            if(!key.sessionId.equals(next.sessionId())||key.generation!=next.generation()||session==null)return;
+            boolean continuation=manifest!=null&&!next.segments().isEmpty()&&next.segments().get(0).index()==requestedSegment+1;
+            manifest=next;if(continuation)request(next.segments().get(0).index(),0);else{ready.clear();int first=seekSegment(next,session.positionMs());request(first,0);}
+        }
+        void chunk(VideoPackets.SegmentChunk value){
+            if(manifest==null||value.segmentIndex()!=requestedSegment||value.totalChunks()<1)return;
+            if(totalChunks==0){totalChunks=value.totalChunks();assembler.begin(value.sessionId(),value.generation(),value.requestId(),value.segmentIndex(),value.totalChunks(),value.segmentSha256(),value.presentationTimeMs(),value.keyframe());}
+            Optional<VideoSegmentAssembler.CompletedSegment> completed=assembler.accept(value.sessionId(),value.generation(),value.requestId(),value.segmentIndex(),value.chunkIndex(),value.totalChunks(),value.segmentSha256(),value.presentationTimeMs(),value.keyframe(),value.data());
+            if(completed.isPresent()){
+                ready.add(completed.get());CinemarrNetwork.sendToServer(new VideoPayloads.SegmentAcknowledgement(new VideoPackets.SegmentAcknowledgement(value.sessionId(),value.generation(),value.requestId(),value.segmentIndex(),value.totalChunks()-1,bufferedMs())));
+                int local=descriptorIndex(value.segmentIndex());if(local>=0&&local+1<manifest.segments().size())request(manifest.segments().get(local+1).index(),0);else if(manifest.hasMore())CinemarrNetwork.sendToServer(new VideoPayloads.SegmentManifestRequest(new VideoPackets.SegmentManifestRequest(key.sessionId,key.generation,value.segmentIndex()+1)));
+            }else if(value.chunkIndex()+1>=currentWindowEnd&&currentWindowEnd<totalChunks)request(value.segmentIndex(),currentWindowEnd);
+        }
+        private void request(int segment,int firstChunk){
+            if(manifest==null||descriptorIndex(segment)<0)return;requestedSegment=segment;if(firstChunk==0){totalChunks=0;requestId++;}currentWindowEnd=firstChunk+8;
+            CinemarrNetwork.sendToServer(new VideoPayloads.SegmentRequest(new VideoPackets.SegmentRequest(key.sessionId,key.generation,requestId,segment,firstChunk,8)));
+        }
+        private int descriptorIndex(int segment){if(manifest==null)return -1;for(int index=0;index<manifest.segments().size();index++)if(manifest.segments().get(index).index()==segment)return index;return -1;}
+        private static int seekSegment(VideoPackets.SegmentManifest manifest,long positionMs){int result=manifest.segments().isEmpty()?-1:manifest.segments().get(0).index();for(VideoPackets.SegmentDescriptor value:manifest.segments()){if(value.presentationTimeMs()>positionMs)break;if(value.keyframe())result=value.index();}return result;}
+        private long bufferedMs(){long total=0;for(VideoSegmentAssembler.CompletedSegment segment:ready){int local=descriptorIndex(segment.segmentIndex());if(local>=0)total+=manifest.segments().get(local).durationMs();}return total;}
+        void reset(){assembler.reset();ready.clear();manifest=null;requestedSegment=-1;currentWindowEnd=0;totalChunks=0;}
+        VideoSegmentAssembler.CompletedSegment pollSegment(){return ready.poll();}
+        VideoPackets.SegmentManifest manifest(){return manifest;}
+    }
     private CinemarrVideoClientState(){}
 }

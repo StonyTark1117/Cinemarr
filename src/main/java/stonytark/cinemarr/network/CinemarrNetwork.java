@@ -11,7 +11,7 @@ import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.core.protocol.CinemarrMessage;
 
 public final class CinemarrNetwork {
-    /** Bumped for source-aware queues, stations, and Sonic Adventure payloads. */
+    /** Video protocol shared by the server and required client. */
     public static final int PROTOCOL = ProtocolLimits.VERSION;
     public static final String VERSION = Integer.toString(PROTOCOL);
 
@@ -37,6 +37,7 @@ public final class CinemarrNetwork {
         registrar.playToClient(VideoPayloads.OpenVideoScreen.TYPE, VideoPayloads.OpenVideoScreen.CODEC, CinemarrNetwork::client);
         registrar.playToClient(VideoPayloads.BrowseResults.TYPE, VideoPayloads.BrowseResults.CODEC, CinemarrNetwork::client);
         registrar.playToClient(VideoPayloads.SessionState.TYPE, VideoPayloads.SessionState.CODEC, CinemarrNetwork::client);
+        registrar.playToClient(VideoPayloads.TelevisionRemoved.TYPE, VideoPayloads.TelevisionRemoved.CODEC, CinemarrNetwork::client);
         registrar.playToClient(VideoPayloads.SegmentManifest.TYPE, VideoPayloads.SegmentManifest.CODEC, CinemarrNetwork::client);
         registrar.playToClient(VideoPayloads.SegmentChunk.TYPE, VideoPayloads.SegmentChunk.CODEC, CinemarrNetwork::client);
         registrar.playToServer(CinemarrPayloads.ClientHello.TYPE, CinemarrPayloads.ClientHello.CODEC, (payload, context) -> {
@@ -72,6 +73,8 @@ public final class CinemarrNetwork {
                 (p, c) -> c.enqueueWork(() -> CinemarrServer.instance().videoCommand((ServerPlayer)c.player(), p.value())));
         registrar.playToServer(VideoPayloads.SegmentRequest.TYPE, VideoPayloads.SegmentRequest.CODEC,
                 (p, c) -> c.enqueueWork(() -> CinemarrServer.instance().videoSegments((ServerPlayer)c.player(), p.value())));
+        registrar.playToServer(VideoPayloads.SegmentManifestRequest.TYPE, VideoPayloads.SegmentManifestRequest.CODEC,
+                (p, c) -> c.enqueueWork(() -> CinemarrServer.instance().videoManifest((ServerPlayer)c.player(), p.value())));
         registrar.playToServer(VideoPayloads.SegmentAcknowledgement.TYPE, VideoPayloads.SegmentAcknowledgement.CODEC,
                 (p, c) -> c.enqueueWork(() -> CinemarrServer.instance().videoAcknowledge((ServerPlayer)c.player(), p.value())));
         registrar.playToServer(VideoPayloads.ClientHealth.TYPE, VideoPayloads.ClientHealth.CODEC,

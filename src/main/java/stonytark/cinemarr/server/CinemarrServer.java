@@ -8,6 +8,7 @@ import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import net.neoforged.neoforge.event.level.ChunkWatchEvent;
 import stonytark.cinemarr.Cinemarr;
 import stonytark.cinemarr.core.platform.CanonicalConfigFiles;
 import stonytark.cinemarr.core.platform.CinemarrSettings;
@@ -68,7 +69,9 @@ public final class CinemarrServer {
     }
     @SubscribeEvent public void tick(ServerTickEvent.Post event) { if (player != null) player.tick(); if (videoManager != null) videoManager.tick(); }
     @SubscribeEvent public void joined(PlayerEvent.PlayerLoggedInEvent event) { if (player != null && event.getEntity() instanceof ServerPlayer serverPlayer) player.playerJoined(serverPlayer); }
-    @SubscribeEvent public void left(PlayerEvent.PlayerLoggedOutEvent event) { if (player != null && event.getEntity() instanceof ServerPlayer serverPlayer) player.playerLeft(serverPlayer); }
+    @SubscribeEvent public void left(PlayerEvent.PlayerLoggedOutEvent event) { if (event.getEntity() instanceof ServerPlayer serverPlayer) { if (player != null) player.playerLeft(serverPlayer); if(videoManager!=null)videoManager.playerLeft(serverPlayer); } }
+    @SubscribeEvent public void chunkSent(ChunkWatchEvent.Sent event) { if(videoManager!=null)videoManager.chunkSent(event.getPlayer(),event.getLevel(),event.getPos()); }
+    @SubscribeEvent public void chunkUnwatched(ChunkWatchEvent.UnWatch event) { if(videoManager!=null)videoManager.chunkUnwatched(event.getPlayer(),event.getLevel(),event.getPos()); }
 
     public void hello(ServerPlayer sender) { if (player != null) player.hello(sender); }
     public void browse(ServerPlayer sender, CinemarrPayloads.BrowseRequest request) { if (player != null) player.browse(sender, request); }
@@ -89,6 +92,7 @@ public final class CinemarrServer {
     public void videoBrowse(ServerPlayer player, VideoPackets.BrowseRequest request) { if (videoManager != null) videoManager.browse(player, request); }
     public void videoCommand(ServerPlayer player, VideoPackets.SessionCommand command) { if (videoManager != null) videoManager.command(player, command); }
     public void videoSegments(ServerPlayer player, VideoPackets.SegmentRequest request) { if (videoManager != null) videoManager.segments(player, request); }
+    public void videoManifest(ServerPlayer player, VideoPackets.SegmentManifestRequest request) { if (videoManager != null) videoManager.manifest(player, request); }
     public void videoAcknowledge(ServerPlayer player, VideoPackets.SegmentAcknowledgement value) { if (videoManager != null) videoManager.acknowledge(player, value); }
     public void videoHealth(ServerPlayer player, VideoPackets.ClientHealth value) { if (videoManager != null) videoManager.health(player, value); }
 }

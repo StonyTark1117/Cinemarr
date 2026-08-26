@@ -8,6 +8,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import stonytark.cinemarr.core.library.MediaKind;
 import stonytark.cinemarr.core.library.VideoMediaItem;
+import stonytark.cinemarr.core.library.VideoStreamOption;
 import stonytark.cinemarr.core.platform.CinemarrSettings;
 import stonytark.cinemarr.core.protocol.VideoPackets;
 import stonytark.cinemarr.core.video.PresentationMode;
@@ -63,7 +64,7 @@ public final class CinemarrVideoScreen extends Screen {
     }
 
     private void addControls(int left,int panel){
-        int y=height-50;VideoPackets.SessionState playback=state.session();long generation=playback==null?0:playback.generation();
+        int y=height-50;VideoPackets.SessionState playback=state.session(controllerPos);long generation=playback==null?0:playback.generation();
         boolean paused=playback!=null&&playback.paused();
         addRenderableWidget(Button.builder(Component.translatable(paused?"cinemarr.screen.resume":"cinemarr.screen.pause"),b->command(paused?VideoPackets.SessionAction.RESUME:VideoPackets.SessionAction.PAUSE,"",playback==null?0:playback.positionMs(),mode(),generation)).bounds(left,y,70,20).build());
         addRenderableWidget(Button.builder(Component.literal("-30s"),b->seek(-30_000)).bounds(left+74,y,52,20).build());
@@ -72,28 +73,35 @@ public final class CinemarrVideoScreen extends Screen {
         PresentationMode current=mode();int modeX=left+246;
         for(PresentationMode candidate:PresentationMode.values()){Button button=Button.builder(Component.literal(candidate.name().toLowerCase()),b->command(VideoPackets.SessionAction.SET_PRESENTATION,"",0,candidate,generation)).bounds(modeX,y,58,20).build();button.active=candidate!=current;addRenderableWidget(button);modeX+=62;}
         addRenderableWidget(Button.builder(Component.literal(CinemarrSettings.enabled()?"Screen on":"Screen off"),b->{CinemarrSettings.enabled(!CinemarrSettings.enabled());CinemarrSettings.saveEnabled();rebuildWidgets();}).bounds(left+panel-86,y,86,20).build());
+        if(playback!=null&&playback.item()!=null){
+            int streamY=y-24;Button audio=Button.builder(Component.literal("Audio: "+streamLabel(playback,VideoStreamOption.Kind.AUDIO,playback.selectedAudioStreamId(),"default")),b->cycleStream(playback,VideoStreamOption.Kind.AUDIO)).bounds(left,streamY,Math.min(180,panel/2-2),20).build();audio.active=playback.streams().stream().anyMatch(value->value.kind()==VideoStreamOption.Kind.AUDIO);addRenderableWidget(audio);
+            Button subtitles=Button.builder(Component.literal("Subs: "+streamLabel(playback,VideoStreamOption.Kind.SUBTITLE,playback.selectedSubtitleStreamId(),"off")),b->cycleStream(playback,VideoStreamOption.Kind.SUBTITLE)).bounds(left+Math.min(184,panel/2+2),streamY,Math.min(180,panel/2-2),20).build();subtitles.active=playback.streams().stream().anyMatch(value->value.kind()==VideoStreamOption.Kind.SUBTITLE);addRenderableWidget(subtitles);
+        }
         int sessionY=height-26;sessionName=addRenderableWidget(new EditBox(font,left,sessionY,180,20,Component.translatable("cinemarr.video.session")));sessionName.setMaxLength(64);sessionName.setHint(Component.translatable("cinemarr.video.session"));
         addRenderableWidget(Button.builder(Component.translatable("cinemarr.video.tune"),b->command(VideoPackets.SessionAction.TUNE,"",0,mode(),generation,sessionName.getValue().trim())).bounds(left+184,sessionY,52,20).build());
     }
 
     private void activate(VideoMediaItem item){
         if(item.kind()==MediaKind.SHOW||item.kind()==MediaKind.SEASON){parents.push(parentKey);parentKey=item.key();query="";page=0;request();return;}
-        command(VideoPackets.SessionAction.PLAY,item.key(),0,mode(),state.session()==null?0:state.session().generation());notice="Starting "+item.title();rebuildWidgets();
+        VideoPackets.SessionState playback=state.session(controllerPos);command(VideoPackets.SessionAction.PLAY,item.key(),0,mode(),playback==null?0:playback.generation());notice="Starting "+item.title();rebuildWidgets();
     }
     private void back(){if(parents.isEmpty())return;parentKey=parents.pop();query="";page=0;request();}
     private void selectLibrary(String id){libraryId=id;parents.clear();parentKey="";query="";page=0;request();}
     private void request(){if(!libraryId.isEmpty())state.browse(libraryId,parentKey,query,page);}
-    private void seek(long delta){VideoPackets.SessionState value=state.session();if(value==null)return;command(VideoPackets.SessionAction.SEEK,"",Math.max(0,value.positionMs()+delta),mode(),value.generation());}
+    private void seek(long delta){VideoPackets.SessionState value=state.session(controllerPos);if(value==null)return;command(VideoPackets.SessionAction.SEEK,"",Math.max(0,value.positionMs()+delta),mode(),value.generation());}
     private void command(VideoPackets.SessionAction action,String item,long seek,PresentationMode mode,long generation){command(action,item,seek,mode,generation,"");}
     private void command(VideoPackets.SessionAction action,String item,long seek,PresentationMode mode,long generation,String session){state.command(new VideoPackets.SessionCommand(action,controllerPos,libraryId,item,session,mode,generation,seek,-1,-1));}
-    private PresentationMode mode(){return state.session()==null?PresentationMode.FIT:state.session().presentationMode();}
+    private void commandStreams(VideoPackets.SessionState playback,int audio,int subtitle){state.command(new VideoPackets.SessionCommand(VideoPackets.SessionAction.SET_STREAMS,controllerPos,libraryId,playback.item().key(),"",playback.presentationMode(),playback.generation(),playback.positionMs(),audio,subtitle));}
+    private void cycleStream(VideoPackets.SessionState playback,VideoStreamOption.Kind kind){java.util.List<VideoStreamOption> options=playback.streams().stream().filter(value->value.kind()==kind).toList();if(options.isEmpty())return;int current=kind==VideoStreamOption.Kind.AUDIO?playback.selectedAudioStreamId():playback.selectedSubtitleStreamId();int next;if(kind==VideoStreamOption.Kind.SUBTITLE&&current<0)next=options.getFirst().id();else{int index=-1;for(int i=0;i<options.size();i++)if(options.get(i).id()==current){index=i;break;}next=index+1<options.size()?options.get(index+1).id():(kind==VideoStreamOption.Kind.SUBTITLE?-1:options.getFirst().id());}commandStreams(playback,kind==VideoStreamOption.Kind.AUDIO?next:playback.selectedAudioStreamId(),kind==VideoStreamOption.Kind.SUBTITLE?next:playback.selectedSubtitleStreamId());}
+    private static String streamLabel(VideoPackets.SessionState playback,VideoStreamOption.Kind kind,int id,String fallback){for(VideoStreamOption value:playback.streams())if(value.kind()==kind&&value.id()==id)return value.label();return fallback;}
+    private PresentationMode mode(){VideoPackets.SessionState playback=state.session(controllerPos);return playback==null?PresentationMode.FIT:playback.presentationMode();}
     void stateChanged(){
         if(libraryId.isEmpty()&&!state.libraries().libraries().isEmpty()){libraryId=state.libraries().libraries().get(0).id();request();}
         if(minecraft!=null)rebuildWidgets();
     }
     @Override public boolean keyPressed(int key,int scan,int modifiers){if(key==257&&search!=null&&search.isFocused()){query=search.getValue().trim();page=0;request();return true;}return super.keyPressed(key,scan,modifiers);}
     @Override public boolean mouseScrolled(double mouseX,double mouseY,double scrollX,double scrollY){if(scrollY!=0){rowOffset=Math.max(0,rowOffset+(scrollY<0?1:-1));rebuildWidgets();return true;}return super.mouseScrolled(mouseX,mouseY,scrollX,scrollY);}
-    @Override public void render(GuiGraphics graphics,int mouseX,int mouseY,float partial){renderBackground(graphics,mouseX,mouseY,partial);super.render(graphics,mouseX,mouseY,partial);graphics.drawCenteredString(font,title,width/2,10,0xffffff);VideoPackets.SessionState value=state.session();String now=value==null?"No TV state":value.status().name().toLowerCase()+(value.item()==null?"":": "+value.item().title()+"  "+time(value.positionMs())+"/"+time(value.durationMs()));graphics.drawCenteredString(font,trim(now,width-20),width/2,23,0xa0d8ff);if(!notice.isEmpty())graphics.drawCenteredString(font,trim(notice,width-20),width/2,height-64,0xffb36b);}
+    @Override public void render(GuiGraphics graphics,int mouseX,int mouseY,float partial){renderBackground(graphics,mouseX,mouseY,partial);super.render(graphics,mouseX,mouseY,partial);graphics.drawCenteredString(font,title,width/2,10,0xffffff);VideoPackets.SessionState value=state.session(controllerPos);String now=value==null?"No TV state":value.status().name().toLowerCase()+(value.item()==null?"":": "+value.item().title()+"  "+time(value.positionMs())+"/"+time(value.durationMs()));graphics.drawCenteredString(font,trim(now,width-20),width/2,23,0xa0d8ff);if(!notice.isEmpty())graphics.drawCenteredString(font,trim(notice,width-20),width/2,height-64,0xffb36b);}
     private String trim(String value,int maximum){return font.width(value)<=maximum?value:font.plainSubstrByWidth(value,Math.max(0,maximum-font.width("…")))+"…";}
     private static String time(long ms){long total=Math.max(0,ms/1000);return String.format("%d:%02d",total/60,total%60);}
 }

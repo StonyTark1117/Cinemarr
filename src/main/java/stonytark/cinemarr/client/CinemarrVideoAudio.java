@@ -27,8 +27,7 @@ public final class CinemarrVideoAudio {
     private long channelAttempt;
     private int underruns;
 
-    public void tick(CinemarrVideoPlayback playback, CinemarrVideoClientState clientState) {
-        VideoPackets.SessionState session = clientState.session();
+    public void tick(CinemarrVideoPlayback playback, VideoPackets.SessionState session) {
         if (session == null || session.item() == null || session.status() == VideoPackets.SessionStatus.IDLE) { reset(); return; }
         if (!session.sessionId().equals(sessionId) || session.generation() != generation) {
             reset(); sessionId = session.sessionId(); generation = session.generation();

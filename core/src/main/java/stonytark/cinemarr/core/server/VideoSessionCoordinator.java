@@ -46,10 +46,25 @@ public final class VideoSessionCoordinator implements AutoCloseable {
     }
 
     public synchronized Snapshot play(String name, VideoMediaItem item, long offsetMs, long nowMs) throws IOException {
+        return play(name, item, offsetMs, nowMs, -1);
+    }
+
+    public synchronized Snapshot play(String name, VideoMediaItem item, long offsetMs, long nowMs,
+                                      long expectedGeneration) throws IOException {
         Session session = required(name);
-        close(session.media);
-        session.generation++;
-        session.media = mediaFactory.start(session.id, session.generation, item, Math.max(0, offsetMs));
+        if (expectedGeneration >= 0 && session.generation != expectedGeneration) {
+            throw new IllegalStateException("TV state changed while preparing playback");
+        }
+        long nextGeneration = session.generation + 1;
+        MediaHandle replacement = mediaFactory.start(session.id, nextGeneration, item, Math.max(0, offsetMs));
+        try {
+            close(session.media);
+        } catch (IOException failure) {
+            closeUnchecked(replacement);
+            throw failure;
+        }
+        session.generation = nextGeneration;
+        session.media = replacement;
         session.item = item;
         session.positionAtStartMs = Math.max(0, offsetMs);
         session.startedAtMs = nowMs;
@@ -76,9 +91,12 @@ public final class VideoSessionCoordinator implements AutoCloseable {
         if (value.pausedAtMs >= 0) { value.startedAtMs += Math.max(0, nowMs - value.pausedAtMs); value.pausedAtMs = -1; }
     }
     public synchronized void seek(String name, long positionMs, long nowMs) throws IOException {
+        seek(name, positionMs, nowMs, -1);
+    }
+    public synchronized void seek(String name, long positionMs, long nowMs, long expectedGeneration) throws IOException {
         Session value = required(name);
         if (value.item == null) return;
-        play(name, value.item, Math.max(0, positionMs), nowMs);
+        play(name, value.item, Math.max(0, positionMs), nowMs, expectedGeneration);
     }
 
     public synchronized void tick(long nowMs) throws IOException {
@@ -93,6 +111,23 @@ public final class VideoSessionCoordinator implements AutoCloseable {
     }
 
     public synchronized Snapshot snapshot(String name, long nowMs) { return required(name).snapshotAt(nowMs); }
+    public synchronized Snapshot snapshotIfPresent(String name, long nowMs) {
+        Session value = sessions.get(name); return value == null ? null : value.snapshotAt(nowMs);
+    }
+    public synchronized Snapshot snapshotIfPresent(UUID sessionId, long generation, long nowMs) {
+        if (sessionId == null) return null;
+        for (Session value : sessions.values()) if (value.id.equals(sessionId) && value.generation == generation) {
+            return value.snapshotAt(nowMs);
+        }
+        return null;
+    }
+    public synchronized boolean isViewer(UUID sessionId, long generation, UUID playerId) {
+        if (sessionId == null || playerId == null) return false;
+        for (Session value : sessions.values()) if (value.id.equals(sessionId) && value.generation == generation) {
+            return value.viewers.contains(playerId);
+        }
+        return false;
+    }
     public synchronized int sessionCount() { return sessions.size(); }
 
     public synchronized void untune(UUID televisionId) throws IOException {

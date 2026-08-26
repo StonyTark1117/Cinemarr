@@ -40,7 +40,7 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
     private long lastPresentedUs;
     private long lastHealthMs;
 
-    public void tick(CinemarrVideoClientState state) {
+    public void tick(CinemarrVideoClientState.StreamState state) {
         VideoPackets.SessionState session = state.session();
         if (session == null || session.status() == VideoPackets.SessionStatus.IDLE || session.status() == VideoPackets.SessionStatus.ERROR) {
             reset();
@@ -105,8 +105,8 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
     public int decoderRecoveries() { return decoderRecoveries; }
     public int videoDrops() { return videoDrops; }
 
-    public void sendHealth(CinemarrVideoClientState clientState, int audioUnderruns) {
-        VideoPackets.SessionState session = clientState.session(); long now = System.currentTimeMillis();
+    public void sendHealth(CinemarrVideoClientState.StreamState streamState, int audioUnderruns) {
+        VideoPackets.SessionState session = streamState.session(); long now = System.currentTimeMillis();
         if (session == null || session.item() == null || now - lastHealthMs < 5_000) return;
         long targetUs = authoritativePositionMs(session, now) * 1_000L;
         long lastQueuedUs = video.isEmpty() ? lastPresentedUs : Math.max(lastPresentedUs,

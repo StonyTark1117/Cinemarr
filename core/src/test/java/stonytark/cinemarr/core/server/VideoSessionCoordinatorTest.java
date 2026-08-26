@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class VideoSessionCoordinatorTest {
     @Test void watchPartyUsesOneTranscodeAndStopsAfterLastViewerGrace() throws Exception {
@@ -21,6 +22,8 @@ class VideoSessionCoordinatorTest {
         coordinator.tune(firstTv, "party"); coordinator.tune(secondTv, "party");
         coordinator.viewerEntered("party", viewer);
         coordinator.play("party", movie(), 5_000, 1_000);
+        assertTrue(coordinator.isViewer(coordinator.snapshot("party",1_000).id(),1,viewer));
+        assertFalse(coordinator.isViewer(coordinator.snapshot("party",1_000).id(),1,UUID.randomUUID()));
         assertEquals(1, starts.get());
         assertEquals(2, coordinator.snapshot("party", 2_000).televisions().size());
         coordinator.viewerLeft("party", viewer, 2_000);
@@ -46,6 +49,26 @@ class VideoSessionCoordinatorTest {
         assertTrue(second.generation() > first.generation());
         assertEquals(40_000, second.positionMs());
         assertEquals(2, starts.get());
+    }
+
+    @Test void staleOrFailedReplacementCannotDisplaceCurrentPlayback() throws Exception {
+        AtomicInteger starts = new AtomicInteger();
+        AtomicInteger stops = new AtomicInteger();
+        VideoSessionCoordinator coordinator = new VideoSessionCoordinator(2, 0,
+                (session, generation, item, offset) -> {
+                    if (starts.incrementAndGet() == 2) throw new java.io.IOException("replacement failed");
+                    return stops::incrementAndGet;
+                });
+        coordinator.tune(UUID.randomUUID(), "party");
+        VideoSessionCoordinator.Snapshot playing = coordinator.play("party", movie(), 0, 1_000);
+        assertThrows(IllegalStateException.class,
+                () -> coordinator.play("party", movie(), 5_000, 2_000, playing.generation() - 1));
+        assertThrows(java.io.IOException.class,
+                () -> coordinator.play("party", movie(), 5_000, 2_000, playing.generation()));
+        VideoSessionCoordinator.Snapshot retained = coordinator.snapshot("party", 2_000);
+        assertEquals(playing.generation(), retained.generation());
+        assertTrue(retained.transcoding());
+        assertEquals(0, stops.get());
     }
 
     private static VideoMediaItem movie() { return new VideoMediaItem(MediaKind.MOVIE, "1", "Movie", "", "PG", 0, 90_000); }

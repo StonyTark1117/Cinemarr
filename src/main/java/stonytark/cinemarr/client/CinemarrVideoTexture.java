@@ -11,7 +11,8 @@ import stonytark.cinemarr.mixin.client.NativeImageAccessor;
 
 /** A single TV texture updated with one native-memory copy on the render thread. */
 public final class CinemarrVideoTexture implements AutoCloseable {
-    public static final ResourceLocation LOCATION = ResourceLocation.fromNamespaceAndPath(Cinemarr.MODID, "dynamic/video_frame");
+    private static final java.util.concurrent.atomic.AtomicLong IDS=new java.util.concurrent.atomic.AtomicLong();
+    private final ResourceLocation location=ResourceLocation.fromNamespaceAndPath(Cinemarr.MODID,"dynamic/video_frame_"+Long.toUnsignedString(IDS.incrementAndGet(),36));
     private DynamicTexture texture;
     private int width;
     private int height;
@@ -22,7 +23,7 @@ public final class CinemarrVideoTexture implements AutoCloseable {
             width = frame.width();
             height = frame.height();
             texture = new DynamicTexture(new NativeImage(width, height, false));
-            Minecraft.getInstance().getTextureManager().register(LOCATION, texture);
+            Minecraft.getInstance().getTextureManager().register(location, texture);
         }
         NativeImage image = texture.getPixels();
         if (image == null) throw new IllegalStateException("Video texture was disposed");
@@ -34,10 +35,11 @@ public final class CinemarrVideoTexture implements AutoCloseable {
     public boolean ready() { return texture != null; }
     public int width() { return width; }
     public int height() { return height; }
+    public ResourceLocation location(){return location;}
 
     @Override public void close() {
         if (texture != null) {
-            Minecraft.getInstance().getTextureManager().release(LOCATION);
+            Minecraft.getInstance().getTextureManager().release(location);
             texture = null;
             width = height = 0;
         }

@@ -9,49 +9,47 @@ import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import org.joml.Matrix4f;
 import stonytark.cinemarr.core.protocol.VideoPackets;
+import stonytark.cinemarr.core.platform.CinemarrSettings;
 import stonytark.cinemarr.core.screen.ScreenFacing;
 import stonytark.cinemarr.core.screen.ScreenMaskMesher;
 import stonytark.cinemarr.core.video.PresentationTransform;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 /** Batched world-space quads; ordinary Screen Pixel blocks never gain block entities. */
 public final class CinemarrVideoRenderer {
-    private UUID televisionId;
-    private byte[] mask;
-    private int width;
-    private int height;
-    private List<ScreenMaskMesher.Rectangle> rectangles = List.of();
+    private final Map<UUID,MeshCache> meshes=new HashMap<>();
 
-    public void render(RenderLevelStageEvent event, CinemarrVideoPlayback playback, CinemarrVideoClientState clientState) {
-        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS || !playback.texture().ready()) return;
-        VideoPackets.SessionState state = clientState.session();
-        if (state == null || state.item() == null || state.status() == VideoPackets.SessionStatus.IDLE) return;
-        updateMesh(state);
-        PresentationTransform transform = PresentationTransform.create(playback.texture().width(), playback.texture().height(),
-                state.screenWidth(), state.screenHeight(), state.presentationMode());
-        RenderType type = RenderType.entityCutoutNoCull(CinemarrVideoTexture.LOCATION);
+    public void render(RenderLevelStageEvent event, CinemarrVideoPlaybackManager playback, CinemarrVideoClientState clientState) {
+        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS || !CinemarrSettings.enabled()) return;
         MultiBufferSource.BufferSource buffers = Minecraft.getInstance().renderBuffers().bufferSource();
-        VertexConsumer vertices = buffers.getBuffer(type);
         PoseStack pose = event.getPoseStack();
         pose.pushPose();
         var camera = event.getCamera().getPosition();
         pose.translate(-camera.x, -camera.y, -camera.z);
         Matrix4f matrix = pose.last().pose();
-        for (ScreenMaskMesher.Rectangle rectangle : rectangles) draw(vertices, matrix, state, rectangle, transform,
-                playback.texture().width(), playback.texture().height());
+        Set<RenderType> used=new LinkedHashSet<>();Set<UUID> visible=new LinkedHashSet<>();
+        for(VideoPackets.SessionState state:clientState.televisions()){
+            if(state.item()==null||state.status()==VideoPackets.SessionStatus.IDLE)continue;
+            CinemarrVideoPlayback pipeline=playback.pipeline(new CinemarrVideoClientState.StreamKey(state.sessionId(),state.generation()));
+            if(pipeline==null||!pipeline.texture().ready())continue;visible.add(state.televisionId());
+            MeshCache mesh=updateMesh(state);PresentationTransform transform=PresentationTransform.create(pipeline.texture().width(),pipeline.texture().height(),state.screenWidth(),state.screenHeight(),state.presentationMode());
+            RenderType type=RenderType.entityCutoutNoCull(pipeline.texture().location());used.add(type);VertexConsumer vertices=buffers.getBuffer(type);
+            for(ScreenMaskMesher.Rectangle rectangle:mesh.rectangles)draw(vertices,matrix,state,rectangle,transform,pipeline.texture().width(),pipeline.texture().height());
+        }
         pose.popPose();
-        buffers.endBatch(type);
+        for(RenderType type:used)buffers.endBatch(type);meshes.keySet().retainAll(visible);
     }
 
-    private void updateMesh(VideoPackets.SessionState state) {
+    private MeshCache updateMesh(VideoPackets.SessionState state) {
         byte[] nextMask = state.visibilityMask();
-        if (!state.televisionId().equals(televisionId) || state.screenWidth() != width || state.screenHeight() != height
-                || !java.util.Arrays.equals(mask, nextMask)) {
-            televisionId = state.televisionId(); width = state.screenWidth(); height = state.screenHeight(); mask = nextMask;
-            rectangles = ScreenMaskMesher.mesh(width, height, mask);
-        }
+        MeshCache current=meshes.get(state.televisionId());
+        if(current==null||current.width!=state.screenWidth()||current.height!=state.screenHeight()||!java.util.Arrays.equals(current.mask,nextMask)){current=new MeshCache(state.screenWidth(),state.screenHeight(),nextMask,ScreenMaskMesher.mesh(state.screenWidth(),state.screenHeight(),nextMask));meshes.put(state.televisionId(),current);}return current;
     }
 
     private static void draw(VertexConsumer out, Matrix4f matrix, VideoPackets.SessionState state,
@@ -95,4 +93,5 @@ public final class CinemarrVideoRenderer {
                 .setOverlay(OverlayTexture.NO_OVERLAY).setLight(0x00F000F0).setNormal(nx,ny,nz);
     }
     private record WorldPoint(double x,double y,double z) {}
+    private record MeshCache(int width,int height,byte[] mask,List<ScreenMaskMesher.Rectangle> rectangles){MeshCache{mask=mask.clone();rectangles=List.copyOf(rectangles);}}
 }

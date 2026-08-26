@@ -2,6 +2,7 @@ package stonytark.cinemarr.core.protocol;
 
 import stonytark.cinemarr.core.library.MediaKind;
 import stonytark.cinemarr.core.library.VideoMediaItem;
+import stonytark.cinemarr.core.library.VideoStreamOption;
 import stonytark.cinemarr.core.screen.ScreenFacing;
 import stonytark.cinemarr.core.video.PresentationMode;
 
@@ -10,7 +11,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
-/** Java-8-compatible protocol-6 models for Cinemarr video browsing, control, and media relay. */
+/** Java-8-compatible protocol-7 models for Cinemarr video browsing, control, and media relay. */
 public final class VideoPackets {
     public enum SessionAction { TUNE, PLAY, PAUSE, RESUME, SEEK, STOP, SET_PRESENTATION, SET_STREAMS }
     public enum SessionStatus { IDLE, PREPARING, BUFFERING, PLAYING, PAUSED, PLEX_OFFLINE, ERROR }
@@ -28,6 +29,10 @@ public final class VideoPackets {
     public static final WireCodec<VideoMediaItem> MEDIA_ITEM = new WireCodec<VideoMediaItem>() {
         @Override public VideoMediaItem decode(WireInput in) { return readItem(in); }
         @Override public void encode(WireOutput out, VideoMediaItem value) { writeItem(out, value); }
+    };
+    public static final WireCodec<VideoStreamOption> VIDEO_STREAM_OPTION=new WireCodec<VideoStreamOption>(){
+        @Override public VideoStreamOption decode(WireInput in){return new VideoStreamOption(readEnum(in,VideoStreamOption.Kind.class),in.readVarInt(),in.readUtf(128),in.readUtf(32),in.readUtf(32),in.readBoolean());}
+        @Override public void encode(WireOutput out,VideoStreamOption value){writeEnum(out,value.kind());out.writeVarInt(value.id());out.writeUtf(value.label(),128);out.writeUtf(value.language(),32);out.writeUtf(value.codec(),32);out.writeBoolean(value.selected());}
     };
 
     public static final WireCodec<LibraryList> LIBRARY_LIST = new WireCodec<LibraryList>() {
@@ -84,43 +89,55 @@ public final class VideoPackets {
 
     public static final WireCodec<SessionState> SESSION_STATE = new WireCodec<SessionState>() {
         @Override public SessionState decode(WireInput in) {
-            UUID tv = in.readUuid(), session = in.readUuid(); long generation = in.readVarLong(); SessionStatus status = readEnum(in, SessionStatus.class);
+            UUID tv = in.readUuid(); long controllerPos = in.readLong(); UUID session = in.readUuid(); long generation = in.readVarLong(); SessionStatus status = readEnum(in, SessionStatus.class);
             boolean hasItem = in.readBoolean(); VideoMediaItem item = hasItem ? readItem(in) : null;
             long position = in.readVarLong(), duration = in.readVarLong(); boolean paused = in.readBoolean();
             PresentationMode mode = readEnum(in, PresentationMode.class); int width = in.readVarInt(), height = in.readVarInt();
             byte[] mask = in.readByteArray(ProtocolLimits.MAX_SCREEN_MASK_BYTES);
             ScreenFacing facing = readEnum(in, ScreenFacing.class); int plane = in.readVarInt(), minimumU = in.readVarInt(), minimumV = in.readVarInt();
+            int streamCount=count(in,ProtocolLimits.MAX_VIDEO_STREAM_OPTIONS,"video streams");List<VideoStreamOption> streams=new ArrayList<VideoStreamOption>(streamCount);for(int index=0;index<streamCount;index++)streams.add(VIDEO_STREAM_OPTION.decode(in));
+            int selectedAudio=in.readVarInt(),selectedSubtitle=in.readVarInt();
             long epoch = in.readLong(); boolean control = in.readBoolean();
             String message = in.readUtf(256);
-            return new SessionState(tv, session, generation, status, item, position, duration, paused, mode, width, height, mask,
-                    facing, plane, minimumU, minimumV, epoch, control, message);
+            return new SessionState(tv, controllerPos, session, generation, status, item, position, duration, paused, mode, width, height, mask,
+                    facing, plane, minimumU, minimumV, streams, selectedAudio, selectedSubtitle, epoch, control, message);
         }
         @Override public void encode(WireOutput out, SessionState value) {
-            out.writeUuid(value.televisionId()); out.writeUuid(value.sessionId()); out.writeVarLong(value.generation()); writeEnum(out, value.status());
+            out.writeUuid(value.televisionId()); out.writeLong(value.controllerPos()); out.writeUuid(value.sessionId()); out.writeVarLong(value.generation()); writeEnum(out, value.status());
             out.writeBoolean(value.item() != null); if (value.item() != null) writeItem(out, value.item());
             out.writeVarLong(value.positionMs()); out.writeVarLong(value.durationMs()); out.writeBoolean(value.paused());
             writeEnum(out, value.presentationMode()); out.writeVarInt(value.screenWidth()); out.writeVarInt(value.screenHeight());
             out.writeByteArray(value.visibilityMask(), ProtocolLimits.MAX_SCREEN_MASK_BYTES); writeEnum(out, value.screenFacing());
-            out.writeVarInt(value.screenPlane()); out.writeVarInt(value.minimumU()); out.writeVarInt(value.minimumV()); out.writeLong(value.serverEpochMs());
+            out.writeVarInt(value.screenPlane()); out.writeVarInt(value.minimumU()); out.writeVarInt(value.minimumV());int streamCount=Math.min(value.streams().size(),ProtocolLimits.MAX_VIDEO_STREAM_OPTIONS);out.writeVarInt(streamCount);for(int index=0;index<streamCount;index++)VIDEO_STREAM_OPTION.encode(out,value.streams().get(index));out.writeVarInt(value.selectedAudioStreamId());out.writeVarInt(value.selectedSubtitleStreamId());out.writeLong(value.serverEpochMs());
             out.writeBoolean(value.canControl()); out.writeUtf(value.message(), 256);
         }
+    };
+
+    public static final WireCodec<TelevisionRemoved> TELEVISION_REMOVED = new WireCodec<TelevisionRemoved>() {
+        @Override public TelevisionRemoved decode(WireInput in) { return new TelevisionRemoved(in.readLong()); }
+        @Override public void encode(WireOutput out, TelevisionRemoved value) { out.writeLong(value.controllerPos()); }
     };
 
     public static final WireCodec<SegmentManifest> SEGMENT_MANIFEST = new WireCodec<SegmentManifest>() {
         @Override public SegmentManifest decode(WireInput in) {
             UUID session = in.readUuid(); long generation = in.readVarLong(); int width = in.readVarInt(), height = in.readVarInt();
             String container = in.readUtf(32), video = in.readUtf(32), audio = in.readUtf(32); long duration = in.readVarLong();
-            int count = count(in, ProtocolLimits.MAX_VIDEO_SEGMENTS_PER_MANIFEST, "video segments");
+            boolean hasMore = in.readBoolean(); int count = count(in, ProtocolLimits.MAX_VIDEO_SEGMENTS_PER_MANIFEST, "video segments");
             List<SegmentDescriptor> segments = new ArrayList<SegmentDescriptor>(count);
             for (int index = 0; index < count; index++) segments.add(readDescriptor(in));
-            return new SegmentManifest(session, generation, width, height, container, video, audio, duration, segments);
+            return new SegmentManifest(session, generation, width, height, container, video, audio, duration, hasMore, segments);
         }
         @Override public void encode(WireOutput out, SegmentManifest value) {
             out.writeUuid(value.sessionId()); out.writeVarLong(value.generation()); out.writeVarInt(value.width()); out.writeVarInt(value.height());
-            out.writeUtf(value.container(), 32); out.writeUtf(value.videoCodec(), 32); out.writeUtf(value.audioCodec(), 32); out.writeVarLong(value.durationMs());
+            out.writeUtf(value.container(), 32); out.writeUtf(value.videoCodec(), 32); out.writeUtf(value.audioCodec(), 32); out.writeVarLong(value.durationMs()); out.writeBoolean(value.hasMore());
             int count = Math.min(value.segments().size(), ProtocolLimits.MAX_VIDEO_SEGMENTS_PER_MANIFEST); out.writeVarInt(count);
             for (int index = 0; index < count; index++) writeDescriptor(out, value.segments().get(index));
         }
+    };
+
+    public static final WireCodec<SegmentManifestRequest> SEGMENT_MANIFEST_REQUEST = new WireCodec<SegmentManifestRequest>() {
+        @Override public SegmentManifestRequest decode(WireInput in) { return new SegmentManifestRequest(in.readUuid(), in.readVarLong(), in.readVarInt()); }
+        @Override public void encode(WireOutput out, SegmentManifestRequest value) { out.writeUuid(value.sessionId()); out.writeVarLong(value.generation()); out.writeVarInt(value.firstSegmentIndex()); }
     };
 
     public static final WireCodec<SegmentRequest> SEGMENT_REQUEST = new WireCodec<SegmentRequest>() {
@@ -219,11 +236,17 @@ public final class VideoPackets {
         public SessionAction action(){return action;} public long controllerPos(){return controllerPos;} public String libraryId(){return libraryId;} public String itemKey(){return itemKey;} public String sessionName(){return sessionName;} public PresentationMode presentationMode(){return mode;} public long expectedGeneration(){return expectedGeneration;} public long seekPositionMs(){return seekPositionMs;} public int audioStreamId(){return audioStreamId;} public int subtitleStreamId(){return subtitleStreamId;}
     }
     public static final class SessionState implements CinemarrMessage {
-        private final UUID televisionId,sessionId; private final long generation; private final SessionStatus status; private final VideoMediaItem item;
+        private final UUID televisionId,sessionId; private final long controllerPos,generation; private final SessionStatus status; private final VideoMediaItem item;
         private final long positionMs,durationMs; private final boolean paused; private final PresentationMode mode; private final int width,height; private final byte[] mask;
         private final ScreenFacing facing; private final int plane,minimumU,minimumV; private final long serverEpochMs; private final boolean canControl; private final String message;
-        public SessionState(UUID tv,UUID session,long generation,SessionStatus status,VideoMediaItem item,long position,long duration,boolean paused,PresentationMode mode,int width,int height,byte[] mask,ScreenFacing facing,int plane,int minimumU,int minimumV,long epoch,boolean control,String message){this.televisionId=tv;this.sessionId=session;this.generation=generation;this.status=status;this.item=item;this.positionMs=position;this.durationMs=duration;this.paused=paused;this.mode=mode;this.width=width;this.height=height;this.mask=mask==null?new byte[0]:mask.clone();this.facing=facing;this.plane=plane;this.minimumU=minimumU;this.minimumV=minimumV;this.serverEpochMs=epoch;this.canControl=control;this.message=safe(message);}
-        public UUID televisionId(){return televisionId;} public UUID sessionId(){return sessionId;} public long generation(){return generation;} public SessionStatus status(){return status;} public VideoMediaItem item(){return item;} public long positionMs(){return positionMs;} public long durationMs(){return durationMs;} public boolean paused(){return paused;} public PresentationMode presentationMode(){return mode;} public int screenWidth(){return width;} public int screenHeight(){return height;} public byte[] visibilityMask(){return mask.clone();} public ScreenFacing screenFacing(){return facing;} public int screenPlane(){return plane;} public int minimumU(){return minimumU;} public int minimumV(){return minimumV;} public long serverEpochMs(){return serverEpochMs;} public boolean canControl(){return canControl;} public String message(){return message;}
+        private final List<VideoStreamOption> streams;private final int selectedAudioStreamId,selectedSubtitleStreamId;
+        public SessionState(UUID tv,long controllerPos,UUID session,long generation,SessionStatus status,VideoMediaItem item,long position,long duration,boolean paused,PresentationMode mode,int width,int height,byte[] mask,ScreenFacing facing,int plane,int minimumU,int minimumV,List<VideoStreamOption> streams,int selectedAudioStreamId,int selectedSubtitleStreamId,long epoch,boolean control,String message){this.televisionId=tv;this.controllerPos=controllerPos;this.sessionId=session;this.generation=generation;this.status=status;this.item=item;this.positionMs=position;this.durationMs=duration;this.paused=paused;this.mode=mode;this.width=width;this.height=height;this.mask=mask==null?new byte[0]:mask.clone();this.facing=facing;this.plane=plane;this.minimumU=minimumU;this.minimumV=minimumV;this.streams=immutable(streams);this.selectedAudioStreamId=selectedAudioStreamId;this.selectedSubtitleStreamId=selectedSubtitleStreamId;this.serverEpochMs=epoch;this.canControl=control;this.message=safe(message);}
+        public UUID televisionId(){return televisionId;} public long controllerPos(){return controllerPos;} public UUID sessionId(){return sessionId;} public long generation(){return generation;} public SessionStatus status(){return status;} public VideoMediaItem item(){return item;} public long positionMs(){return positionMs;} public long durationMs(){return durationMs;} public boolean paused(){return paused;} public PresentationMode presentationMode(){return mode;} public int screenWidth(){return width;} public int screenHeight(){return height;} public byte[] visibilityMask(){return mask.clone();} public ScreenFacing screenFacing(){return facing;} public int screenPlane(){return plane;} public int minimumU(){return minimumU;} public int minimumV(){return minimumV;} public List<VideoStreamOption> streams(){return streams;}public int selectedAudioStreamId(){return selectedAudioStreamId;}public int selectedSubtitleStreamId(){return selectedSubtitleStreamId;} public long serverEpochMs(){return serverEpochMs;} public boolean canControl(){return canControl;} public String message(){return message;}
+    }
+    public static final class TelevisionRemoved implements CinemarrMessage {
+        private final long controllerPos;
+        public TelevisionRemoved(long controllerPos){this.controllerPos=controllerPos;}
+        public long controllerPos(){return controllerPos;}
     }
     public static final class SegmentDescriptor {
         private final int index,byteLength; private final long pts,duration; private final boolean keyframe; private final String sha;
@@ -231,10 +254,11 @@ public final class VideoPackets {
         public int index(){return index;} public long presentationTimeMs(){return pts;} public long durationMs(){return duration;} public boolean keyframe(){return keyframe;} public int byteLength(){return byteLength;} public String sha256(){return sha;}
     }
     public static final class SegmentManifest implements CinemarrMessage {
-        private final UUID session; private final long generation,duration; private final int width,height; private final String container,video,audio; private final List<SegmentDescriptor> segments;
-        public SegmentManifest(UUID session,long generation,int width,int height,String container,String video,String audio,long duration,List<SegmentDescriptor> segments){this.session=session;this.generation=generation;this.width=width;this.height=height;this.container=safe(container);this.video=safe(video);this.audio=safe(audio);this.duration=duration;this.segments=immutable(segments);}
-        public UUID sessionId(){return session;} public long generation(){return generation;} public int width(){return width;} public int height(){return height;} public String container(){return container;} public String videoCodec(){return video;} public String audioCodec(){return audio;} public long durationMs(){return duration;} public List<SegmentDescriptor> segments(){return segments;}
+        private final UUID session; private final long generation,duration; private final int width,height; private final String container,video,audio; private final boolean hasMore; private final List<SegmentDescriptor> segments;
+        public SegmentManifest(UUID session,long generation,int width,int height,String container,String video,String audio,long duration,boolean hasMore,List<SegmentDescriptor> segments){this.session=session;this.generation=generation;this.width=width;this.height=height;this.container=safe(container);this.video=safe(video);this.audio=safe(audio);this.duration=duration;this.hasMore=hasMore;this.segments=immutable(segments);}
+        public UUID sessionId(){return session;} public long generation(){return generation;} public int width(){return width;} public int height(){return height;} public String container(){return container;} public String videoCodec(){return video;} public String audioCodec(){return audio;} public long durationMs(){return duration;} public boolean hasMore(){return hasMore;} public List<SegmentDescriptor> segments(){return segments;}
     }
+    public static final class SegmentManifestRequest implements CinemarrMessage { private final UUID session;private final long generation;private final int first;public SegmentManifestRequest(UUID session,long generation,int first){this.session=session;this.generation=generation;this.first=first;}public UUID sessionId(){return session;}public long generation(){return generation;}public int firstSegmentIndex(){return first;} }
     public static final class SegmentRequest implements CinemarrMessage { private final UUID session; private final long generation,request; private final int segment,first,count; public SegmentRequest(UUID s,long g,long r,int seg,int first,int count){session=s;generation=g;request=r;segment=seg;this.first=first;this.count=count;} public UUID sessionId(){return session;} public long generation(){return generation;} public long requestId(){return request;} public int segmentIndex(){return segment;} public int firstChunk(){return first;} public int chunkCount(){return count;} }
     public static final class SegmentChunk implements CinemarrMessage { private final UUID session; private final long generation,request,pts; private final int segment,chunk,total; private final boolean keyframe; private final String sha; private final byte[] data; public SegmentChunk(UUID s,long g,long r,int seg,int chunk,int total,long pts,boolean key,String sha,byte[] data){session=s;generation=g;request=r;segment=seg;this.chunk=chunk;this.total=total;this.pts=pts;keyframe=key;this.sha=safe(sha);this.data=data==null?new byte[0]:data.clone();} public UUID sessionId(){return session;} public long generation(){return generation;} public long requestId(){return request;} public int segmentIndex(){return segment;} public int chunkIndex(){return chunk;} public int totalChunks(){return total;} public long presentationTimeMs(){return pts;} public boolean keyframe(){return keyframe;} public String segmentSha256(){return sha;} public byte[] data(){return data.clone();} }
     public static final class SegmentAcknowledgement implements CinemarrMessage { private final UUID session; private final long generation,request,buffered; private final int segment,through; public SegmentAcknowledgement(UUID s,long g,long r,int seg,int through,long buffered){session=s;generation=g;request=r;segment=seg;this.through=through;this.buffered=buffered;} public UUID sessionId(){return session;} public long generation(){return generation;} public long requestId(){return request;} public int segmentIndex(){return segment;} public int receivedThroughChunk(){return through;} public long bufferedMs(){return buffered;} }

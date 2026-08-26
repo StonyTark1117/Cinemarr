@@ -68,11 +68,25 @@ public final class VideoPayloads {
         private void write(RegistryFriendlyByteBuf buffer){VideoPackets.SESSION_STATE.encode(new MinecraftWireOutput(buffer),value);}
         @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
     }
+    public record TelevisionRemoved(VideoPackets.TelevisionRemoved value) implements CustomPacketPayload, CinemarrMessage {
+        public static final Type<TelevisionRemoved> TYPE=VideoPayloads.type("video_television_removed");
+        public static final StreamCodec<RegistryFriendlyByteBuf,TelevisionRemoved> CODEC=StreamCodec.ofMember(TelevisionRemoved::write,TelevisionRemoved::read);
+        private static TelevisionRemoved read(RegistryFriendlyByteBuf buffer){return new TelevisionRemoved(decode(VideoPackets.TELEVISION_REMOVED,buffer));}
+        private void write(RegistryFriendlyByteBuf buffer){VideoPackets.TELEVISION_REMOVED.encode(new MinecraftWireOutput(buffer),value);}
+        @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
+    }
     public record SegmentManifest(VideoPackets.SegmentManifest value) implements CustomPacketPayload, CinemarrMessage {
         public static final Type<SegmentManifest> TYPE=VideoPayloads.type("video_segment_manifest");
         public static final StreamCodec<RegistryFriendlyByteBuf,SegmentManifest> CODEC=StreamCodec.ofMember(SegmentManifest::write,SegmentManifest::read);
         private static SegmentManifest read(RegistryFriendlyByteBuf buffer){return new SegmentManifest(decode(VideoPackets.SEGMENT_MANIFEST,buffer));}
         private void write(RegistryFriendlyByteBuf buffer){VideoPackets.SEGMENT_MANIFEST.encode(new MinecraftWireOutput(buffer),value);}
+        @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
+    }
+    public record SegmentManifestRequest(VideoPackets.SegmentManifestRequest value) implements CustomPacketPayload, CinemarrMessage {
+        public static final Type<SegmentManifestRequest> TYPE=VideoPayloads.type("video_segment_manifest_request");
+        public static final StreamCodec<RegistryFriendlyByteBuf,SegmentManifestRequest> CODEC=StreamCodec.ofMember(SegmentManifestRequest::write,SegmentManifestRequest::read);
+        private static SegmentManifestRequest read(RegistryFriendlyByteBuf buffer){return new SegmentManifestRequest(decode(VideoPackets.SEGMENT_MANIFEST_REQUEST,buffer));}
+        private void write(RegistryFriendlyByteBuf buffer){VideoPackets.SEGMENT_MANIFEST_REQUEST.encode(new MinecraftWireOutput(buffer),value);}
         @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
     }
     public record SegmentRequest(VideoPackets.SegmentRequest value) implements CustomPacketPayload, CinemarrMessage {

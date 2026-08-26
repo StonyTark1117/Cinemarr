@@ -7,6 +7,7 @@ import com.google.gson.JsonParser;
 import stonytark.cinemarr.core.library.LibraryRule;
 import stonytark.cinemarr.core.library.MediaKind;
 import stonytark.cinemarr.core.library.VideoMediaItem;
+import stonytark.cinemarr.core.library.VideoStreamOption;
 import stonytark.cinemarr.core.network.BoundedStreams;
 import stonytark.cinemarr.core.network.HttpTransport;
 import stonytark.cinemarr.core.network.UrlConnectionHttpTransport;
@@ -95,12 +96,16 @@ public final class PlexVideoService {
     }
 
     public VideoMediaItem metadata(String key) throws IOException {
+        return metadataDetails(key).item();
+    }
+
+    public PlaybackMetadata metadataDetails(String key) throws IOException {
         if (key == null || key.trim().isEmpty()) throw new IllegalArgumentException("key");
         JsonArray metadata = array(container(json("GET", "/library/metadata/" + encodePath(key.trim()), "")), "Metadata");
         if (metadata.size() == 0) throw new PlexException(PlexException.Kind.NOT_FOUND, "Plex video item was not found");
         VideoMediaItem value = item(metadata.get(0));
         if (value == null) throw new PlexException(PlexException.Kind.INVALID_RESPONSE, "Plex item is not playable video metadata");
-        return value;
+        return new PlaybackMetadata(value,streams(metadata.get(0).getAsJsonObject()));
     }
 
     public VideoSession start(VideoMediaItem item, RenditionPolicy.Dimensions rendition, long offsetMs,
@@ -276,6 +281,11 @@ public final class PlexVideoService {
         JsonElement value = root.get(key);
         return value == null || value.isJsonNull() ? 0 : value.getAsInt();
     }
+    private static List<VideoStreamOption> streams(JsonObject metadata){
+        List<VideoStreamOption> values=new ArrayList<VideoStreamOption>();JsonArray media=array(metadata,"Media");
+        for(JsonElement mediaElement:media){if(!mediaElement.isJsonObject())continue;JsonArray parts=array(mediaElement.getAsJsonObject(),"Part");for(JsonElement partElement:parts){if(!partElement.isJsonObject())continue;JsonArray streams=array(partElement.getAsJsonObject(),"Stream");for(JsonElement streamElement:streams){if(!streamElement.isJsonObject())continue;JsonObject stream=streamElement.getAsJsonObject();int type=integer(stream,"streamType"),id=integer(stream,"id");if(id<1||(type!=2&&type!=3))continue;String language=text(stream,"language");String title=text(stream,"title");String label=title.isEmpty()?language:title;if(label.isEmpty())label=type==2?"Audio "+id:"Subtitle "+id;values.add(new VideoStreamOption(type==2?VideoStreamOption.Kind.AUDIO:VideoStreamOption.Kind.SUBTITLE,id,label,text(stream,"languageCode"),text(stream,"codec"),integer(stream,"selected")==1));}}}
+        return immutable(values);
+    }
     private static <T> List<T> immutable(List<T> values) { return Collections.unmodifiableList(new ArrayList<T>(values)); }
 
     public static final class ResolvedLibrary {
@@ -296,6 +306,7 @@ public final class PlexVideoService {
         public List<VideoMediaItem> items() { return items; }
         public boolean hasMore() { return hasMore; }
     }
+    public static final class PlaybackMetadata {private final VideoMediaItem item;private final List<VideoStreamOption> streams;PlaybackMetadata(VideoMediaItem item,List<VideoStreamOption> streams){this.item=item;this.streams=immutable(streams);}public VideoMediaItem item(){return item;}public List<VideoStreamOption> streams(){return streams;}}
     public static final class VideoSession {
         private final UUID id;
         private final URL playlistUrl;

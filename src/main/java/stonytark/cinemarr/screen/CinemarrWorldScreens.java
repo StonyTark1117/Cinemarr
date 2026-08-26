@@ -7,6 +7,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.saveddata.SavedData;
 import stonytark.cinemarr.core.screen.ScreenFacing;
 import stonytark.cinemarr.core.screen.ScreenGeometry;
@@ -27,7 +28,7 @@ import java.util.UUID;
 
 /** Dimension-local durable index of pixels and activated televisions. */
 public final class CinemarrWorldScreens extends SavedData {
-    public static final int SCHEMA_VERSION = 1;
+    public static final int SCHEMA_VERSION = 2;
     private static final Factory<CinemarrWorldScreens> FACTORY = new Factory<>(CinemarrWorldScreens::new,
             CinemarrWorldScreens::load, null);
     private final Map<Long, Direction> pixels = new HashMap<>();
@@ -71,7 +72,7 @@ public final class CinemarrWorldScreens extends SavedData {
             }
             UUID televisionId = existing == null ? UUID.randomUUID() : existing.id;
             UUID televisionOwner = existing == null ? owner : existing.owner;
-            televisions.put(controller.asLong(), new Television(televisionId, televisionOwner, connected,
+            televisions.put(controller.asLong(), new Television(controller.asLong(), televisionId, televisionOwner, connected,
                     geometry.width(), geometry.height(), geometry.visibilityMask().toByteArray(), geometry.facing(),
                     geometry.minimumU(), geometry.minimumV(), existing == null ? PresentationMode.FIT : existing.presentationMode,
                     existing == null ? "" : existing.sessionName));
@@ -84,6 +85,16 @@ public final class CinemarrWorldScreens extends SavedData {
     }
 
     public Television television(BlockPos controller) { return televisions.get(controller.asLong()); }
+    public List<Television> televisionsForChunk(ChunkPos chunk) {
+        List<Television> found = new ArrayList<>();
+        for (Television television : televisions.values()) {
+            for (Long packed : television.pixels) {
+                BlockPos pixel = BlockPos.of(packed);
+                if (pixel.getX() >> 4 == chunk.x && pixel.getZ() >> 4 == chunk.z) { found.add(television); break; }
+            }
+        }
+        return found;
+    }
     public int pixelCount() { return pixels.size(); }
     private int ownedBy(UUID owner) { int count=0; for(Television value:televisions.values())if(value.owner.equals(owner))count++; return count; }
     public void updatePresentation(BlockPos controller, PresentationMode mode) { Television value=televisions.get(controller.asLong()); if(value!=null&&mode!=null){value.presentationMode=mode;setDirty();} }
@@ -147,13 +158,14 @@ public final class CinemarrWorldScreens extends SavedData {
         ListTag televisionTags = tag.getList("televisions", Tag.TAG_COMPOUND);
         for (int index = 0; index < televisionTags.size(); index++) {
             CompoundTag value = televisionTags.getCompound(index);
-            Television tv = Television.load(value);
+            Television tv = Television.load(value, value.getLong("controller"));
             if (tv != null) data.televisions.put(value.getLong("controller"), tv);
         }
         return data;
     }
 
     public static final class Television {
+        private final long controllerPos;
         private final UUID id;
         private final UUID owner;
         private final Set<Long> pixels;
@@ -165,13 +177,14 @@ public final class CinemarrWorldScreens extends SavedData {
         private final int minimumV;
         private PresentationMode presentationMode;
         private String sessionName;
-        Television(UUID id, UUID owner, Set<Long> pixels, int width, int height, byte[] mask, ScreenFacing facing,
+        Television(long controllerPos, UUID id, UUID owner, Set<Long> pixels, int width, int height, byte[] mask, ScreenFacing facing,
                    int minimumU, int minimumV, PresentationMode presentationMode, String sessionName) {
-            this.id = id; this.owner = owner; this.pixels = new HashSet<>(pixels); this.width = width; this.height = height;
+            this.controllerPos=controllerPos;this.id = id; this.owner = owner; this.pixels = new HashSet<>(pixels); this.width = width; this.height = height;
             this.mask=mask==null?new byte[0]:mask.clone();this.facing=facing;this.minimumU=minimumU;this.minimumV=minimumV;
             this.presentationMode=presentationMode;this.sessionName=sessionName==null?"":sessionName;
         }
         public UUID id() { return id; }
+        public long controllerPos() { return controllerPos; }
         public UUID owner() { return owner; }
         public Set<Long> pixels() { return java.util.Collections.unmodifiableSet(pixels); }
         public int width() { return width; }
@@ -192,13 +205,13 @@ public final class CinemarrWorldScreens extends SavedData {
             tag.putString("presentationMode",presentationMode.name());tag.putString("sessionName",sessionName);
             long[] values = new long[pixels.size()]; int index = 0; for (Long pixel : pixels) values[index++] = pixel; tag.putLongArray("pixels", values);
         }
-        static Television load(CompoundTag tag) {
+        static Television load(CompoundTag tag, long controllerPos) {
             if (!tag.hasUUID("id") || !tag.hasUUID("owner")) return null;
             Set<Long> pixels = new HashSet<>(); for (long pixel : tag.getLongArray("pixels")) pixels.add(pixel);
             try {
                 ScreenFacing facing=ScreenFacing.valueOf(tag.getString("facing"));
                 PresentationMode mode=tag.contains("presentationMode")?PresentationMode.valueOf(tag.getString("presentationMode")):PresentationMode.FIT;
-                return new Television(tag.getUUID("id"), tag.getUUID("owner"), pixels, tag.getInt("width"), tag.getInt("height"),
+                return new Television(controllerPos, tag.getUUID("id"), tag.getUUID("owner"), pixels, tag.getInt("width"), tag.getInt("height"),
                         tag.getByteArray("mask"),facing,tag.getInt("minimumU"),tag.getInt("minimumV"),mode,tag.getString("sessionName"));
             } catch(IllegalArgumentException invalid){return null;}
         }
