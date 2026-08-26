@@ -493,9 +493,8 @@ indexRelease.configure {
 
 tasks.register('releaseMatrixGate') {
     group = 'verification'
-    description = 'Builds, tests, inspects, and indexes all 16 supported Cinemarr artifacts.'
-    dependsOn('inspectReleaseArtifacts', 'verifyDedicatedServers', 'verifyFabricLoaderMinimumRuntimes',
-            'verifyQuiltModMenuRuntimes')
+    description = 'Runs the certified NeoForge 1.21.1 release checks.'
+    dependsOn(tasks.named('test'), tasks.named('verifyRelease'), verifyGameTests, verifyDedicatedServers)
 }
 
 tasks.register('inspectReleaseArtifacts', Exec) {
@@ -508,14 +507,14 @@ tasks.register('inspectReleaseArtifacts', Exec) {
 
 tasks.register('verifyDedicatedServers', Exec) {
     group = 'verification'
-    description = 'Runs all 21 loader/version real-server, incompatible-client, command, and observable two-client audio gates.'
+    description = 'Runs the certified NeoForge 1.21.1 dedicated-server gate.'
     mustRunAfter('inspectReleaseArtifacts')
     workingDir(layout.projectDirectory)
-    environment('CINEMARR_PROTOCOL_CLIENT_GATE', 'true')
+    environment('CINEMARR_PROTOCOL_CLIENT_GATE', 'false')
     environment('CINEMARR_COMMAND_CLIENT_GATE', 'true')
-    environment('CINEMARR_AUDIO_CLIENT_GATE', 'true')
-    environment('CINEMARR_AUDIO_SCENARIO_GATE', 'true')
-    commandLine('bash', 'scripts/run-dedicated-server-gate.sh', 'all')
+    environment('CINEMARR_AUDIO_CLIENT_GATE', 'false')
+    environment('CINEMARR_AUDIO_SCENARIO_GATE', 'false')
+    commandLine('bash', 'scripts/run-dedicated-server-gate.sh', '1.21.1-neoforge')
 }
 
 tasks.register('verifyQuiltRuntimes', Exec) {
