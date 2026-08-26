@@ -8,10 +8,12 @@ specific.
 | Minecraft | Loader | Status |
 | --- | --- | --- |
 | 1.21.1 | NeoForge | release-certified baseline |
-| 1.7.10, 1.20.1, 1.20.2, 1.21.1, 26.1.2, 26.2 | Fabric/Quilt/Forge/NeoForge as present | adapter scaffolding; video unsupported |
+| 1.21.1 | Fabric / Quilt | video port compiled and dedicated-launch-tested; two-client A/V untested |
+| 1.21.1 | Forge | video port compiled and dedicated-launch-tested; two-client A/V untested |
+| 1.7.10, 1.20.1, 1.20.2, 26.1.2, 26.2 | Fabric/Quilt/Forge/NeoForge as present | adapter scaffolding; video unsupported |
 
-The `platforms/` directories are retained Jammarr-derived scaffolding. They
-must not be advertised as working Cinemarr video artifacts until each target
+The unported `platforms/` directories are retained Jammarr-derived scaffolding.
+No target may be advertised as release-certified until it
 passes compile, launch, runtime, clean-shutdown, and two-client A/V acceptance.
 No cross-loader or cross-version compatibility is implied by the protocol
 number or by a shared-core test. Forge 1.7.10 remains last because its Java 8

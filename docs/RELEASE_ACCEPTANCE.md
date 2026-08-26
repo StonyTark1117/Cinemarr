@@ -15,10 +15,9 @@ Required checks:
 * Two real clients show the same identifiable frame with synchronized audible
   output on one named session. This is the decisive visual acceptance gate.
 
-Every directory under `platforms/` other than the NeoForge baseline is an
-untested Jammarr-derived adapter scaffold. It must independently pass compile,
-launch, runtime, clean shutdown, and the two-client A/V gate before being
-published or added to a release matrix.
+The 1.21.1 Fabric/Quilt and Forge video adapters have compile and dedicated-
+launch evidence, but remain unreleased until they pass the two-client A/V gate.
+Other `platforms/` directories remain Jammarr-derived adapter scaffolding.
 
 Keep logs, JAR listings, checksums, and process/port evidence for each release.
 Credentials are process-environment-only and must never appear in retained
