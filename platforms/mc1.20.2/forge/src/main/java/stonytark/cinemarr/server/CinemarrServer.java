@@ -1,60 +1,6 @@
 package stonytark.cinemarr.server;
-
-import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.level.storage.LevelResource;
-import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.event.TickEvent;
-import net.minecraftforge.event.entity.player.PlayerEvent;
-import net.minecraftforge.event.server.ServerStartedEvent;
-import net.minecraftforge.event.server.ServerStoppingEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.loading.FMLPaths;
-import stonytark.cinemarr.Cinemarr;
-import stonytark.cinemarr.core.platform.CanonicalConfigFiles;
-import stonytark.cinemarr.core.platform.CinemarrSettings;
-import stonytark.cinemarr.network.CinemarrPayloads;
-
-public final class CinemarrServer {
-    private static final CinemarrServer INSTANCE = new CinemarrServer();
-    private GlobalPlayer player;
-
-    public static CinemarrServer instance() { return INSTANCE; }
-    public static void register() { MinecraftForge.EVENT_BUS.register(INSTANCE); }
-
-    @SubscribeEvent public void started(ServerStartedEvent event) {
-        try {
-            java.nio.file.Path configDirectory = FMLPaths.CONFIGDIR.get();
-            java.nio.file.Path canonical = event.getServer().getWorldPath(LevelResource.ROOT)
-                    .resolve("serverconfig").resolve(CanonicalConfigFiles.SERVER_FILE_NAME);
-            CanonicalConfigFiles.ServerConfig config = CanonicalConfigFiles.loadServerForLoader(
-                    canonical, configDirectory, "forge");
-            CinemarrSettings.installServer(config);
-            if (config.importedFrom() != null) {
-                Cinemarr.LOGGER.info("Imported legacy Cinemarr server settings from {}", config.importedFrom());
-            }
-            player = new GlobalPlayer(event.getServer());
-        }
-        catch (Exception error) { throw new IllegalStateException("Unable to initialize Cinemarr", error); }
-    }
-    @SubscribeEvent public void stopping(ServerStoppingEvent event) { if (player != null) { player.close(); player = null; } }
-    @SubscribeEvent public void tick(TickEvent.ServerTickEvent event) {
-        if (event.phase == TickEvent.Phase.END && player != null) player.tick();
-    }
-    @SubscribeEvent public void joined(PlayerEvent.PlayerLoggedInEvent event) {
-        if (player != null && event.getEntity() instanceof ServerPlayer serverPlayer) player.playerJoined(serverPlayer);
-    }
-    @SubscribeEvent public void left(PlayerEvent.PlayerLoggedOutEvent event) {
-        if (player != null && event.getEntity() instanceof ServerPlayer serverPlayer) player.playerLeft(serverPlayer);
-    }
-
-    public void hello(ServerPlayer sender) { if (player != null) player.hello(sender); }
-    public void browse(ServerPlayer sender, CinemarrPayloads.BrowseRequest request) { if (player != null) player.browse(sender, request); }
-    public void queue(ServerPlayer sender, CinemarrPayloads.QueueRequest request) { if (player != null) player.queue(sender, request); }
-    public void control(ServerPlayer sender, CinemarrPayloads.ControlRequest request) { if (player != null) player.control(sender, request); }
-    public void station(ServerPlayer sender, CinemarrPayloads.StationRequest request) { if (player != null) player.station(sender, request); }
-    public void chunks(ServerPlayer sender, CinemarrPayloads.ChunkRequest request) { if (player != null) player.chunks(sender, request); }
-    public void acknowledge(ServerPlayer sender, CinemarrPayloads.ChunkAcknowledgement value) { if (player != null) player.acknowledge(sender, value); }
-    public void health(ServerPlayer sender, CinemarrPayloads.AudioHealth value) { if (player != null) player.health(sender, value); }
-    public void sync(ServerPlayer sender) { if (player != null) player.sync(sender); }
-    public GlobalPlayer player() { return player; }
-}
+import net.minecraft.server.level.ServerPlayer;import net.minecraft.world.level.storage.LevelResource;import net.minecraftforge.common.MinecraftForge;import net.minecraftforge.event.TickEvent;import net.minecraftforge.event.entity.player.PlayerEvent;import net.minecraftforge.event.server.*;import net.minecraftforge.eventbus.api.SubscribeEvent;import net.minecraftforge.fml.loading.FMLPaths;import stonytark.cinemarr.Cinemarr;import stonytark.cinemarr.core.library.*;import stonytark.cinemarr.core.platform.*;import stonytark.cinemarr.core.protocol.*;import stonytark.cinemarr.core.server.PlexVideoService;import stonytark.cinemarr.network.*;import java.util.*;
+public final class CinemarrServer{private static final CinemarrServer INSTANCE=new CinemarrServer();private PlexVideoService plex;private List<PlexVideoService.ResolvedLibrary> libraries=Collections.emptyList();private ServerVideoManager manager;private long ticks;public static CinemarrServer instance(){return INSTANCE;}public static void register(){MinecraftForge.EVENT_BUS.register(INSTANCE);}
+@SubscribeEvent public void started(ServerStartedEvent event){try{java.nio.file.Path configDirectory=FMLPaths.CONFIGDIR.get(),canonical=event.getServer().getWorldPath(LevelResource.ROOT).resolve("serverconfig").resolve(CanonicalConfigFiles.SERVER_FILE_NAME);CinemarrSettings.installServer(CanonicalConfigFiles.loadServerForLoader(canonical,configDirectory,"forge"));java.nio.file.Path libraryFile=event.getServer().getWorldPath(LevelResource.ROOT).resolve("serverconfig").resolve(LibraryAllowlistFiles.FILE_NAME);List<LibraryRule> rules=LibraryAllowlistFiles.load(libraryFile);if(rules.isEmpty())Cinemarr.LOGGER.warn("Cinemarr has no allowed Plex video libraries; edit {} and restart",libraryFile);else if(CinemarrSettings.plexToken().isBlank())Cinemarr.LOGGER.warn("Cinemarr video libraries are configured, but CINEMARR_PLEX_TOKEN/plexToken is empty");else{plex=new PlexVideoService(CinemarrSettings.plexUrl(),CinemarrSettings.plexToken());libraries=plex.resolveLibraries(rules);manager=new ServerVideoManager(event.getServer(),plex,libraries,CinemarrVideoSavedData.get(event.getServer()));Cinemarr.LOGGER.info("Validated {} allowed Plex video libraries",libraries.size());}ticks=0;}catch(Exception error){throw new IllegalStateException("Unable to initialize Cinemarr",error);}}
+@SubscribeEvent public void stopping(ServerStoppingEvent event){if(manager!=null){manager.close();manager=null;}plex=null;libraries=Collections.emptyList();}@SubscribeEvent public void tick(TickEvent.ServerTickEvent event){if(event.phase!=TickEvent.Phase.END)return;ticks++;if(manager!=null){manager.tick();if(ticks%10==0)for(ServerPlayer player:event.getServer().getPlayerList().getPlayers())manager.synchronizeTrackingRadius(player);}}@SubscribeEvent public void joined(PlayerEvent.PlayerLoggedInEvent event){if(manager!=null&&event.getEntity() instanceof ServerPlayer)manager.synchronizeTrackingRadius((ServerPlayer)event.getEntity());}@SubscribeEvent public void left(PlayerEvent.PlayerLoggedOutEvent event){if(manager!=null&&event.getEntity() instanceof ServerPlayer)manager.playerLeft((ServerPlayer)event.getEntity());}
+public void hello(ServerPlayer sender){CinemarrNetwork.sendToPlayer(sender,new CinemarrPayloads.ServerHello(ProtocolLimits.VERSION,System.currentTimeMillis()));if(manager!=null)manager.synchronizeTrackingRadius(sender);}public void videoLibraries(ServerPlayer p){if(manager!=null)manager.sendLibraries(p);else CinemarrNetwork.sendToPlayer(p,new VideoPayloads.LibraryList(new VideoPackets.LibraryList(List.of())));}public void videoBrowse(ServerPlayer p,VideoPackets.BrowseRequest v){if(manager!=null)manager.browse(p,v);}public void videoCommand(ServerPlayer p,VideoPackets.SessionCommand v){if(manager!=null)manager.command(p,v);}public void videoSegments(ServerPlayer p,VideoPackets.SegmentRequest v){if(manager!=null)manager.segments(p,v);}public void videoManifest(ServerPlayer p,VideoPackets.SegmentManifestRequest v){if(manager!=null)manager.manifest(p,v);}public void videoAcknowledge(ServerPlayer p,VideoPackets.SegmentAcknowledgement v){if(manager!=null)manager.acknowledge(p,v);}public void videoHealth(ServerPlayer p,VideoPackets.ClientHealth v){if(manager!=null)manager.health(p,v);}public String videoStatus(){return manager==null?"Cinemarr video is unavailable":manager.status();}public String videoDiagnostics(){return manager==null?"Plex=unavailable; libraries=0; sessions=0; transcodes=0":manager.diagnostics();}}
