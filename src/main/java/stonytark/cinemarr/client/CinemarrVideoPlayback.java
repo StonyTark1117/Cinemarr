@@ -61,7 +61,7 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
             }
             audio.addAll(batch.audio);
         }
-        long targetUs = authoritativePositionMs(session, System.currentTimeMillis()) * 1_000L;
+        long targetUs = authoritativePositionMs(session, CinemarrClientState.INSTANCE.serverToLocalEpoch(System.currentTimeMillis())) * 1_000L;
         DecodedVideoFrame current = null;
         while (!video.isEmpty() && video.peek().presentationTimeUs() <= targetUs + 40_000L) current = video.poll();
         if (current != null) { texture.upload(current); lastPresentedUs = current.presentationTimeUs(); }
@@ -106,7 +106,7 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
     public int videoDrops() { return videoDrops; }
 
     public void sendHealth(CinemarrVideoClientState.StreamState streamState, int audioUnderruns) {
-        VideoPackets.SessionState session = streamState.session(); long now = System.currentTimeMillis();
+        VideoPackets.SessionState session = streamState.session(); long now = CinemarrClientState.INSTANCE.serverToLocalEpoch(System.currentTimeMillis());
         if (session == null || session.item() == null || now - lastHealthMs < 5_000) return;
         long targetUs = authoritativePositionMs(session, now) * 1_000L;
         long lastQueuedUs = video.isEmpty() ? lastPresentedUs : Math.max(lastPresentedUs,

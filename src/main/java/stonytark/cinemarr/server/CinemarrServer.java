@@ -18,6 +18,7 @@ import stonytark.cinemarr.core.library.LibraryAllowlistFiles;
 import stonytark.cinemarr.core.library.LibraryRule;
 import stonytark.cinemarr.core.server.PlexVideoService;
 import stonytark.cinemarr.core.protocol.VideoPackets;
+import stonytark.cinemarr.core.protocol.ProtocolLimits;
 
 import java.util.Collections;
 import java.util.List;
@@ -74,7 +75,11 @@ public final class CinemarrServer {
     @SubscribeEvent public void chunkSent(ChunkWatchEvent.Sent event) { if(videoManager!=null)videoManager.chunkSent(event.getPlayer(),event.getLevel(),event.getPos()); }
     @SubscribeEvent public void chunkUnwatched(ChunkWatchEvent.UnWatch event) { if(videoManager!=null)videoManager.chunkUnwatched(event.getPlayer(),event.getLevel(),event.getPos()); }
 
-    public void hello(ServerPlayer sender) { if (player != null) player.hello(sender); }
+    public void hello(ServerPlayer sender) {
+        CinemarrNetwork.sendToPlayer(sender, new CinemarrPayloads.ServerHello(
+                ProtocolLimits.VERSION, System.currentTimeMillis()));
+        if (player != null) player.hello(sender);
+    }
     public void browse(ServerPlayer sender, CinemarrPayloads.BrowseRequest request) { if (player != null) player.browse(sender, request); }
     public void queue(ServerPlayer sender, CinemarrPayloads.QueueRequest request) { if (player != null) player.queue(sender, request); }
     public void control(ServerPlayer sender, CinemarrPayloads.ControlRequest request) { if (player != null) player.control(sender, request); }

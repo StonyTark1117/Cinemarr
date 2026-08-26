@@ -132,6 +132,10 @@ public final class CinemarrClientState {
         audio.tick();
     }
     public void hello() { CinemarrNetwork.sendToServer(new CinemarrPayloads.ClientHello(ProtocolLimits.clientHelloVersion())); requestTimeSync(); }
+    /** Converts a server epoch using the filtered synchronization estimate. */
+    public long serverToLocalEpoch(long serverEpochMs) {
+        return clock.initialized() ? clock.toLocalTime(serverEpochMs) : serverEpochMs;
+    }
     public void ensureAudio() { audio.ensureStarted(); }
     public void listeningChanged() { audio.listeningChanged(); }
     public void retryAudio() { audio.retry(); refreshScreen(Minecraft.getInstance()); }
