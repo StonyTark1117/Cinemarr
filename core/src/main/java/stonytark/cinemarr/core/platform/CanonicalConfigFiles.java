@@ -28,7 +28,7 @@ import java.util.Set;
  *
  * <p>The parser intentionally accepts only the scalar subset Cinemarr writes. Unknown keys and
  * malformed values are ignored, recognized values are bounded, and the canonical file is always
- * rewritten in a deterministic form. A legacy source is consulted only while the canonical file
+ * rewritten in a deterministic video-focused form. A legacy source is consulted only while the canonical file
  * is absent and is never modified.</p>
  */
 public final class CanonicalConfigFiles {
@@ -151,16 +151,11 @@ public final class CanonicalConfigFiles {
             lines.add("# Cinemarr server configuration. CINEMARR_PLEX_TOKEN overrides plexToken.");
             lines.add("plexUrl = " + quoted(plexUrl));
             lines.add("plexToken = " + quoted(plexToken));
-            lines.add("musicLibrary = " + quoted(musicLibrary));
-            lines.add("restartMode = " + quoted(restartMode.name()));
             lines.add("pauseWhenNoPlayers = " + pauseWhenEmpty);
             lines.add("operatorPermissionLevel = " + operatorPermissionLevel);
             lines.add("queueLimit = " + queueLimit);
-            lines.add("audioBitrateKbps = " + audioBitrateKbps);
-            lines.add("cacheSizeMiB = " + cacheSizeMiB);
-            lines.add("stationMetadataFallbackEnabled = " + stationMetadataFallbackEnabled);
             lines.add("");
-            lines.add("# Player-built screen and playback-session limits.");
+            lines.add("# Player-built video screen and playback-session limits.");
             lines.add("minimumScreenPixels = " + minimumScreenPixels);
             lines.add("maximumScreenPixels = " + maximumScreenPixels);
             lines.add("maximumScreenDimension = " + maximumScreenDimension);
