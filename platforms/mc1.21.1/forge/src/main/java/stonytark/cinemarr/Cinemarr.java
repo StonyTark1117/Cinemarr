@@ -16,6 +16,8 @@ import stonytark.cinemarr.core.platform.CinemarrSettings;
 import stonytark.cinemarr.network.CinemarrNetwork;
 import stonytark.cinemarr.server.CinemarrCommands;
 import stonytark.cinemarr.server.CinemarrServer;
+import stonytark.cinemarr.registry.CinemarrBlocks;
+import stonytark.cinemarr.registry.CinemarrItems;
 
 @Mod(Cinemarr.MODID)
 public final class Cinemarr {
@@ -23,6 +25,8 @@ public final class Cinemarr {
     public static final Logger LOGGER = LogUtils.getLogger();
 
     public Cinemarr(FMLJavaModLoadingContext context) {
+        CinemarrBlocks.REGISTER.register(context.getModEventBus());
+        CinemarrItems.REGISTER.register(context.getModEventBus());
         migrateClientConfig("forge");
         CinemarrSettings.installClient(CinemarrConfig.clientValues());
         context.registerConfig(ModConfig.Type.CLIENT, CinemarrConfig.CLIENT_SPEC);

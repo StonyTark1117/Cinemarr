@@ -27,10 +27,19 @@ public final class CinemarrVideoRenderer {
 
     public void render(PoseStack pose, Vec3 camera, CinemarrVideoPlaybackManager playback, CinemarrVideoClientState clientState) {
         if (!CinemarrSettings.enabled()) return;
-        MultiBufferSource.BufferSource buffers = Minecraft.getInstance().renderBuffers().bufferSource();
         pose.pushPose();
         pose.translate(-camera.x, -camera.y, -camera.z);
-        Matrix4f matrix = pose.last().pose();
+        render(pose.last().pose(), playback, clientState);
+        pose.popPose();
+    }
+
+    public void render(Matrix4f modelView, Vec3 camera, CinemarrVideoPlaybackManager playback, CinemarrVideoClientState clientState) {
+        if (!CinemarrSettings.enabled()) return;
+        render(new Matrix4f(modelView).translate((float)-camera.x, (float)-camera.y, (float)-camera.z), playback, clientState);
+    }
+
+    private void render(Matrix4f matrix, CinemarrVideoPlaybackManager playback, CinemarrVideoClientState clientState) {
+        MultiBufferSource.BufferSource buffers = Minecraft.getInstance().renderBuffers().bufferSource();
         Set<RenderType> used=new LinkedHashSet<>();Set<UUID> visible=new LinkedHashSet<>();
         for(VideoPackets.SessionState state:clientState.televisions()){
             if(state.item()==null||state.status()==VideoPackets.SessionStatus.IDLE)continue;
@@ -40,7 +49,6 @@ public final class CinemarrVideoRenderer {
             RenderType type=RenderType.entityCutoutNoCull(pipeline.texture().location());used.add(type);VertexConsumer vertices=buffers.getBuffer(type);
             for(ScreenMaskMesher.Rectangle rectangle:mesh.rectangles)draw(vertices,matrix,state,rectangle,transform,pipeline.texture().width(),pipeline.texture().height());
         }
-        pose.popPose();
         for(RenderType type:used)buffers.endBatch(type);meshes.keySet().retainAll(visible);
     }
 
