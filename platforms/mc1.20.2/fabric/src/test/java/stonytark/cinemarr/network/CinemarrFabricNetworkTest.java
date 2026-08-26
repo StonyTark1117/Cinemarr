@@ -4,6 +4,7 @@ import io.netty.buffer.Unpooled;
 import net.minecraft.network.FriendlyByteBuf;
 import org.junit.jupiter.api.Test;
 import stonytark.cinemarr.core.protocol.ProtocolGoldenVectors;
+import stonytark.cinemarr.core.protocol.ProtocolLimits;
 
 import java.util.List;
 
@@ -13,11 +14,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CinemarrFabricNetworkTest {
-    @Test void acceptsOnlyProtocolFive() {
-        assertEquals(5, CinemarrNetwork.PROTOCOL);
-        assertTrue(CinemarrNetwork.protocolMatches(5));
-        assertFalse(CinemarrNetwork.protocolMatches(4));
-        assertFalse(CinemarrNetwork.protocolMatches(6));
+    @Test void acceptsOnlyCurrentVideoProtocol() {
+        assertEquals(ProtocolLimits.VERSION, CinemarrNetwork.PROTOCOL);
+        assertTrue(CinemarrNetwork.protocolMatches(ProtocolLimits.VERSION));
+        assertFalse(CinemarrNetwork.protocolMatches(ProtocolLimits.VERSION-1));
+        assertFalse(CinemarrNetwork.protocolMatches(ProtocolLimits.VERSION+1));
     }
 
     @Test void stationCodecMatchesTheSharedGoldenVector() {

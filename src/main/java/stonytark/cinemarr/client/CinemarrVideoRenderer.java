@@ -5,7 +5,6 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
-import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import stonytark.cinemarr.core.protocol.VideoPackets;
@@ -95,8 +94,7 @@ public final class CinemarrVideoRenderer {
     }
 
     private static void vertex(VertexConsumer out,Matrix4f matrix,WorldPoint point,float u,float v,float nx,float ny,float nz){
-        out.addVertex(matrix,(float)point.x,(float)point.y,(float)point.z).setColor(255,255,255,255).setUv(u,v)
-                .setOverlay(OverlayTexture.NO_OVERLAY).setLight(0x00F000F0).setNormal(nx,ny,nz);
+        VideoVertexEmitter.vertex(out,matrix,(float)point.x,(float)point.y,(float)point.z,u,v,nx,ny,nz);
     }
     private record WorldPoint(double x,double y,double z) {}
     private record MeshCache(int width,int height,byte[] mask,List<ScreenMaskMesher.Rectangle> rectangles){MeshCache{mask=mask.clone();rectangles=List.copyOf(rectangles);}}

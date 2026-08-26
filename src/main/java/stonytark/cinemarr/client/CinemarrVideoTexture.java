@@ -12,7 +12,7 @@ import stonytark.cinemarr.mixin.client.NativeImageAccessor;
 /** A single TV texture updated with one native-memory copy on the render thread. */
 public final class CinemarrVideoTexture implements AutoCloseable {
     private static final java.util.concurrent.atomic.AtomicLong IDS=new java.util.concurrent.atomic.AtomicLong();
-    private final ResourceLocation location=ResourceLocation.fromNamespaceAndPath(Cinemarr.MODID,"dynamic/video_frame_"+Long.toUnsignedString(IDS.incrementAndGet(),36));
+    private final ResourceLocation location=VideoResourceLocations.create(Cinemarr.MODID,"dynamic/video_frame_"+Long.toUnsignedString(IDS.incrementAndGet(),36));
     private DynamicTexture texture;
     private int width;
     private int height;

@@ -90,8 +90,8 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
 
     private static long earliestTimestamp(DecodedMediaSegment result) {
         long first = Long.MAX_VALUE;
-        if (!result.video().isEmpty()) first = Math.min(first, result.video().getFirst().presentationTimeUs());
-        if (!result.audio().isEmpty()) first = Math.min(first, result.audio().getFirst().presentationTimeUs());
+        if (!result.video().isEmpty()) first = Math.min(first, result.video().get(0).presentationTimeUs());
+        if (!result.audio().isEmpty()) first = Math.min(first, result.audio().get(0).presentationTimeUs());
         return first == Long.MAX_VALUE ? 0 : first;
     }
 
