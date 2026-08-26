@@ -6,6 +6,7 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
 import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener;
 import net.fabricmc.loader.api.FabricLoader;
@@ -24,12 +25,16 @@ import stonytark.cinemarr.core.platform.CinemarrSettings;
 import stonytark.cinemarr.network.ClientPayloadBridge;
 import stonytark.cinemarr.network.CinemarrNetwork;
 import stonytark.cinemarr.network.CinemarrPayloads;
+import stonytark.cinemarr.network.VideoPayloads;
 
 import java.nio.file.Path;
 
 public final class CinemarrClient implements ClientModInitializer {
     private static final KeyMapping OPEN = new KeyMapping("key.cinemarr.open", InputConstants.Type.KEYSYM,
             GLFW.GLFW_KEY_P, "key.categories.cinemarr");
+    private static final CinemarrVideoPlaybackManager VIDEO = new CinemarrVideoPlaybackManager();
+    private static final CinemarrVideoRenderer VIDEO_RENDERER = new CinemarrVideoRenderer();
+    private static final CinemarrVideoAudioManager VIDEO_AUDIO = new CinemarrVideoAudioManager();
 
     @Override public void onInitializeClient() {
         installClientSettings();
@@ -38,13 +43,22 @@ public final class CinemarrClient implements ClientModInitializer {
         CinemarrNetwork.installClientSender(ClientPlayNetworking::send);
         registerReceivers();
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> CinemarrClientState.INSTANCE.hello());
-        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> CinemarrClientState.INSTANCE.stop());
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+            VIDEO_AUDIO.reset();
+            VIDEO.reset();
+            CinemarrClientState.INSTANCE.stop();
+        });
         ClientTickEvents.END_CLIENT_TICK.register(this::tick);
+        WorldRenderEvents.LAST.register(context -> {
+            if (context.matrixStack() != null) VIDEO_RENDERER.render(context.matrixStack(),
+                    context.camera().getPosition(), VIDEO, CinemarrVideoClientState.INSTANCE);
+        });
         ResourceManagerHelper.get(PackType.CLIENT_RESOURCES).registerReloadListener(new SimpleSynchronousResourceReloadListener() {
             @Override public ResourceLocation getFabricId() {
                 return ResourceLocation.fromNamespaceAndPath(Cinemarr.MODID, "sound_engine_reload");
             }
             @Override public void onResourceManagerReload(ResourceManager manager) {
+                VIDEO_AUDIO.audioEngineReloaded();
                 CinemarrClientState.INSTANCE.audioEngineReloaded();
             }
         });
@@ -64,23 +78,25 @@ public final class CinemarrClient implements ClientModInitializer {
 
     private void tick(Minecraft minecraft) {
         if (minecraft.screen == null && minecraft.player != null && OPEN.consumeClick()) {
-            minecraft.setScreen(new CinemarrScreen(CinemarrClientState.INSTANCE));
-            CinemarrNetwork.sendToServer(new CinemarrPayloads.BrowseRequest(CinemarrPayloads.BrowseKind.SEARCH, "", 0));
+            minecraft.player.displayClientMessage(net.minecraft.network.chat.Component.literal(
+                    "Cinemarr: use a TV Controller to open its video controls"), false);
         }
         CinemarrClientState.INSTANCE.tick();
+        VIDEO.tick(CinemarrVideoClientState.INSTANCE);
+        VIDEO_AUDIO.tick(VIDEO, CinemarrVideoClientState.INSTANCE);
     }
 
     private static void registerReceivers() {
-        receive(CinemarrPayloads.OpenScreen.TYPE, CinemarrPayloads.OpenScreen.CODEC);
         receive(CinemarrPayloads.ServerHello.TYPE, CinemarrPayloads.ServerHello.CODEC);
         receive(CinemarrPayloads.TimeSyncResponse.TYPE, CinemarrPayloads.TimeSyncResponse.CODEC);
-        receive(CinemarrPayloads.BrowseResults.TYPE, CinemarrPayloads.BrowseResults.CODEC);
-        receive(CinemarrPayloads.AudioManifest.TYPE, CinemarrPayloads.AudioManifest.CODEC);
-        receive(CinemarrPayloads.AudioChunk.TYPE, CinemarrPayloads.AudioChunk.CODEC);
-        receive(CinemarrPayloads.PlaybackState.TYPE, CinemarrPayloads.PlaybackState.CODEC);
-        receive(CinemarrPayloads.StationState.TYPE, CinemarrPayloads.StationState.CODEC);
-        receive(CinemarrPayloads.AdventurePreview.TYPE, CinemarrPayloads.AdventurePreview.CODEC);
-        receive(CinemarrPayloads.ErrorMessage.TYPE, CinemarrPayloads.ErrorMessage.CODEC);
+        receive(VideoPayloads.LibraryList.TYPE, VideoPayloads.LibraryList.CODEC);
+        receive(VideoPayloads.OpenVideoScreen.TYPE, VideoPayloads.OpenVideoScreen.CODEC);
+        receive(VideoPayloads.BrowseResults.TYPE, VideoPayloads.BrowseResults.CODEC);
+        receive(VideoPayloads.SessionState.TYPE, VideoPayloads.SessionState.CODEC);
+        receive(VideoPayloads.TelevisionRemoved.TYPE, VideoPayloads.TelevisionRemoved.CODEC);
+        receive(VideoPayloads.SessionQueue.TYPE, VideoPayloads.SessionQueue.CODEC);
+        receive(VideoPayloads.SegmentManifest.TYPE, VideoPayloads.SegmentManifest.CODEC);
+        receive(VideoPayloads.SegmentChunk.TYPE, VideoPayloads.SegmentChunk.CODEC);
     }
 
     private static <T extends CustomPacketPayload & stonytark.cinemarr.core.protocol.CinemarrMessage> void receive(CustomPacketPayload.Type<T> type,

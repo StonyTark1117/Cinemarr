@@ -59,7 +59,11 @@ public final class CinemarrClient {
         VIDEO.tick(CinemarrVideoClientState.INSTANCE);
         VIDEO_AUDIO.tick(VIDEO, CinemarrVideoClientState.INSTANCE);
     }
-    @SubscribeEvent public void renderLevel(RenderLevelStageEvent event) { VIDEO_RENDERER.render(event, VIDEO, CinemarrVideoClientState.INSTANCE); }
+    @SubscribeEvent public void renderLevel(RenderLevelStageEvent event) {
+        if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) {
+            VIDEO_RENDERER.render(event.getPoseStack(), event.getCamera().getPosition(), VIDEO, CinemarrVideoClientState.INSTANCE);
+        }
+    }
     @SubscribeEvent public void logout(ClientPlayerNetworkEvent.LoggingOut event) { VIDEO_AUDIO.reset(); VIDEO.reset(); CinemarrClientState.INSTANCE.stop(); }
     @SubscribeEvent public void login(ClientPlayerNetworkEvent.LoggingIn event) { CinemarrClientState.INSTANCE.hello(); }
     private void soundEngineLoaded(SoundEngineLoadEvent event) { VIDEO_AUDIO.audioEngineReloaded(); CinemarrClientState.INSTANCE.audioEngineReloaded(); }

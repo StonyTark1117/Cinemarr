@@ -6,7 +6,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.texture.OverlayTexture;
-import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
+import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import stonytark.cinemarr.core.protocol.VideoPackets;
 import stonytark.cinemarr.core.platform.CinemarrSettings;
@@ -25,12 +25,10 @@ import java.util.Set;
 public final class CinemarrVideoRenderer {
     private final Map<UUID,MeshCache> meshes=new HashMap<>();
 
-    public void render(RenderLevelStageEvent event, CinemarrVideoPlaybackManager playback, CinemarrVideoClientState clientState) {
-        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS || !CinemarrSettings.enabled()) return;
+    public void render(PoseStack pose, Vec3 camera, CinemarrVideoPlaybackManager playback, CinemarrVideoClientState clientState) {
+        if (!CinemarrSettings.enabled()) return;
         MultiBufferSource.BufferSource buffers = Minecraft.getInstance().renderBuffers().bufferSource();
-        PoseStack pose = event.getPoseStack();
         pose.pushPose();
-        var camera = event.getCamera().getPosition();
         pose.translate(-camera.x, -camera.y, -camera.z);
         Matrix4f matrix = pose.last().pose();
         Set<RenderType> used=new LinkedHashSet<>();Set<UUID> visible=new LinkedHashSet<>();

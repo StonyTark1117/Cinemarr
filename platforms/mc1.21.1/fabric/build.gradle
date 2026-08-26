@@ -60,7 +60,21 @@ repositories {
     maven { url = 'https://maven.terraformersmc.com/releases/' }
 }
 
+configurations { javacvFacade }
+def extractJavaCvFacade = tasks.register('extractJavaCvFacade', Sync) {
+    from { configurations.javacvFacade.collect { zipTree(it) } }
+    include 'org/bytedeco/javacv/Frame.class', 'org/bytedeco/javacv/Frame$*.class',
+            'org/bytedeco/javacv/FrameGrabber.class', 'org/bytedeco/javacv/FrameGrabber$*.class',
+            'org/bytedeco/javacv/FFmpegFrameGrabber.class', 'org/bytedeco/javacv/FFmpegFrameGrabber$*.class',
+            'org/bytedeco/javacv/FFmpegLogCallback.class'
+    into(layout.buildDirectory.dir('generated/javacvFacade'))
+}
+sourceSets.main.output.dir(extractJavaCvFacade)
+
 dependencies {
+    def javaCppVersion = '1.5.14'
+    def ffmpegVersion = '8.1.2-1.5.14'
+    def javaCvVersion = '1.5.14'
     minecraft "com.mojang:minecraft:${libs.versions.minecraft.get()}"
     mappings loom.officialMojangMappings()
     modImplementation quiltRuntime.get() ? libs.quilt.loader : "net.fabricmc:fabric-loader:${fabricLoaderVersion.get()}"
@@ -77,6 +91,18 @@ dependencies {
     include libs.jlayer
     implementation libs.jump3r
     include libs.jump3r
+    javacvFacade("org.bytedeco:javacv:${javaCvVersion}") { transitive = false }
+    compileOnly("org.bytedeco:javacv:${javaCvVersion}") { transitive = false }
+    implementation("org.bytedeco:javacpp:${javaCppVersion}") { transitive = false }
+    include("org.bytedeco:javacpp:${javaCppVersion}") { transitive = false }
+    implementation("org.bytedeco:ffmpeg:${ffmpegVersion}") { transitive = false }
+    include("org.bytedeco:ffmpeg:${ffmpegVersion}") { transitive = false }
+    ['linux-x86_64', 'linux-arm64', 'windows-x86_64'].each { platform ->
+        implementation("org.bytedeco:javacpp:${javaCppVersion}:${platform}") { transitive = false }
+        include("org.bytedeco:javacpp:${javaCppVersion}:${platform}") { transitive = false }
+        implementation("org.bytedeco:ffmpeg:${ffmpegVersion}:${platform}") { transitive = false }
+        include("org.bytedeco:ffmpeg:${ffmpegVersion}:${platform}") { transitive = false }
+    }
     testImplementation platform(libs.junit.bom)
     testImplementation libs.junit.jupiter
     testRuntimeOnly libs.junit.launcher
@@ -99,6 +125,8 @@ sourceSets {
             exclude 'stonytark/cinemarr/config/CinemarrConfig.java'
             exclude 'stonytark/cinemarr/gametest/**'
             exclude 'stonytark/cinemarr/network/CinemarrNetwork.java'
+            exclude 'stonytark/cinemarr/registry/CinemarrBlocks.java'
+            exclude 'stonytark/cinemarr/registry/CinemarrItems.java'
             exclude 'stonytark/cinemarr/server/CinemarrCommands.java'
             exclude 'stonytark/cinemarr/server/CinemarrServer.java'
         }

@@ -42,7 +42,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/** NeoForge server boundary for video browse/control and pull-based HLS segment relay. */
+/** Loader-neutral server boundary for video browse/control and pull-based HLS segment relay. */
 public final class ServerVideoManager implements AutoCloseable {
     private static final int PAGE_SIZE = 20;
     private final MinecraftServer server;
@@ -99,6 +99,25 @@ public final class ServerVideoManager implements AutoCloseable {
     public void chunkUnwatched(ServerPlayer player, ServerLevel level, ChunkPos chunk) {
         Set<TrackedChunk> values = trackedChunks.get(player.getUUID());
         if (values != null) values.remove(new TrackedChunk(level, chunk.toLong()));
+        refreshTracking(player);
+    }
+
+    /** Fabric fallback for loaders without per-player chunk-watch callbacks. */
+    public void synchronizeTrackingRadius(ServerPlayer player) {
+        ServerLevel level = player.serverLevel();
+        ChunkPos center = player.chunkPosition();
+        int radius = Math.max(2, server.getPlayerList().getViewDistance());
+        Set<TrackedChunk> visible = new HashSet<>();
+        for (CinemarrWorldScreens.Television television : CinemarrWorldScreens.get(level).televisions()) {
+            for (Long packed : television.pixels()) {
+                BlockPos pixel = BlockPos.of(packed);
+                int x = pixel.getX() >> 4, z = pixel.getZ() >> 4;
+                if (Math.abs(x - center.x) <= radius && Math.abs(z - center.z) <= radius) {
+                    visible.add(new TrackedChunk(level, ChunkPos.asLong(x, z)));
+                }
+            }
+        }
+        trackedChunks.put(player.getUUID(), visible);
         refreshTracking(player);
     }
 
