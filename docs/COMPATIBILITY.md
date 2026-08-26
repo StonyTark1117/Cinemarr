@@ -1,33 +1,18 @@
 # Compatibility
 
-Cinemarr 1.0.0 produces 16 required client-and-server artifacts covering 21 supported loader/version runtimes. The server and every client must use the same Minecraft version, loader, and Cinemarr version. Supported Quilt installations use the matching Fabric artifact.
+Cinemarr's video runtime is release-certified only on NeoForge 1.21.1 with
+Java 21. The shared transport core is Java-8-compatible, but loader networking,
+registries, render events, and native decoder packaging remain platform-
+specific.
 
-| Minecraft | Java | Loader | Pinned loader/API |
-| --- | ---: | --- | --- |
-| 1.7.10 | 8 | Forge | Forge 10.13.4.1614 |
-| 1.20.1 | 17 | Fabric | Loader 0.19.3, Fabric API 0.92.11 |
-| 1.20.1 | 17 | Quilt | Quilt Loader 0.30.0, Fabric API 0.92.11, `-fabric.jar` |
-| 1.20.1 | 17 | Forge | Forge 47.4.23 |
-| 1.20.1 | 17 | NeoForge | Transitional NeoForge/Forge 47.1.106 |
-| 1.20.2 | 17 | Fabric | Loader 0.19.3, Fabric API 0.91.6 |
-| 1.20.2 | 17 | Quilt | Quilt Loader 0.30.0, Fabric API 0.91.6, `-fabric.jar` |
-| 1.20.2 | 17 | Forge | Forge 48.1.0 |
-| 1.20.2 | 17 | NeoForge | NeoForge 20.2.93 |
-| 1.21.1 | 21 | Fabric | Loader 0.19.3, Fabric API 0.116.15 |
-| 1.21.1 | 21 | Quilt | Quilt Loader 0.30.0, Fabric API 0.116.15, `-fabric.jar` |
-| 1.21.1 | 21 | Forge | Forge 52.1.16 |
-| 1.21.1 | 21 | NeoForge | NeoForge 21.1.248 |
-| 26.1.2 | 25 | Fabric | Loader 0.19.3, Fabric API 0.155.2 |
-| 26.1.2 | 25 | Quilt | Quilt Loader 0.30.0, Fabric API 0.155.2, `-fabric.jar` |
-| 26.1.2 | 25 | Forge | Forge 64.1.2 |
-| 26.1.2 | 25 | NeoForge | NeoForge 26.1.2.97 |
-| 26.2 | 25 | Fabric | Loader 0.19.3, Fabric API 0.158.0 |
-| 26.2 | 25 | Quilt | Quilt Loader 0.30.0, Fabric API 0.158.0, `-fabric.jar` |
-| 26.2 | 25 | Forge | Forge 65.1.2 |
-| 26.2 | 25 | NeoForge | NeoForge 26.2.0.67 |
+| Minecraft | Loader | Status |
+| --- | --- | --- |
+| 1.21.1 | NeoForge | release-certified baseline |
+| 1.7.10, 1.20.1, 1.20.2, 1.21.1, 26.1.2, 26.2 | Fabric/Quilt/Forge/NeoForge as present | adapter scaffolding; video unsupported |
 
-The complete versions, including build plugins, are authoritative in `gradle/version-catalogs/mc-<version>.toml` and copied to each record in `build/releases/manifest.json`.
-
-Fabric, Quilt, and NeoForge are unavailable for Minecraft 1.7.10. Every modern Fabric artifact declares `fabricloader >=0.19.2`, which Quilt Loader 0.30.0 satisfies; ordinary Fabric builds remain pinned to Fabric Loader 0.19.3. The non-obfuscated 26.x targets include guarded bootstrap and payload-codec compatibility hooks for Quilt Loader 0.30.0; they are inert under Fabric and idempotent if Quilt supplies the corresponding initialization itself. QSL and Quilted Fabric API are not required. Unmodded clients, Fabric-to-Quilt clients, other cross-loader clients, cross-Minecraft clients, and worlds downgraded through unsupported vanilla world formats are not supported.
-
-All targets use logical protocol 5, canonical saved-data schema 4, `world/serverconfig/cinemarr-server.toml`, `config/cinemarr-client.toml`, and the `CINEMARR_PLEX_TOKEN` environment variable. Plex is contacted only by the Minecraft server. Compressed, bounded, hash-validated audio windows travel through the mod's Minecraft network channel to each client.
+The `platforms/` directories are retained Jammarr-derived scaffolding. They
+must not be advertised as working Cinemarr video artifacts until each target
+passes compile, launch, runtime, clean-shutdown, and two-client A/V acceptance.
+No cross-loader or cross-version compatibility is implied by the protocol
+number or by a shared-core test. Forge 1.7.10 remains last because its Java 8
+and LWJGL runtime require a separate native-decoder implementation.
