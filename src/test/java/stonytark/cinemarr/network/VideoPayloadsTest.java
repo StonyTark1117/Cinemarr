@@ -7,6 +7,7 @@ import net.neoforged.neoforge.network.connection.ConnectionType;
 import org.junit.jupiter.api.Test;
 import stonytark.cinemarr.core.library.MediaKind;
 import stonytark.cinemarr.core.library.VideoMediaItem;
+import stonytark.cinemarr.core.library.QueuedVideo;
 import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.core.protocol.VideoPackets;
 import stonytark.cinemarr.core.screen.ScreenFacing;
@@ -19,8 +20,8 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class VideoPayloadsTest {
-    @Test void protocolSevenIsAdvertisedAndSessionStateRoundTripsThroughNeoForge(){
-        assertEquals(7,ProtocolLimits.VERSION);UUID tv=UUID.randomUUID(),session=UUID.randomUUID();
+    @Test void protocolEightIsAdvertisedAndSessionStateRoundTripsThroughNeoForge(){
+        assertEquals(8,ProtocolLimits.VERSION);UUID tv=UUID.randomUUID(),session=UUID.randomUUID();
         VideoPackets.SessionState state=new VideoPackets.SessionState(tv,99L,session,2,VideoPackets.SessionStatus.PLAYING,
                 new VideoMediaItem(MediaKind.MOVIE,"1","Movie","","PG",0,90_000),1_000,90_000,false,PresentationMode.FIT,17,11,new byte[]{3,4},ScreenFacing.NORTH,42,-8,10,List.of(),-1,-1,5_000,true,"ok");
         VideoPayloads.SessionState decoded=roundTrip(VideoPayloads.SessionState.CODEC,new VideoPayloads.SessionState(state));
@@ -28,6 +29,7 @@ class VideoPayloadsTest {
         assertEquals(ScreenFacing.NORTH,decoded.value().screenFacing());assertEquals(42,decoded.value().screenPlane());
         assertEquals(99L,decoded.value().controllerPos());
         assertEquals(99L,roundTrip(VideoPayloads.TelevisionRemoved.CODEC,new VideoPayloads.TelevisionRemoved(new VideoPackets.TelevisionRemoved(99L))).value().controllerPos());
+        assertEquals("Movie",roundTrip(VideoPayloads.SessionQueue.CODEC,new VideoPayloads.SessionQueue(new VideoPackets.SessionQueue(session,2,List.of(new QueuedVideo("movies",state.item()))))).value().entries().getFirst().item().title());
     }
     @Test void browseAndManifestRoundTrip(){
         VideoPackets.BrowseResults browse=new VideoPackets.BrowseResults("movies","","q",0,false,List.of(new VideoMediaItem(MediaKind.MOVIE,"1","Movie","","PG",0,1)));

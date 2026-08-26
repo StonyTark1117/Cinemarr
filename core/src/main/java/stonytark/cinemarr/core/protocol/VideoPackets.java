@@ -3,6 +3,7 @@ package stonytark.cinemarr.core.protocol;
 import stonytark.cinemarr.core.library.MediaKind;
 import stonytark.cinemarr.core.library.VideoMediaItem;
 import stonytark.cinemarr.core.library.VideoStreamOption;
+import stonytark.cinemarr.core.library.QueuedVideo;
 import stonytark.cinemarr.core.screen.ScreenFacing;
 import stonytark.cinemarr.core.video.PresentationMode;
 
@@ -11,9 +12,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
-/** Java-8-compatible protocol-7 models for Cinemarr video browsing, control, and media relay. */
+/** Java-8-compatible protocol-8 models for Cinemarr video browsing, control, queueing, and media relay. */
 public final class VideoPackets {
-    public enum SessionAction { TUNE, PLAY, PAUSE, RESUME, SEEK, STOP, SET_PRESENTATION, SET_STREAMS }
+    public enum SessionAction { TUNE, PLAY, PAUSE, RESUME, SEEK, STOP, SET_PRESENTATION, SET_STREAMS, QUEUE, REMOVE_QUEUE, CLEAR_QUEUE, SKIP, CONTINUE_EPISODE }
     public enum SessionStatus { IDLE, PREPARING, BUFFERING, PLAYING, PAUSED, PLEX_OFFLINE, ERROR }
 
     public static final WireCodec<LibrarySummary> LIBRARY_SUMMARY = new WireCodec<LibrarySummary>() {
@@ -118,6 +119,11 @@ public final class VideoPackets {
         @Override public void encode(WireOutput out, TelevisionRemoved value) { out.writeLong(value.controllerPos()); }
     };
 
+    public static final WireCodec<SessionQueue> SESSION_QUEUE=new WireCodec<SessionQueue>(){
+        @Override public SessionQueue decode(WireInput in){UUID session=in.readUuid();long generation=in.readVarLong();int count=count(in,ProtocolLimits.MAX_VIDEO_QUEUE_ENTRIES,"video queue");List<QueuedVideo> entries=new ArrayList<QueuedVideo>(count);for(int index=0;index<count;index++)entries.add(new QueuedVideo(in.readUtf(64),readItem(in)));return new SessionQueue(session,generation,entries);}
+        @Override public void encode(WireOutput out,SessionQueue value){out.writeUuid(value.sessionId());out.writeVarLong(value.generation());int count=Math.min(value.entries().size(),ProtocolLimits.MAX_VIDEO_QUEUE_ENTRIES);out.writeVarInt(count);for(int index=0;index<count;index++){QueuedVideo entry=value.entries().get(index);out.writeUtf(entry.libraryId(),64);writeItem(out,entry.item());}}
+    };
+
     public static final WireCodec<SegmentManifest> SEGMENT_MANIFEST = new WireCodec<SegmentManifest>() {
         @Override public SegmentManifest decode(WireInput in) {
             UUID session = in.readUuid(); long generation = in.readVarLong(); int width = in.readVarInt(), height = in.readVarInt();
@@ -184,11 +190,11 @@ public final class VideoPackets {
 
     private static VideoMediaItem readItem(WireInput in) {
         return new VideoMediaItem(readEnum(in, MediaKind.class), in.readUtf(256), in.readUtf(256), in.readUtf(256),
-                in.readUtf(32), in.readVarInt(), in.readVarLong());
+                in.readUtf(32), in.readVarInt(), in.readVarLong(),in.readUtf(256),in.readVarInt());
     }
     private static void writeItem(WireOutput out, VideoMediaItem value) {
         writeEnum(out, value.kind()); out.writeUtf(value.key(), 256); out.writeUtf(value.title(), 256);
-        out.writeUtf(value.parentTitle(), 256); out.writeUtf(value.contentRating(), 32); out.writeVarInt(value.index()); out.writeVarLong(value.durationMs());
+        out.writeUtf(value.parentTitle(), 256); out.writeUtf(value.contentRating(), 32); out.writeVarInt(value.index()); out.writeVarLong(value.durationMs());out.writeUtf(value.seriesKey(),256);out.writeVarInt(value.parentIndex());
     }
     private static SegmentDescriptor readDescriptor(WireInput in) {
         return new SegmentDescriptor(in.readVarInt(), in.readVarLong(), in.readVarLong(), in.readBoolean(), in.readVarInt(), in.readUtf(64));
@@ -247,6 +253,11 @@ public final class VideoPackets {
         private final long controllerPos;
         public TelevisionRemoved(long controllerPos){this.controllerPos=controllerPos;}
         public long controllerPos(){return controllerPos;}
+    }
+    public static final class SessionQueue implements CinemarrMessage{
+        private final UUID sessionId;private final long generation;private final List<QueuedVideo> entries;
+        public SessionQueue(UUID sessionId,long generation,List<QueuedVideo> entries){this.sessionId=sessionId;this.generation=generation;this.entries=immutable(entries);}
+        public UUID sessionId(){return sessionId;}public long generation(){return generation;}public List<QueuedVideo> entries(){return entries;}
     }
     public static final class SegmentDescriptor {
         private final int index,byteLength; private final long pts,duration; private final boolean keyframe; private final String sha;

@@ -9,17 +9,26 @@ public final class VideoMediaItem {
     private final String title;
     private final String parentTitle;
     private final String contentRating;
+    private final String seriesKey;
     private final int index;
+    private final int parentIndex;
     private final long durationMs;
 
     public VideoMediaItem(MediaKind kind, String key, String title, String parentTitle, String contentRating,
                           int index, long durationMs) {
+        this(kind,key,title,parentTitle,contentRating,index,durationMs,"",0);
+    }
+
+    public VideoMediaItem(MediaKind kind,String key,String title,String parentTitle,String contentRating,
+                          int index,long durationMs,String seriesKey,int parentIndex){
         this.kind = Objects.requireNonNull(kind, "kind");
         this.key = clean(key);
         this.title = clean(title);
         this.parentTitle = clean(parentTitle);
         this.contentRating = clean(contentRating);
+        this.seriesKey=clean(seriesKey);
         this.index = Math.max(0, index);
+        this.parentIndex=Math.max(0,parentIndex);
         this.durationMs = Math.max(0, durationMs);
     }
 
@@ -30,5 +39,7 @@ public final class VideoMediaItem {
     public String contentRating() { return contentRating; }
     public int index() { return index; }
     public long durationMs() { return durationMs; }
+    public String seriesKey(){return seriesKey;}
+    public int parentIndex(){return parentIndex;}
     private static String clean(String value) { return value == null ? "" : value; }
 }

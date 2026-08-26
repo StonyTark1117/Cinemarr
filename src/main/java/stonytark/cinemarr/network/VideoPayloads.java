@@ -75,6 +75,13 @@ public final class VideoPayloads {
         private void write(RegistryFriendlyByteBuf buffer){VideoPackets.TELEVISION_REMOVED.encode(new MinecraftWireOutput(buffer),value);}
         @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
     }
+    public record SessionQueue(VideoPackets.SessionQueue value) implements CustomPacketPayload,CinemarrMessage{
+        public static final Type<SessionQueue> TYPE=VideoPayloads.type("video_session_queue");
+        public static final StreamCodec<RegistryFriendlyByteBuf,SessionQueue> CODEC=StreamCodec.ofMember(SessionQueue::write,SessionQueue::read);
+        private static SessionQueue read(RegistryFriendlyByteBuf buffer){return new SessionQueue(decode(VideoPackets.SESSION_QUEUE,buffer));}
+        private void write(RegistryFriendlyByteBuf buffer){VideoPackets.SESSION_QUEUE.encode(new MinecraftWireOutput(buffer),value);}
+        @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
+    }
     public record SegmentManifest(VideoPackets.SegmentManifest value) implements CustomPacketPayload, CinemarrMessage {
         public static final Type<SegmentManifest> TYPE=VideoPayloads.type("video_segment_manifest");
         public static final StreamCodec<RegistryFriendlyByteBuf,SegmentManifest> CODEC=StreamCodec.ofMember(SegmentManifest::write,SegmentManifest::read);

@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import stonytark.cinemarr.core.library.MediaKind;
 import stonytark.cinemarr.core.library.VideoMediaItem;
 import stonytark.cinemarr.core.library.VideoStreamOption;
+import stonytark.cinemarr.core.library.QueuedVideo;
 import stonytark.cinemarr.core.screen.ScreenFacing;
 import stonytark.cinemarr.core.video.PresentationMode;
 
@@ -47,6 +48,8 @@ class VideoPacketCodecTest {
         chunk.writeByteArray(new byte[ProtocolLimits.MAX_VIDEO_CHUNK_BYTES+1],ProtocolLimits.MAX_VIDEO_CHUNK_BYTES+1);
         assertThrows(ProtocolException.class,()->VideoPackets.SEGMENT_CHUNK.decode(new ByteArrayWireInput(chunk.toByteArray())));
     }
+
+    @Test void sessionQueueRoundTripsLibraryPolicyIdentity(){UUID session=UUID.randomUUID();VideoPackets.SessionQueue decoded=roundTrip(VideoPackets.SESSION_QUEUE,new VideoPackets.SessionQueue(session,3,Arrays.asList(new QueuedVideo("family",item()))));assertEquals(session,decoded.sessionId());assertEquals("family",decoded.entries().get(0).libraryId());assertEquals("Movie",decoded.entries().get(0).item().title());}
 
     private static VideoMediaItem item(){return new VideoMediaItem(MediaKind.MOVIE,"1","Movie","","PG",0,90000);}
     private static <T> T roundTrip(WireCodec<T> codec,T value){ByteArrayWireOutput out=new ByteArrayWireOutput();codec.encode(out,value);return codec.decode(new ByteArrayWireInput(out.toByteArray()));}

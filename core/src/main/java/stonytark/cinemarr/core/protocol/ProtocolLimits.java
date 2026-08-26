@@ -1,7 +1,7 @@
 package stonytark.cinemarr.core.protocol;
 
 public final class ProtocolLimits {
-    public static final int VERSION = 7;
+    public static final int VERSION = 8;
     public static final String ACCEPTANCE_ENABLED_PROPERTY = "cinemarr.acceptance.enabled";
     public static final String ACCEPTANCE_CLIENT_PROTOCOL_PROPERTY = "cinemarr.acceptance.clientProtocol";
     public static final String ACCEPTANCE_SUPPRESS_HELLO_PROPERTY = "cinemarr.acceptance.suppressClientHello";
@@ -18,6 +18,7 @@ public final class ProtocolLimits {
     public static final int MAX_VIDEO_LIBRARIES = 64;
     public static final int MAX_VIDEO_SEGMENTS_PER_MANIFEST = 128;
     public static final int MAX_VIDEO_STREAM_OPTIONS = 64;
+    public static final int MAX_VIDEO_QUEUE_ENTRIES = 500;
     public static final int MAX_SCREEN_MASK_BYTES = 8_192;
     public static final int MAX_VIDEO_CHUNK_BYTES = 16_384;
 

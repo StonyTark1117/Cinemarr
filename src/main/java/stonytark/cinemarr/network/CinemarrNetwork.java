@@ -38,6 +38,7 @@ public final class CinemarrNetwork {
         registrar.playToClient(VideoPayloads.BrowseResults.TYPE, VideoPayloads.BrowseResults.CODEC, CinemarrNetwork::client);
         registrar.playToClient(VideoPayloads.SessionState.TYPE, VideoPayloads.SessionState.CODEC, CinemarrNetwork::client);
         registrar.playToClient(VideoPayloads.TelevisionRemoved.TYPE, VideoPayloads.TelevisionRemoved.CODEC, CinemarrNetwork::client);
+        registrar.playToClient(VideoPayloads.SessionQueue.TYPE,VideoPayloads.SessionQueue.CODEC,CinemarrNetwork::client);
         registrar.playToClient(VideoPayloads.SegmentManifest.TYPE, VideoPayloads.SegmentManifest.CODEC, CinemarrNetwork::client);
         registrar.playToClient(VideoPayloads.SegmentChunk.TYPE, VideoPayloads.SegmentChunk.CODEC, CinemarrNetwork::client);
         registrar.playToServer(CinemarrPayloads.ClientHello.TYPE, CinemarrPayloads.ClientHello.CODEC, (payload, context) -> {

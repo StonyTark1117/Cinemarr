@@ -3,6 +3,7 @@ package stonytark.cinemarr.client;
 import org.junit.jupiter.api.Test;
 import stonytark.cinemarr.core.library.MediaKind;
 import stonytark.cinemarr.core.library.VideoMediaItem;
+import stonytark.cinemarr.core.library.QueuedVideo;
 import stonytark.cinemarr.core.protocol.VideoPackets;
 import stonytark.cinemarr.core.screen.ScreenFacing;
 import stonytark.cinemarr.core.video.PresentationMode;
@@ -20,11 +21,13 @@ class CinemarrVideoClientStateTest {
         state.accept(new VideoPayloads.SessionState(session(1,UUID.randomUUID(),party,4,true)));
         state.accept(new VideoPayloads.SessionState(session(2,UUID.randomUUID(),party,4,true)));
         state.accept(new VideoPayloads.SessionState(session(3,UUID.randomUUID(),independent,7,true)));
+        state.accept(new VideoPayloads.SessionQueue(new VideoPackets.SessionQueue(party,4,java.util.List.of(new QueuedVideo("movies",new VideoMediaItem(MediaKind.MOVIE,"2","Queued","","PG",0,60_000))))));
+        assertEquals("Queued",state.queue(1).getFirst().item().title());assertEquals("Queued",state.queue(2).getFirst().item().title());
         assertEquals(3,state.televisions().size());assertEquals(2,state.streamStates().size());assertNotNull(state.session(2));
         state.accept(new VideoPayloads.SessionState(session(1,UUID.randomUUID(),new UUID(0,0),0,false)));
         assertEquals(2,state.streamStates().size());
         state.accept(new VideoPayloads.SessionState(session(2,UUID.randomUUID(),new UUID(0,0),0,false)));
-        assertEquals(1,state.streamStates().size());
+        assertEquals(1,state.streamStates().size());assertEquals(0,state.queue(2).size());
         state.accept(new VideoPayloads.TelevisionRemoved(new VideoPackets.TelevisionRemoved(3)));
         assertEquals(0,state.streamStates().size());assertEquals(2,state.televisions().size());state.reset();
     }

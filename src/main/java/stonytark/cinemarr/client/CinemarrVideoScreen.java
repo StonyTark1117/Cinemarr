@@ -9,6 +9,7 @@ import net.minecraft.network.chat.Component;
 import stonytark.cinemarr.core.library.MediaKind;
 import stonytark.cinemarr.core.library.VideoMediaItem;
 import stonytark.cinemarr.core.library.VideoStreamOption;
+import stonytark.cinemarr.core.library.QueuedVideo;
 import stonytark.cinemarr.core.platform.CinemarrSettings;
 import stonytark.cinemarr.core.protocol.VideoPackets;
 import stonytark.cinemarr.core.video.PresentationMode;
@@ -24,6 +25,7 @@ public final class CinemarrVideoScreen extends Screen {
     private String libraryId="",parentKey="",query="",notice="";
     private EditBox search,sessionName;
     private int page,rowOffset;
+    private boolean queueView;
 
     public CinemarrVideoScreen(long controllerPos,CinemarrVideoClientState state){
         super(Component.translatable("cinemarr.video.title"));this.controllerPos=controllerPos;this.state=state;
@@ -37,17 +39,19 @@ public final class CinemarrVideoScreen extends Screen {
             button.active=!library.id().equals(libraryId);addRenderableWidget(button);x+=actual;
         }
         top+=26;
-        search=addRenderableWidget(new EditBox(font,left,top,panel-190,20,Component.translatable("cinemarr.video.search")));
+        search=addRenderableWidget(new EditBox(font,left,top,panel-266,20,Component.translatable("cinemarr.video.search")));
         search.setMaxLength(128);search.setValue(query);search.setHint(Component.translatable("cinemarr.video.search"));
-        addRenderableWidget(Button.builder(Component.translatable("cinemarr.screen.go"),b->{query=search.getValue().trim();page=0;request();}).bounds(left+panel-186,top,54,20).build());
-        Button back=Button.builder(Component.translatable("cinemarr.video.back"),b->back()).bounds(left+panel-128,top,60,20).build();back.active=!parents.isEmpty();addRenderableWidget(back);
-        addRenderableWidget(Button.builder(Component.translatable("cinemarr.video.refresh"),b->request()).bounds(left+panel-64,top,64,20).build());
+        addRenderableWidget(Button.builder(Component.translatable("cinemarr.screen.go"),b->{queueView=false;query=search.getValue().trim();page=0;request();}).bounds(left+panel-262,top,54,20).build());
+        Button back=Button.builder(Component.translatable("cinemarr.video.back"),b->back()).bounds(left+panel-204,top,60,20).build();back.active=!parents.isEmpty()&&!queueView;addRenderableWidget(back);
+        addRenderableWidget(Button.builder(queueView?Component.literal("Clear"):Component.translatable("cinemarr.video.refresh"),b->{if(queueView)clearQueue();else request();}).bounds(left+panel-140,top,64,20).build());
+        addRenderableWidget(Button.builder(Component.literal(queueView?"Browse":"Queue"),b->{queueView=!queueView;rowOffset=0;rebuildWidgets();}).bounds(left+panel-72,top,72,20).build());
         top+=28;addRows(left,top,panel);
         addControls(left,panel);
         if(search!=null)setInitialFocus(search);
     }
 
     private void addRows(int left,int top,int panel){
+        if(queueView){addQueueRows(left,top,panel);return;}
         VideoPackets.BrowseResults results=state.browse();
         if(!results.libraryId().equals(libraryId)||!results.parentKey().equals(parentKey))return;
         int rows=Math.max(1,(height-top-82)/22);rowOffset=Math.max(0,Math.min(rowOffset,Math.max(0,results.items().size()-rows)));
@@ -56,12 +60,15 @@ public final class CinemarrVideoScreen extends Screen {
             String type=item.kind()==MediaKind.EPISODE?"E"+item.index()+" ":"";
             String duration=item.durationMs()>0?" ("+time(item.durationMs())+")":"";
             String label=type+item.title()+(item.parentTitle().isEmpty()?"":" — "+item.parentTitle())+duration;
-            int actionWidth=item.kind()==MediaKind.MOVIE||item.kind()==MediaKind.EPISODE?54:68;
+            int actionWidth=item.kind()==MediaKind.MOVIE||item.kind()==MediaKind.EPISODE?108:68;
             Button titleButton=Button.builder(Component.literal(trim(label,panel-actionWidth-12)),b->activate(item)).bounds(left,y,panel-actionWidth-4,20).build();
             if(font.width(label)>panel-actionWidth-12)titleButton.setTooltip(Tooltip.create(Component.literal(label)));addRenderableWidget(titleButton);
-            addRenderableWidget(Button.builder(Component.translatable(item.kind()==MediaKind.MOVIE||item.kind()==MediaKind.EPISODE?"cinemarr.video.play":"cinemarr.video.browse"),b->activate(item)).bounds(left+panel-actionWidth,y,actionWidth,20).build());
+            if(item.kind()==MediaKind.MOVIE||item.kind()==MediaKind.EPISODE){addRenderableWidget(Button.builder(Component.translatable("cinemarr.video.play"),b->activate(item)).bounds(left+panel-actionWidth,y,52,20).build());addRenderableWidget(Button.builder(Component.literal("+ Queue"),b->queue(item)).bounds(left+panel-52,y,52,20).build());}
+            else addRenderableWidget(Button.builder(Component.translatable("cinemarr.video.browse"),b->activate(item)).bounds(left+panel-actionWidth,y,actionWidth,20).build());
         }
     }
+
+    private void addQueueRows(int left,int top,int panel){java.util.List<QueuedVideo> queue=state.queue(controllerPos);int rows=Math.max(1,(height-top-82)/22);rowOffset=Math.max(0,Math.min(rowOffset,Math.max(0,queue.size()-rows)));for(int row=0;row<rows&&row+rowOffset<queue.size();row++){int index=row+rowOffset;QueuedVideo entry=queue.get(index);String label=(index+1)+". "+entry.item().title()+(entry.item().parentTitle().isEmpty()?"":" — "+entry.item().parentTitle());int y=top+row*22;addRenderableWidget(Button.builder(Component.literal(trim(label,panel-70)),b->{}).bounds(left,y,panel-64,20).build());addRenderableWidget(Button.builder(Component.literal("Remove"),b->removeQueue(index)).bounds(left+panel-60,y,60,20).build());}}
 
     private void addControls(int left,int panel){
         int y=height-50;VideoPackets.SessionState playback=state.session(controllerPos);long generation=playback==null?0:playback.generation();
@@ -70,7 +77,9 @@ public final class CinemarrVideoScreen extends Screen {
         addRenderableWidget(Button.builder(Component.literal("-30s"),b->seek(-30_000)).bounds(left+74,y,52,20).build());
         addRenderableWidget(Button.builder(Component.literal("+30s"),b->seek(30_000)).bounds(left+130,y,52,20).build());
         addRenderableWidget(Button.builder(Component.translatable("cinemarr.video.stop"),b->command(VideoPackets.SessionAction.STOP,"",0,mode(),generation)).bounds(left+186,y,54,20).build());
-        PresentationMode current=mode();int modeX=left+246;
+        addRenderableWidget(Button.builder(Component.literal("Skip"),b->command(VideoPackets.SessionAction.SKIP,"",0,mode(),generation)).bounds(left+244,y,48,20).build());
+        if(playback!=null&&playback.item()!=null&&playback.item().kind()==MediaKind.EPISODE)addRenderableWidget(Button.builder(Component.literal("Next Ep"),b->command(VideoPackets.SessionAction.CONTINUE_EPISODE,"",0,mode(),generation)).bounds(left+panel-160,y,70,20).build());
+        PresentationMode current=mode();int modeX=left+296;
         for(PresentationMode candidate:PresentationMode.values()){Button button=Button.builder(Component.literal(candidate.name().toLowerCase()),b->command(VideoPackets.SessionAction.SET_PRESENTATION,"",0,candidate,generation)).bounds(modeX,y,58,20).build();button.active=candidate!=current;addRenderableWidget(button);modeX+=62;}
         addRenderableWidget(Button.builder(Component.literal(CinemarrSettings.enabled()?"Screen on":"Screen off"),b->{CinemarrSettings.enabled(!CinemarrSettings.enabled());CinemarrSettings.saveEnabled();rebuildWidgets();}).bounds(left+panel-86,y,86,20).build());
         if(playback!=null&&playback.item()!=null){
@@ -79,12 +88,19 @@ public final class CinemarrVideoScreen extends Screen {
         }
         int sessionY=height-26;sessionName=addRenderableWidget(new EditBox(font,left,sessionY,180,20,Component.translatable("cinemarr.video.session")));sessionName.setMaxLength(64);sessionName.setHint(Component.translatable("cinemarr.video.session"));
         addRenderableWidget(Button.builder(Component.translatable("cinemarr.video.tune"),b->command(VideoPackets.SessionAction.TUNE,"",0,mode(),generation,sessionName.getValue().trim())).bounds(left+184,sessionY,52,20).build());
+        addRenderableWidget(Button.builder(Component.literal("Vol -"),b->volume(-0.1)).bounds(left+244,sessionY,52,20).build());
+        addRenderableWidget(Button.builder(Component.literal((int)Math.round(CinemarrSettings.volume()*100)+"%"),b->{}).bounds(left+300,sessionY,52,20).build());
+        addRenderableWidget(Button.builder(Component.literal("Vol +"),b->volume(0.1)).bounds(left+356,sessionY,52,20).build());
     }
 
     private void activate(VideoMediaItem item){
         if(item.kind()==MediaKind.SHOW||item.kind()==MediaKind.SEASON){parents.push(parentKey);parentKey=item.key();query="";page=0;request();return;}
         VideoPackets.SessionState playback=state.session(controllerPos);command(VideoPackets.SessionAction.PLAY,item.key(),0,mode(),playback==null?0:playback.generation());notice="Starting "+item.title();rebuildWidgets();
     }
+    private void queue(VideoMediaItem item){VideoPackets.SessionState playback=state.session(controllerPos);command(VideoPackets.SessionAction.QUEUE,item.key(),0,mode(),playback==null?0:playback.generation());notice="Queued "+item.title();rebuildWidgets();}
+    private void removeQueue(int index){VideoPackets.SessionState playback=state.session(controllerPos);if(playback!=null)command(VideoPackets.SessionAction.REMOVE_QUEUE,"",index,mode(),playback.generation());}
+    private void clearQueue(){VideoPackets.SessionState playback=state.session(controllerPos);if(playback!=null)command(VideoPackets.SessionAction.CLEAR_QUEUE,"",0,mode(),playback.generation());}
+    private void volume(double delta){CinemarrSettings.volume(Math.max(0,Math.min(1,CinemarrSettings.volume()+delta)));CinemarrSettings.saveVolume();rebuildWidgets();}
     private void back(){if(parents.isEmpty())return;parentKey=parents.pop();query="";page=0;request();}
     private void selectLibrary(String id){libraryId=id;parents.clear();parentKey="";query="";page=0;request();}
     private void request(){if(!libraryId.isEmpty())state.browse(libraryId,parentKey,query,page);}

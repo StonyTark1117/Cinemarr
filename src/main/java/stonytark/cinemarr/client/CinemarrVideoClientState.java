@@ -16,12 +16,14 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.UUID;
+import stonytark.cinemarr.core.library.QueuedVideo;
 
 /** All visible televisions plus one compressed/decode stream per distinct watch-party generation. */
 public final class CinemarrVideoClientState {
     public static final CinemarrVideoClientState INSTANCE=new CinemarrVideoClientState();
     private final Map<Long,VideoPackets.SessionState> televisions=new LinkedHashMap<>();
     private final Map<StreamKey,StreamState> streams=new LinkedHashMap<>();
+    private final Map<UUID,List<QueuedVideo>> queues=new LinkedHashMap<>();
     private VideoPackets.LibraryList libraries=new VideoPackets.LibraryList(Collections.emptyList());
     private VideoPackets.BrowseResults browse=new VideoPackets.BrowseResults("","","",0,false,Collections.emptyList());
 
@@ -30,6 +32,7 @@ public final class CinemarrVideoClientState {
         if(payload instanceof VideoPayloads.BrowseResults value){browse=value.value();return true;}
         if(payload instanceof VideoPayloads.SessionState value){acceptSession(value.value());return true;}
         if(payload instanceof VideoPayloads.TelevisionRemoved value){removeTelevision(value.value().controllerPos());return true;}
+        if(payload instanceof VideoPayloads.SessionQueue value){queues.put(value.value().sessionId(),value.value().entries());return true;}
         if(payload instanceof VideoPayloads.SegmentManifest value){
             VideoPackets.SegmentManifest next=value.value();StreamState stream=streams.get(new StreamKey(next.sessionId(),next.generation()));
             if(stream!=null)stream.manifest(next);return true;
@@ -54,15 +57,17 @@ public final class CinemarrVideoClientState {
         List<StreamKey> referenced=new ArrayList<>();
         for(VideoPackets.SessionState state:televisions.values())if(state.item()!=null&&!state.sessionId().equals(new UUID(0,0)))referenced.add(new StreamKey(state.sessionId(),state.generation()));
         streams.entrySet().removeIf(entry->{if(referenced.contains(entry.getKey()))return false;entry.getValue().reset();return true;});
+        java.util.Set<UUID> visibleSessions=new java.util.HashSet<>();for(VideoPackets.SessionState state:televisions.values())if(!state.sessionId().equals(new UUID(0,0)))visibleSessions.add(state.sessionId());queues.keySet().retainAll(visibleSessions);
     }
 
-    public void reset(){libraries=new VideoPackets.LibraryList(Collections.emptyList());browse=new VideoPackets.BrowseResults("","","",0,false,Collections.emptyList());televisions.clear();for(StreamState value:streams.values())value.reset();streams.clear();}
+    public void reset(){libraries=new VideoPackets.LibraryList(Collections.emptyList());browse=new VideoPackets.BrowseResults("","","",0,false,Collections.emptyList());televisions.clear();queues.clear();for(StreamState value:streams.values())value.reset();streams.clear();}
     public void requestLibraries(){CinemarrNetwork.sendToServer(new VideoPayloads.LibraryListRequest());}
     public void browse(String libraryId,String parentKey,String query,int page){CinemarrNetwork.sendToServer(new VideoPayloads.BrowseRequest(new VideoPackets.BrowseRequest(libraryId,parentKey,query,page)));}
     public void command(VideoPackets.SessionCommand command){CinemarrNetwork.sendToServer(new VideoPayloads.SessionCommand(command));}
     public VideoPackets.LibraryList libraries(){return libraries;} public VideoPackets.BrowseResults browse(){return browse;}
     public VideoPackets.SessionState session(long controllerPos){return televisions.get(controllerPos);}
     public Collection<VideoPackets.SessionState> televisions(){return List.copyOf(televisions.values());}
+    public List<QueuedVideo> queue(long controllerPos){VideoPackets.SessionState value=televisions.get(controllerPos);return value==null?Collections.emptyList():queues.getOrDefault(value.sessionId(),Collections.emptyList());}
     Collection<StreamState> streamStates(){return List.copyOf(streams.values());}
     StreamState stream(StreamKey key){return streams.get(key);}
     List<VideoPackets.SessionState> televisionsForStream(StreamKey key){List<VideoPackets.SessionState> values=new ArrayList<>();for(VideoPackets.SessionState state:televisions.values())if(state.sessionId().equals(key.sessionId())&&state.generation()==key.generation())values.add(state);return values;}

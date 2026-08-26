@@ -108,6 +108,12 @@ public final class PlexVideoService {
         return new PlaybackMetadata(value,streams(metadata.get(0).getAsJsonObject()));
     }
 
+    public VideoMediaItem nextEpisode(String key)throws IOException{
+        VideoMediaItem current=metadata(key);if(current.kind()!=MediaKind.EPISODE||current.seriesKey().isEmpty())throw new PlexException(PlexException.Kind.NOT_FOUND,"Plex episode has no series metadata");
+        JsonArray metadata=array(container(json("GET","/library/metadata/"+encodePath(current.seriesKey())+"/allLeaves","")),"Metadata");List<VideoMediaItem> episodes=new ArrayList<VideoMediaItem>();for(JsonElement element:metadata){VideoMediaItem value=item(element);if(value!=null&&value.kind()==MediaKind.EPISODE)episodes.add(value);}Collections.sort(episodes,(left,right)->{int season=Integer.compare(left.parentIndex(),right.parentIndex());return season!=0?season:Integer.compare(left.index(),right.index());});
+        for(int index=0;index<episodes.size();index++)if(episodes.get(index).key().equals(current.key()))return index+1<episodes.size()?episodes.get(index+1):null;throw new PlexException(PlexException.Kind.NOT_FOUND,"Current Plex episode is absent from its series");
+    }
+
     public VideoSession start(VideoMediaItem item, RenditionPolicy.Dimensions rendition, long offsetMs,
                               Integer audioStreamId, Integer subtitleStreamId) throws IOException {
         if (item == null || rendition == null || item.key().isEmpty()) throw new IllegalArgumentException("Playable item required");
@@ -232,7 +238,7 @@ public final class PlexVideoService {
         String title = text(value, "title");
         if (key.isEmpty() || title.isEmpty()) return null;
         return new VideoMediaItem(kind, key, title, text(value, "grandparentTitle"), text(value, "contentRating"),
-                integer(value, "index"), number(value, "duration"));
+                integer(value, "index"), number(value, "duration"),text(value,"grandparentRatingKey"),integer(value,"parentIndex"));
     }
     private static boolean sameOrigin(URL first, URL second) {
         int firstPort = first.getPort() < 0 ? first.getDefaultPort() : first.getPort();
