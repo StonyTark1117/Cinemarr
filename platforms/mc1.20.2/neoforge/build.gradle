@@ -25,6 +25,10 @@ runs {
         dependencies {
             runtime libs.jlayer
             runtime libs.jump3r
+            runtime 'org.bytedeco:javacpp:1.5.14'
+            runtime 'org.bytedeco:ffmpeg:8.1.2-1.5.14'
+            runtime 'org.bytedeco:javacpp:1.5.14:linux-x86_64'
+            runtime 'org.bytedeco:ffmpeg:8.1.2-1.5.14:linux-x86_64'
         }
     }
     client {
@@ -43,10 +47,24 @@ repositories {
     maven { url = 'https://maven.neoforged.net/releases/' }
 }
 
+configurations { javacvFacade }
+def extractJavaCvFacade = tasks.register('extractJavaCvFacade', Sync) {
+    from { configurations.javacvFacade.collect { zipTree(it) } }
+    include 'org/bytedeco/javacv/Frame.class', 'org/bytedeco/javacv/Frame$*.class',
+            'org/bytedeco/javacv/FrameGrabber.class', 'org/bytedeco/javacv/FrameGrabber$*.class',
+            'org/bytedeco/javacv/FFmpegFrameGrabber.class', 'org/bytedeco/javacv/FFmpegFrameGrabber$*.class',
+            'org/bytedeco/javacv/FFmpegLogCallback.class'
+    into(layout.buildDirectory.dir('generated/javacvFacade'))
+}
+sourceSets.main.output.dir(extractJavaCvFacade)
+
 jarJar.enable()
 def sharedCoreDependency = dependencies.project(path: ':core')
 
 dependencies {
+    def javaCppVersion = '1.5.14'
+    def ffmpegVersion = '8.1.2-1.5.14'
+    def javaCvVersion = '1.5.14'
     implementation "net.neoforged:neoforge:${libs.versions.neoforge.loader.get()}"
     implementation sharedCoreDependency
     jarJar(sharedCoreDependency)
@@ -56,6 +74,14 @@ dependencies {
     jarJar('javazoom:jlayer:[1.0.1,1.0.2)') { version { prefer '1.0.1' } }
     implementation libs.jump3r
     jarJar('de.sciss:jump3r:[1.0.5,1.0.6)') { version { prefer '1.0.5' } }
+    javacvFacade("org.bytedeco:javacv:${javaCvVersion}") { transitive = false }
+    compileOnly("org.bytedeco:javacv:${javaCvVersion}") { transitive = false }
+    jarJar(implementation("org.bytedeco:javacpp:${javaCppVersion}") { transitive = false })
+    jarJar(implementation("org.bytedeco:ffmpeg:${ffmpegVersion}") { transitive = false })
+    ['linux-x86_64', 'linux-arm64', 'windows-x86_64'].each { platform ->
+        jarJar(implementation("org.bytedeco:javacpp:${javaCppVersion}:${platform}") { transitive = false })
+        jarJar(implementation("org.bytedeco:ffmpeg:${ffmpegVersion}:${platform}") { transitive = false })
+    }
     testImplementation platform(libs.junit.bom)
     testImplementation libs.junit.jupiter
     testRuntimeOnly libs.junit.launcher
@@ -77,9 +103,18 @@ sourceSets {
             exclude 'stonytark/cinemarr/network/CinemarrPayloads.java'
             exclude 'stonytark/cinemarr/network/MinecraftWireInput.java'
             exclude 'stonytark/cinemarr/network/MinecraftWireOutput.java'
+            exclude 'stonytark/cinemarr/network/VideoPayloads.java'
+            exclude 'stonytark/cinemarr/client/VideoVertexEmitter.java'
+            exclude 'stonytark/cinemarr/client/VideoResourceLocations.java'
+            exclude 'stonytark/cinemarr/screen/ScreenPixelBlock.java'
+            exclude 'stonytark/cinemarr/screen/TvControllerBlock.java'
+            exclude 'stonytark/cinemarr/screen/CinemarrWorldScreens.java'
             exclude 'stonytark/cinemarr/server/CinemarrCommands.java'
             exclude 'stonytark/cinemarr/server/CinemarrServer.java'
             exclude 'stonytark/cinemarr/server/CinemarrSavedData.java'
+            exclude 'stonytark/cinemarr/server/CinemarrVideoSavedData.java'
+            exclude 'stonytark/cinemarr/registry/CinemarrBlocks.java'
+            exclude 'stonytark/cinemarr/registry/CinemarrItems.java'
         }
         resources {
             srcDir file('../../../src/main/resources')
@@ -129,7 +164,10 @@ def releaseEntries = ['META-INF/LICENSE-Cinemarr-CC0-1.0.txt', 'META-INF/LICENSE
                       'META-INF/THIRD_PARTY_NOTICES.md', 'META-INF/mods.toml', 'cinemarr.mixins.json',
                       'cinemarr.png', 'pack.mcmeta', 'assets/cinemarr/lang/en_us.json',
                       'stonytark/cinemarr/Cinemarr.class', 'stonytark/cinemarr/client/CinemarrClient.class',
-                      'stonytark/cinemarr/network/CinemarrNetwork.class', 'stonytark/cinemarr/network/CinemarrPayloads.class']
+                      'stonytark/cinemarr/network/CinemarrNetwork.class', 'stonytark/cinemarr/network/VideoPayloads.class',
+                      'stonytark/cinemarr/client/FfmpegVideoDecoder.class',
+                      'stonytark/cinemarr/registry/CinemarrBlocks.class',
+                      'org/bytedeco/javacv/FFmpegFrameGrabber.class', 'org/bytedeco/javacv/Frame.class']
 
 tasks.register('verifyRelease') {
     group = 'verification'
@@ -143,9 +181,16 @@ tasks.register('verifyRelease') {
                 if (!found.contains(entry)) throw new GradleException("Release archive is missing ${entry}")
             }
             def nested = found.findAll { it.startsWith('META-INF/jarjar/') && it.endsWith('.jar') }
-            ['core', 'jlayer', 'jump3r'].each { dependency ->
+            ['core', 'jlayer', 'jump3r', 'javacpp', 'ffmpeg'].each { dependency ->
                 if (!nested.any { it.toLowerCase(java.util.Locale.ROOT).contains(dependency) }) {
                     throw new GradleException("Release archive does not bundle ${dependency}")
+                }
+            }
+            ['linux-x86_64', 'linux-arm64', 'windows-x86_64'].each { platform ->
+                ['javacpp', 'ffmpeg'].each { dependency ->
+                    if (!nested.any { it.contains(dependency) && it.contains(platform) }) {
+                        throw new GradleException("Release archive does not bundle ${dependency} ${platform}")
+                    }
                 }
             }
             def metadata = zip.getInputStream(zip.getEntry('META-INF/mods.toml')).getText('UTF-8')
