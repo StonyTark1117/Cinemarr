@@ -264,12 +264,20 @@ def verifyFabric1202 = tasks.register('verifyFabric1202', Exec) {
     commandLine('./gradlew', 'verifyRelease', ':core:test', '--no-daemon', '--max-workers=1')
 }
 
+def verifyQuilt1202 = tasks.register('verifyQuilt1202', Exec) {
+    group = 'verification'
+    description = 'Runs the Minecraft 1.20.2 Fabric artifact under the Quilt dependency profile.'
+    workingDir(layout.projectDirectory.dir('platforms/mc1.20.2/fabric'))
+    commandLine('./gradlew', '-PcinemarrRuntimeLoader=quilt', 'verifyRelease', ':core:test', '--no-daemon', '--max-workers=1')
+    mustRunAfter(verifyFabric1202)
+}
+
 def verifyForge1202 = tasks.register('verifyForge1202', Exec) {
     group = 'verification'
     description = 'Runs the isolated Minecraft 1.20.2 Forge release gate.'
     workingDir(layout.projectDirectory.dir('platforms/mc1.20.2/forge'))
     commandLine('./gradlew', 'verifyRelease', ':core:test', '--no-daemon', '--max-workers=1', '--no-configuration-cache')
-    mustRunAfter(verifyFabric1202)
+    mustRunAfter(verifyQuilt1202)
 }
 
 def verifyNeoForge1202 = tasks.register('verifyNeoForge1202', Exec) {
@@ -372,8 +380,8 @@ tasks.register('verify1201Family') {
 
 tasks.register('verify1202Family') {
     group = 'verification'
-    description = 'Builds and verifies the Fabric, Forge, and NeoForge Minecraft 1.20.2 artifacts.'
-    dependsOn(verifyFabric1202, verifyForge1202, verifyNeoForge1202)
+    description = 'Builds and verifies the Fabric/Quilt, Forge, and NeoForge Minecraft 1.20.2 artifacts.'
+    dependsOn(verifyFabric1202, verifyQuilt1202, verifyForge1202, verifyNeoForge1202)
 }
 
 tasks.register('verify2612Family') {

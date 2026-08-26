@@ -10,7 +10,9 @@ specific.
 | 1.21.1 | NeoForge | release-certified baseline |
 | 1.21.1 | Fabric / Quilt | video port compiled and dedicated-launch-tested; two-client A/V untested |
 | 1.21.1 | Forge | video port compiled and dedicated-launch-tested; two-client A/V untested |
-| 1.7.10, 1.20.1, 1.20.2, 26.1.2, 26.2 | Fabric/Quilt/Forge/NeoForge as present | adapter scaffolding; video unsupported |
+| 1.20.2 | Fabric / Quilt | video port build-verified, dedicated-launch-tested, and protocol-client-tested; two-client A/V untested |
+| 1.20.2 | Forge / NeoForge | video port build-verified, dedicated-launch-tested, and protocol-client-tested; two-client A/V untested |
+| 1.7.10, 1.20.1, 26.1.2, 26.2 | Fabric/Quilt/Forge/NeoForge as present | adapter scaffolding; video unsupported |
 
 The unported `platforms/` directories are retained Jammarr-derived scaffolding.
 No target may be advertised as release-certified until it

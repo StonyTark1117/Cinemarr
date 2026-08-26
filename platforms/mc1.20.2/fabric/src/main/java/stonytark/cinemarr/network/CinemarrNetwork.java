@@ -28,7 +28,15 @@ public final class CinemarrNetwork {
     public static void sendToPlayer(ServerPlayer player,CinemarrMessage payload){FriendlyByteBuf buffer=PacketByteBufs.create();ResourceLocation id;if(VideoPayloads.supports(payload)){VideoPayloads.write(payload,buffer);id=VideoPayloads.idOf(payload);}else{CinemarrPayloads.write(payload,buffer);id=CinemarrPayloads.idOf(payload);}ServerPlayNetworking.send(player,id,buffer);}
     public static void sendToAllPlayers(CinemarrMessage payload){MinecraftServer current=server;if(current!=null)for(ServerPlayer player:current.getPlayerList().getPlayers())sendToPlayer(player,payload);}
     public static void register(){
-        receive(CinemarrPayloads.ClientHello.ID,CinemarrPayloads.ClientHello::read,(player,payload)->{if(!protocolMatches(payload.protocolVersion())){Component reason=Component.literal("Cinemarr protocol mismatch: server requires version "+PROTOCOL);player.connection.send(new ClientboundDisconnectPacket(reason));}else CinemarrServer.instance().hello(player);});
+        receive(CinemarrPayloads.ClientHello.ID, CinemarrPayloads.ClientHello::read, (player, payload) -> {
+            if (!protocolMatches(payload.protocolVersion())) {
+                Component reason = Component.literal("Cinemarr protocol mismatch: server requires version " + PROTOCOL);
+                Cinemarr.LOGGER.warn("Disconnecting {}: {}", player.getGameProfile().getName(), reason.getString());
+                player.connection.send(new ClientboundDisconnectPacket(reason));
+            } else {
+                CinemarrServer.instance().hello(player);
+            }
+        });
         receive(CinemarrPayloads.TimeSyncRequest.ID,CinemarrPayloads.TimeSyncRequest::read,(player,payload)->{if(CinemarrServer.instance().accepted(player))sendToPlayer(player,new CinemarrPayloads.TimeSyncResponse(payload.nonce(),payload.clientSentEpochMs(),System.currentTimeMillis()));});
         receive(VideoPayloads.LibraryListRequest.ID,VideoPayloads.LibraryListRequest::read,(player,payload)->CinemarrServer.instance().videoLibraries(player));
         receive(VideoPayloads.BrowseRequest.ID,VideoPayloads.BrowseRequest::read,(player,payload)->CinemarrServer.instance().videoBrowse(player,payload.value()));
