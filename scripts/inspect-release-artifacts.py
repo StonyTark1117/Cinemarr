@@ -480,10 +480,12 @@ def verify_jar(path: Path, minecraft: str, loader: str, java: int, expected_majo
                 }
                 if core_identifiers != {("stonytark.cinemarr", "core")}:
                     fail(f"{filename} does not isolate Cinemarr's private core coordinate")
+            expected_core = (f"{nested_prefix}/core-1.0.0.jar" if loader == "fabric"
+                             else f"{nested_prefix}/stonytark.cinemarr.core-1.0.0.jar")
             core_candidates = sorted(name for name in names if name.startswith(f"{nested_prefix}/")
                                      and name.endswith("core-1.0.0.jar"))
-            if len(core_candidates) != 1:
-                fail(f"{filename} must bundle exactly one shared core JAR, found {core_candidates}")
+            if core_candidates != [expected_core]:
+                fail(f"{filename} must bundle its isolated shared core JAR, found {core_candidates}")
             for core_entry in (
                 "stonytark/cinemarr/core/server/ChunkTransferPolicy.class",
                 "stonytark/cinemarr/core/server/CoordinatorRuntime.class",

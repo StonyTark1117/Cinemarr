@@ -53,6 +53,21 @@ releaseTask.configure {
                     }
                 }
                 obsolete.each { java.nio.file.Files.delete(it) }
+
+                // NeoForge 20.2 extracts nested dependencies by their physical
+                // filename before applying Maven-coordinate selection. A
+                // generic core-1.0.0.jar therefore collides with Jammarr's
+                // private core even though the declared groups differ.
+                def genericCore = jarJarRoot.resolve('core-1.0.0.jar')
+                def isolatedCore = jarJarRoot.resolve('stonytark.cinemarr.core-1.0.0.jar')
+                if (java.nio.file.Files.exists(genericCore)) {
+                    java.nio.file.Files.move(genericCore, isolatedCore)
+                    def metadataPath = jarJarRoot.resolve('metadata.json')
+                    def metadata = java.nio.file.Files.readString(metadataPath)
+                    metadata = metadata.replace('META-INF/jarjar/core-1.0.0.jar',
+                            'META-INF/jarjar/stonytark.cinemarr.core-1.0.0.jar')
+                    java.nio.file.Files.writeString(metadataPath, metadata)
+                }
             }
         }
     }
@@ -71,7 +86,8 @@ def verifyFlattenedVideoRuntime = tasks.register('verifyFlattenedVideoRuntime') 
                 'org/bytedeco/javacpp/windows-x86_64/jnijavacpp.dll',
                 'org/bytedeco/ffmpeg/linux-x86_64/libjniavutil.so',
                 'org/bytedeco/ffmpeg/linux-arm64/libjniavutil.so',
-                'org/bytedeco/ffmpeg/windows-x86_64/avcodec-62.dll'
+                'org/bytedeco/ffmpeg/windows-x86_64/avcodec-62.dll',
+                'META-INF/jarjar/stonytark.cinemarr.core-1.0.0.jar'
         ]
         new java.util.zip.ZipFile(inputs.files.singleFile).withCloseable { zip ->
             def found = zip.entries().collect { it.name } as Set
@@ -80,6 +96,9 @@ def verifyFlattenedVideoRuntime = tasks.register('verifyFlattenedVideoRuntime') 
             }
             if (found.any { it.startsWith('META-INF/jarjar/javacpp-') || it.startsWith('META-INF/jarjar/ffmpeg-') }) {
                 throw new GradleException('Release archive still contains module-path JavaCPP/FFmpeg jars')
+            }
+            if (found.contains('META-INF/jarjar/core-1.0.0.jar')) {
+                throw new GradleException('Release archive still contains the collision-prone generic private core filename')
             }
             if (found.contains('module-info.class') || found.any { it.matches('META-INF/versions/.*/module-info\\.class') }) {
                 throw new GradleException('Release archive contains a shaded dependency module descriptor')
