@@ -15,7 +15,7 @@ from pathlib import Path, PurePosixPath
 
 
 PRODUCT_VERSION = "1.0.0"
-PROTOCOL_VERSION = 5
+PROTOCOL_VERSION = 8
 TARGETS = (
     ("1.7.10", "forge", 8, 52),
     ("1.20.1", "fabric", 17, 61),
@@ -42,6 +42,7 @@ COMMON_ENTRIES = {
     "cinemarr.png",
     "stonytark/cinemarr/Cinemarr.class",
 }
+QUICK_TV_IDS = ("144p", "240p", "480p", "720p", "1080p", "1440p", "4k", "8k")
 PRIVATE_ADDRESS = re.compile(rb"(?<![0-9])(?:10\.(?:[0-9]{1,3}\.){2}[0-9]{1,3}|192\.168\.(?:[0-9]{1,3}\.)[0-9]{1,3}|172\.(?:1[6-9]|2[0-9]|3[01])\.(?:[0-9]{1,3}\.)[0-9]{1,3})(?![0-9])")
 TEXT_SUFFIXES = (".json", ".toml", ".info", ".lang", ".md", ".txt", ".properties", ".mf")
 
@@ -309,6 +310,14 @@ def verify_metadata(archive: zipfile.ZipFile, names: set[str], minecraft: str, l
             "META-INF/jars/core-1.0.0.jar",
             "META-INF/jars/jlayer-1.0.1.jar",
             "META-INF/jars/jump3r-1.0.5.jar",
+            "META-INF/jars/javacpp-1.5.14.jar",
+            "META-INF/jars/javacpp-1.5.14-linux-x86_64.jar",
+            "META-INF/jars/javacpp-1.5.14-linux-arm64.jar",
+            "META-INF/jars/javacpp-1.5.14-windows-x86_64.jar",
+            "META-INF/jars/ffmpeg-8.1.2-1.5.14.jar",
+            "META-INF/jars/ffmpeg-8.1.2-1.5.14-linux-x86_64.jar",
+            "META-INF/jars/ffmpeg-8.1.2-1.5.14-linux-arm64.jar",
+            "META-INF/jars/ffmpeg-8.1.2-1.5.14-windows-x86_64.jar",
         }
         declared_jars = {value.get("file") for value in metadata.get("jars", [])}
         if declared_jars != expected_jars:
@@ -358,6 +367,17 @@ def verify_jar(path: Path, minecraft: str, loader: str, java: int, expected_majo
         json.loads(archive.read("assets/cinemarr/lang/en_us.json"))
         verify_remappable_keybinding(archive, minecraft, loader, filename)
         verify_png(archive.read("cinemarr.png"), filename)
+        quick_assets = {
+            entry
+            for quick_id in QUICK_TV_IDS
+            for entry in (
+                f"assets/cinemarr/blockstates/quick_tv_{quick_id}.json",
+                f"assets/cinemarr/models/block/quick_tv_{quick_id}.json",
+                f"assets/cinemarr/models/item/quick_tv_{quick_id}.json",
+            )
+        }
+        if quick_assets - names:
+            fail(f"{filename} is missing Quick TV assets: {sorted(quick_assets - names)}")
         for notice in ("META-INF/LICENSE-Cinemarr-CC0-1.0.txt", "META-INF/LICENSE-LGPL-2.1-or-later.txt",
                        "META-INF/THIRD_PARTY_NOTICES.md"):
             if len(archive.read(notice).strip()) < 32:
@@ -379,6 +399,8 @@ def verify_jar(path: Path, minecraft: str, loader: str, java: int, expected_majo
                 "stonytark/cinemarr/client/LegacyAudioPlayer.class",
                 "stonytark/cinemarr/client/LegacyScreen.class",
                 "stonytark/cinemarr/server/LegacySavedData.class",
+                "stonytark/cinemarr/screen/LegacyQuickTvBlock.class",
+                "stonytark/cinemarr/core/screen/QuickTvPreset.class",
                 "javazoom/jl/decoder/Decoder.class",
                 "de/sciss/jump3r/mp3/Lame.class",
             }
@@ -407,6 +429,8 @@ def verify_jar(path: Path, minecraft: str, loader: str, java: int, expected_majo
             ):
                 verify_direct_interface(archive, interface_name, implementation_name, filename)
         else:
+            if "stonytark/cinemarr/screen/QuickTvBlock.class" not in names:
+                fail(f"{filename} is missing its Quick TV builder runtime")
             if "cinemarr.mixins.json" not in names:
                 fail(f"{filename} is missing Mixin metadata")
             mixin = json.loads(archive.read("cinemarr.mixins.json"))
@@ -426,6 +450,7 @@ def verify_jar(path: Path, minecraft: str, loader: str, java: int, expected_majo
                 "stonytark/cinemarr/core/server/CoordinatorRuntime.class",
                 "stonytark/cinemarr/core/server/GlobalPlaybackCoordinator.class",
                 "stonytark/cinemarr/core/server/PlaybackStore.class",
+                "stonytark/cinemarr/core/screen/QuickTvPreset.class",
             ):
                 core_class = require_nested_class(archive, core_candidates[0], core_entry, filename)
                 if class_major(core_class, f"{filename}:{core_entry}") != 52:

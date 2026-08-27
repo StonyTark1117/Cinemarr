@@ -11,6 +11,14 @@ import stonytark.cinemarr.core.client.AsyncStartGuard;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.GameType;
+import net.minecraft.world.item.ItemStack;
+import stonytark.cinemarr.registry.CinemarrBlocks;
+import stonytark.cinemarr.screen.CinemarrWorldScreens;
+import stonytark.cinemarr.screen.QuickTvBlock;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 import stonytark.cinemarr.Cinemarr;
@@ -109,6 +117,28 @@ public final class CinemarrGameTests {
                 List.of(new QueueTrack("1", "Start", "A", "", 1), new QueueTrack("2", "Middle", "B", "", 1)),
                 List.of(new QueueTrack("2", "Middle", "B", "", 1), new QueueTrack("3", "End", "C", "", 1))), 100);
         helper.assertTrue(path.stream().map(QueueTrack::key).toList().equals(List.of("1", "2", "3")), "Adventure segment join duplicated or reordered a waypoint");
+        helper.succeed();
+    }
+
+    @GameTest(template = "empty", timeoutTicks = 40)
+    public static void quickTvBuildsBoundedPrefabAndPersistsRendition(GameTestHelper helper) {
+        BlockPos relative = new BlockPos(8, 1, 8);
+        BlockPos controller = helper.absolutePos(relative);
+        QuickTvBlock block = CinemarrBlocks.QUICK_TV_144P.get();
+        var state = block.defaultBlockState().setValue(QuickTvBlock.FACING, Direction.NORTH);
+        helper.setBlock(relative, state);
+        Player player = helper.makeMockPlayer(GameType.CREATIVE);
+        block.setPlacedBy(helper.getLevel(), controller, state, player, ItemStack.EMPTY);
+        CinemarrWorldScreens.Television television = CinemarrWorldScreens.get(helper.getLevel()).television(controller);
+        helper.assertTrue(television != null, "144p Quick TV did not activate");
+        helper.assertTrue(television.width() == 16 && television.height() == 9 && television.pixels().size() == 144,
+                "144p Quick TV did not build its bounded 16:9 prefab");
+        helper.assertTrue(television.renditionWidth() == 256 && television.renditionHeight() == 144,
+                "144p Quick TV did not persist its named rendition target");
+        for (Long packed : new java.util.ArrayList<>(television.pixels())) {
+            helper.getLevel().destroyBlock(BlockPos.of(packed), false);
+        }
+        helper.getLevel().destroyBlock(controller, false);
         helper.succeed();
     }
     private CinemarrGameTests() {}

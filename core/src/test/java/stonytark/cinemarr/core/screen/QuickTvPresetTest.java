@@ -15,6 +15,7 @@ final class QuickTvPresetTest {
             assertTrue(preset.physicalPixels() <= 65_536);
             assertTrue(preset.physicalWidth() <= 2_048);
             assertTrue(preset.physicalHeight() <= 2_048);
+            assertEquals(16 * preset.physicalHeight(), 9 * preset.physicalWidth());
         }
     }
 

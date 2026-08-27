@@ -4,9 +4,9 @@ Cinemarr is a required client-and-server Minecraft mod for server-authoritative 
 
 The complete product requirements and acceptance criteria live in [Proposal](Proposal). Cinemarr is a standalone sibling project and does not require Jammarr at runtime.
 
-## Current implementation target
+## Current implementation
 
-The initial runnable target is NeoForge 1.21.1 on Java 21. The repository also contains the clean Jammarr-derived loader/build scaffolding that will be converted as each later family reaches parity; those copied adapters are not considered released Cinemarr ports yet.
+Cinemarr now has video-runtime adapters for Forge 1.7.10 and Fabric, Quilt-compatible Fabric, Forge, and NeoForge targets spanning Minecraft 1.20.1, 1.20.2, 1.21.1, 26.1.2, and 26.2. These targets are build- and dedicated-launch-tested to the levels recorded in [the compatibility matrix](docs/COMPATIBILITY.md); none is release-certified until the real two-client audio/video acceptance test passes.
 
 Implemented foundations include:
 
@@ -15,9 +15,11 @@ Implemented foundations include:
 - Exact fit, fill, and stretch transforms plus bounded, even H.264 rendition selection.
 - Server-only Plex video-library resolution, movie/show browsing, rating and permission filtering, HLS transcode start/fetch/stop, same-origin segment confinement, bounded responses, and token-safe client models.
 - 16 KiB hash-addressed media payloads, keyframe seek policy, generation-safe asynchronous work, clock/drift policy inherited from the shared transport core, and authoritative watch-party/session lifecycle.
-- NeoForge Screen Pixel, TV Controller, casing, and speaker blocks. Pixels remain ordinary blocks; placement/removal updates world saved data, while controller activation reconstructs and persists a screen without force-loading its chunks.
+- Screen Pixel, TV Controller, casing, and speaker blocks on every target. Pixels remain ordinary blocks; placement/removal updates world saved data, while controller activation reconstructs and persists a screen without force-loading its chunks.
+- Eight progressively crafted Quick TV Kit blocks: 144p, 240p, 480p, 720p, 1080p, 1440p, 4K, and 8K. Placing one preflights a loaded, unobstructed 16:9 footprint, builds a bounded dense screen, activates it, and persists the exact named rendition target. A literal 8K one-block-per-pixel wall would contain 33,177,600 blocks, so quick kits are deliberately bounded prefabs; hand-built Screen Pixels retain exact one-block/one-logical-pixel behavior.
+- Global `quickTvKitsEnabled` and per-resolution `quickTv...Enabled` server settings. A disabled kit stays registered for world/save compatibility but cannot construct or activate its prefab.
 
-The in-world decoder/renderer, final control UI, subtitle/audio-track flow, positional sound, hardened persistence/reconnect behavior, remaining loaders, and real two-client visual acceptance are still implementation gates—not implied by a passing build.
+The in-world decoder/renderer, control UI, subtitle/audio-track selection, positional sound, persistence/reconnect behavior, server-owned HLS relay, and clean protocol rejection paths are implemented. Real matching-client runtime evidence—especially two clients showing the same identifiable frame with synchronized audible output—is still an acceptance gate and is not implied by a passing build or server log.
 
 ## Server files
 
@@ -45,7 +47,7 @@ No libraries are visible until an operator adds an entry.
 
 ## Verification
 
-Run the current NeoForge 1.21.1 unit and artifact gate under Java 21:
+Run the NeoForge 1.21.1 unit and artifact gate under Java 21:
 
 ```bash
 JAVA_HOME=/usr/lib/jvm/java-21-openjdk \
