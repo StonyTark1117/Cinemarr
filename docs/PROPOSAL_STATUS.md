@@ -1,6 +1,6 @@
 # Proposal implementation status
 
-This file maps the checked-in `Proposal` to implementation and acceptance evidence. “Implemented” describes repository code and generated artifacts; it does not promote a target to release-certified status. Live Plex acceptance remains a separate required gate.
+This file maps the checked-in `Proposal` to implementation and acceptance evidence. The deterministic 21-profile matrix, aggregate artifact gate, and credentialed live Plex smoke are complete; platform-specific evidence boundaries remain stated explicitly below.
 
 | Proposal area | Status | Implementation / evidence |
 | --- | --- | --- |
@@ -16,6 +16,6 @@ This file maps the checked-in `Proposal` to implementation and acceptance eviden
 | Bounded media relay | Implemented and tested | Server-confined HLS, 16 KiB payloads, SHA-256, pull/ack windows, rate and lead limits, keyframe-aware seeking, rolling cache, and viewer-driven shutdown. |
 | Client video/audio | Implemented and matrix runtime-tested | One decoder/dynamic texture per visible session, batched masked screen rendering, positional audio from the nearest screen point, clock filtering, and drift correction. All 21 profiles have deterministic two-client visual/audio evidence; Forge 1.7.10 passed consecutive fresh physical captures after its LWJGL 2 adapter began confirming backend progress inside a silent preroll. |
 | Native decoder packaging | Implemented with bounded evidence | LGPL notices and Linux x64/arm64 plus Windows x64 JavaCV/FFmpeg classifiers are packaged. Linux real-client gates and a Windows-native decode smoke pass; a complete Windows Minecraft-client run remains distinct. |
-| Live Plex feasibility spike | Pending external acceptance | The opt-in smoke resolves an allowed library, creates a real H.264/AAC session, fetches media, and terminates it. It has not yet been run with the supplied live server through the safe environment-file handoff. |
+| Live Plex feasibility spike | Passed | On 2026-08-27 the environment-only smoke resolved the real allowed video library, created an H.264/AAC session, fetched playlist media, and completed the clean-stop request without error. Its test report recorded one executed test with no skip, failure, error, stdout, or stderr; a post-run scan found no credential residue in the checkout or Gradle logs. |
 
 See [release acceptance](RELEASE_ACCEPTANCE.md) and [compatibility](COMPATIBILITY.md) for the exact certification boundary and recorded runtime evidence.

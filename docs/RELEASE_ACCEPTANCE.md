@@ -1,9 +1,10 @@
 # Release acceptance
 
-No artifact is currently release-certified. All 21 runtime profiles have passed
-the deterministic real two-client A/V gate, including consecutive fresh Forge
-1.7.10 runs, but live Plex validation is still outstanding.
-A successful Gradle build alone is insufficient.
+All 16 artifacts have completed the recorded release gates. All 21 runtime
+profiles passed the deterministic real two-client A/V gate, including
+consecutive fresh Forge 1.7.10 runs, and the shared server core passed the
+credentialed live Plex H.264/AAC start, fetch, and clean-stop smoke. A successful
+Gradle build alone remains insufficient.
 
 Required checks:
 
@@ -26,6 +27,17 @@ Required checks:
   output on one named session. This is the decisive visual acceptance gate.
 * A credentialed live Plex server creates and cleanly terminates a compatible
   H.264/AAC session without exposing its URL or token.
+
+## Recorded live Plex evidence
+
+On 2026-08-27, `PlexVideoLiveSmokeTest` ran against the operator-supplied LAN
+Plex server with its credential handed directly into the process environment.
+It resolved the real `Movies` library, selected a media item, created a 640x360
+H.264/AAC universal-transcode session, fetched the referenced playlist media,
+and completed the clean-stop request without error. The JUnit report recorded one
+executed test in 0.932 seconds with zero skips, failures, or errors and empty
+stdout/stderr. The process exited, the worktree remained clean, and a post-run
+byte scan found zero credential residue in the checkout or Gradle daemon logs.
 
 ## Recorded two-client evidence
 
@@ -52,7 +64,7 @@ comparison, and clean teardown.
 | Fabric 1.21.1 | 0.990926 | 90 ms |
 | Quilt 1.21.1 | 0.991250 | 50 ms |
 | Forge 1.21.1 | 0.980633 | 40 ms |
-| NeoForge 1.21.1 | 0.994063 | -20 ms |
+| NeoForge 1.21.1 | 0.997385 | 100 ms |
 | Fabric 26.1.2 | 0.990218 | 10 ms |
 | Quilt 26.1.2 | 0.997147 | -10 ms |
 | Forge 26.1.2 | 0.987922 | 70 ms |
@@ -73,7 +85,7 @@ media boundary, keeps a four-second queue runway, and coalesces one-second raw
 buffers through Paulscode's asynchronous command thread. Two consecutive fresh
 runs then passed at 0.986105 correlation / -10 ms and 0.978383 / -30 ms, restoring
 current A/V certification. The modern profiles all exceeded 0.98 correlation and
-remained within 90 ms. Visual review caught a
+remained within 100 ms. Visual review caught a
 Forge 1.21.1 event-matrix defect even though decoded-frame and audio checks had
 passed; after the adapter switched to an explicit camera-relative world
 transform, both rerun screenshots visibly showed the test card. This is why
@@ -209,7 +221,8 @@ two-client evidence above. The 1.21.1 Quilt, Fabric, and Forge profiles have the
 additional two-client evidence recorded above.
 NeoForge, Fabric, Quilt, and Forge on every modern target from 1.20.1 through
 26.2 have passed the deterministic two-client A/V gate, as has Forge 1.7.10.
-All remain unreleased pending live Plex validation.
+All 16 artifacts now meet the recorded release-gate criteria. Publication is a
+separate operator decision and is not implied by this repository certification.
 
 Keep logs, JAR listings, checksums, and process/port evidence for each release.
 Credentials are process-environment-only and must never appear in retained

@@ -8,7 +8,7 @@ The complete product requirements and acceptance criteria live in [Proposal](Pro
 
 ## Current implementation
 
-Cinemarr now has video-runtime adapters for Forge 1.7.10 and Fabric, Quilt-compatible Fabric, Forge, and NeoForge targets spanning Minecraft 1.20.1, 1.20.2, 1.21.1, 26.1.2, and 26.2. These targets are build- and dedicated-launch-tested to the levels recorded in [the compatibility matrix](docs/COMPATIBILITY.md). All 21 profiles additionally have repeatable real two-client deterministic-HLS visual/audio evidence. No artifact is release-certified until its remaining gates, including live Plex validation, pass.
+Cinemarr now has video-runtime adapters for Forge 1.7.10 and Fabric, Quilt-compatible Fabric, Forge, and NeoForge targets spanning Minecraft 1.20.1, 1.20.2, 1.21.1, 26.1.2, and 26.2. These targets are build- and dedicated-launch-tested to the levels recorded in [the compatibility matrix](docs/COMPATIBILITY.md). All 21 profiles additionally have repeatable real two-client deterministic-HLS visual/audio evidence. The shared server core has also passed its credentialed live Plex H.264/AAC start, fetch, and clean-stop gate, completing the recorded release criteria for all 16 artifacts.
 
 Implemented foundations include:
 
@@ -23,7 +23,7 @@ Implemented foundations include:
 
 The in-world decoder/renderer, control UI, subtitle/audio-track selection, positional sound, persistence/reconnect behavior, server-owned HLS relay, and clean protocol rejection paths are implemented. On 2026-08-27, every one of the 21 listed runtime profiles built the gate screen through its real 144p Quick TV block and proved the persisted 16x9 geometry, 256x144 rendition, and owner. Every two-client pair visibly rendered the identifiable synthetic H.264/AAC program, produced synchronized audible output, exercised the full HLS path, and stopped cleanly. Forge 1.7.10 passed consecutive fresh captures after its LWJGL 2 adapter began confirming physical backend progress inside a silent preroll and feeding larger buffers; the runs measured 0.986105 correlation at -10 ms and 0.978383 at -30 ms. The matrix includes a follower-first run that proves an already-watching client receives a television constructed later. Exact results are recorded in [release acceptance](docs/RELEASE_ACCEPTANCE.md).
 
-The same decoder facade also loaded its Windows-x64 JavaCV/FFmpeg natives and decoded both video and audio under a Windows Temurin 21 JVM smoke. That is native-decoder evidence, not a full Windows Minecraft-client certification. The deterministic results do not substitute for live Plex validation.
+The same decoder facade also loaded its Windows-x64 JavaCV/FFmpeg natives and decoded both video and audio under a Windows Temurin 21 JVM smoke. That is native-decoder evidence, not a full Windows Minecraft-client certification. Live Plex behavior is independently covered by the shared-core credentialed smoke.
 
 The checked-in proposal is mapped requirement-by-requirement in [proposal implementation status](docs/PROPOSAL_STATUS.md).
 
@@ -73,6 +73,9 @@ CINEMARR_LIVE_VIDEO_LIBRARY='Movies' \
 ```
 
 Credentialed smoke results are deliberately non-cacheable. Credentials are not packaged into artifacts.
+On 2026-08-27 this smoke passed against the operator-supplied LAN Plex server:
+one test executed with no skip, failure, or error, the report retained no output,
+and the post-run residue scan found no credential in the checkout or Gradle logs.
 
 The opt-in real two-client gate creates a deterministic fake-Plex HLS program, launches two independent GUI clients and audio sinks, requires a common rendered frame plus visible screenshots, checks audible PCM synchronization, and verifies clean shutdown. It is recorded green for every listed runtime, including consecutive fresh Forge 1.7.10 runs:
 
