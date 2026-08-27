@@ -1284,7 +1284,7 @@ run_two_client_video() {
   local leader_shot="$output_root/$label.audio-leader/screenshots/cinemarr-video-acceptance.png"
   local follower_shot="$output_root/$label.audio-follower/screenshots/cinemarr-video-acceptance.png"
   local server_log="$output_root/$label.console.log"
-  local module leader_pid follower_pid recorder_leader recorder_follower common_frame result=0
+  local module leader_pid follower_pid recorder_leader recorder_follower common_frame result=0 clients_ready=0
 
   module=$(pactl load-module module-null-sink sink_name="$sink_leader" rate=48000 channels=2) || return 1
   active_audio_modules+=("$module")
@@ -1305,6 +1305,24 @@ run_two_client_video() {
       start_audio_client "$label" "$target_dir" "$java_home" "$port" leader CinemarrVideoA "$sink_leader"
       leader_pid=$started_audio_client_pid
     fi
+  elif [[ "$label" == "1.21.1-neoforge" ]]; then
+    # Two cold NeoGradle runClient builds can retain the same project lock for
+    # the lifetime of Minecraft on hosted runners. Launch this profile through
+    # the existing bounded retry path; both clients remain connected together
+    # for the shared-frame and physical-sync evidence window.
+    if launch_audio_client "$label" "$target_dir" "$java_home" "$port" leader CinemarrVideoA "$sink_leader"; then
+      leader_pid=$ready_audio_client_pid
+    else
+      result=1
+    fi
+    if (( result == 0 )); then
+      if launch_audio_client "$label" "$target_dir" "$java_home" "$port" follower CinemarrVideoB "$sink_follower"; then
+        follower_pid=$ready_audio_client_pid
+        clients_ready=1
+      else
+        result=1
+      fi
+    fi
   else
     # Start both GUI clients before waiting for either one. This makes the probe
     # exercise actual simultaneous co-viewing instead of serial client startup.
@@ -1313,8 +1331,8 @@ run_two_client_video() {
     start_audio_client "$label" "$target_dir" "$java_home" "$port" follower CinemarrVideoB "$sink_follower"
     follower_pid=$started_audio_client_pid
   fi
-  if (( result == 0 )); then wait_for_audio_playing "$label" leader "$leader_pid" || result=1; fi
-  if (( result == 0 )); then wait_for_audio_playing "$label" follower "$follower_pid" || result=1; fi
+  if (( result == 0 && clients_ready == 0 )); then wait_for_audio_playing "$label" leader "$leader_pid" || result=1; fi
+  if (( result == 0 && clients_ready == 0 )); then wait_for_audio_playing "$label" follower "$follower_pid" || result=1; fi
   if (( result == 0 )); then
     wait_for_video_audio_pair_stable "$label" "$leader_pid" "$follower_pid" || result=1
   fi
