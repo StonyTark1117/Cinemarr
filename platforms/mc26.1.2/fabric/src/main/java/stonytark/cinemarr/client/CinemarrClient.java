@@ -84,10 +84,12 @@ public final class CinemarrClient implements ClientModInitializer {
 
     private void tick(Minecraft minecraft) {
         if (minecraft.screen == null && minecraft.player != null && OPEN.consumeClick()) {
-            minecraft.setScreen(new CinemarrScreen(CinemarrClientState.INSTANCE));
-            CinemarrNetwork.sendToServer(new CinemarrPayloads.BrowseRequest(CinemarrPayloads.BrowseKind.SEARCH, "", 0));
+            minecraft.player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+                    "Cinemarr: use a TV Controller to open its video controls"));
         }
         CinemarrClientState.INSTANCE.tick();
+        VIDEO.tick(CinemarrVideoClientState.INSTANCE);
+        VIDEO_AUDIO.tick(VIDEO, CinemarrVideoClientState.INSTANCE);
     }
 
     private static void registerReceivers() {
