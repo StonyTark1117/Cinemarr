@@ -21,6 +21,7 @@ final class VideoPcmAudioStream implements AudioStream {
     private boolean starving;
     private int starvations;
     private long silenceDeadlineNanos = Long.MIN_VALUE;
+    private long scheduledSilenceUs;
     private long scheduledSkipBytes;
 
     VideoPcmAudioStream(int sampleRate, int channels) {
@@ -99,8 +100,10 @@ final class VideoPcmAudioStream implements AudioStream {
             long bytes = bytesForDurationUs(Math.abs(remainingNanos) / 1_000L);
             if (remainingNanos >= 0) {
                 bytes = Math.min(Integer.MAX_VALUE, bytes);
+                scheduledSilenceUs = durationUsForBytes(bytes);
                 if (bytes > 0) { queue.addFirst(new byte[(int) bytes]); bufferedBytes += bytes; }
             } else {
+                scheduledSilenceUs = 0;
                 skipQueuedBytes(bytes);
             }
         }
@@ -123,10 +126,16 @@ final class VideoPcmAudioStream implements AudioStream {
 
     synchronized int starvations() { return starvations; }
 
+    synchronized long scheduledSilenceUs() { return scheduledSilenceUs; }
+
     private long bytesForDurationUs(long durationUs) {
         long samples = durationUs * (long) format.getSampleRate() / 1_000_000L;
         long bytes = samples * format.getFrameSize();
         return bytes - bytes % format.getFrameSize();
+    }
+
+    private long durationUsForBytes(long bytes) {
+        return bytes * 1_000_000L / ((long) format.getSampleRate() * format.getFrameSize());
     }
 
     private void skipQueuedBytes(long requested) {

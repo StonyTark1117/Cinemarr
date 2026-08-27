@@ -5,6 +5,8 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.sounds.ChannelAccess;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.phys.Vec3;
+import org.lwjgl.openal.AL10;
+import org.lwjgl.openal.AL11;
 import stonytark.cinemarr.core.platform.CinemarrSettings;
 import stonytark.cinemarr.core.protocol.VideoPackets;
 import stonytark.cinemarr.core.protocol.ProtocolLimits;
@@ -29,6 +31,7 @@ public final class CinemarrVideoAudio {
     private static final long REBUFFER_DRIFT_US = 150_000;
     private static final int REBUFFER_DRIFT_TICKS = 5;
     private static final int READY_STABLE_TICKS = 10;
+    private static final long SOURCE_START_TIMEOUT_NANOS = 5_000_000_000L;
     private final Queue<DecodedAudioFrame> pending = new ArrayDeque<>();
     private UUID sessionId;
     private long generation = -1;
@@ -43,6 +46,12 @@ public final class CinemarrVideoAudio {
     private int stableTicks;
     private volatile long audioTimelineUs;
     private volatile long audioTimelineNanos = Long.MIN_VALUE;
+    private volatile boolean sourceStartPending;
+    private volatile boolean sourceStartProbeQueued;
+    private volatile long sourceStartScheduledUs;
+    private volatile long sourceStartSilenceUs;
+    private volatile int sourceStartSampleRate;
+    private volatile long sourceStartRequestedNanos;
     private long lastAcceptanceLogMs;
 
     public void tick(CinemarrVideoPlayback playback, VideoPackets.SessionState session) {
@@ -74,6 +83,16 @@ public final class CinemarrVideoAudio {
         }
         if (channel != null) {
             long nowNanos = System.nanoTime();
+            if (sourceStartPending) {
+                if (nowNanos - sourceStartRequestedNanos >= SOURCE_START_TIMEOUT_NANOS) {
+                    if (ProtocolLimits.videoProbeEnabled()) Cinemarr.LOGGER.info(
+                            "Acceptance video audio rebuffer: reason=source-start-timeout");
+                    resetChannel();
+                    caughtUpTicks = 0;
+                } else {
+                    probeSourceStart();
+                }
+            }
             if (audioTimelineNanos != Long.MIN_VALUE && nowNanos >= audioTimelineNanos) {
                 if (!session.paused()) audioTimelineUs += (nowNanos - audioTimelineNanos) / 1_000L;
                 audioTimelineNanos = nowNanos;
@@ -177,13 +196,39 @@ public final class CinemarrVideoAudio {
             }
             accessor.cinemarr$pumpBuffers(initialBuffers);
             value.play();
-            // ChannelHandle work runs on Minecraft's audio executor and can be
-            // delayed substantially on loaded clients. Anchor the logical
-            // media clock to the actual OpenAL play call, not to the render
-            // thread that merely queued it, so that a delayed start is
-            // detected and rebuffered before the client reports ready.
-            audioTimelineUs = scheduledStartUs;
-            audioTimelineNanos = System.nanoTime() + silenceUs * 1_000L;
+            // PLAYING can precede physical backend consumption. The render
+            // thread probes this source until its OpenAL cursor advances, then
+            // anchors the logical clock using the silence that pumpBuffers()
+            // actually inserted after any executor delay.
+            sourceStartScheduledUs = scheduledStartUs;
+            sourceStartSilenceUs = startingStream.scheduledSilenceUs();
+            sourceStartSampleRate = (int) startingStream.getFormat().getSampleRate();
+            sourceStartRequestedNanos = System.nanoTime();
+            sourceStartPending = true;
+        });
+    }
+
+    private void probeSourceStart() {
+        if (!sourceStartPending || sourceStartProbeQueued || channel == null) return;
+        ChannelAccess.ChannelHandle expectedChannel = channel;
+        long expectedAttempt = channelAttempt;
+        sourceStartProbeQueued = true;
+        expectedChannel.execute(value -> {
+            if (expectedAttempt != channelAttempt || expectedChannel != channel || !sourceStartPending) {
+                sourceStartProbeQueued = false;
+                return;
+            }
+            int sampleOffset = AL10.alGetSourcei(((ChannelAccessor) value).cinemarr$source(), AL11.AL_SAMPLE_OFFSET);
+            if (sampleOffset > 0) {
+                long playedUs = sampleOffset * 1_000_000L / Math.max(1, sourceStartSampleRate);
+                audioTimelineUs = sourceStartScheduledUs;
+                audioTimelineNanos = System.nanoTime() + Math.max(0L, sourceStartSilenceUs - playedUs) * 1_000L;
+                sourceStartPending = false;
+                if (ProtocolLimits.videoProbeEnabled()) Cinemarr.LOGGER.info(
+                        "Acceptance video audio source started: backendPlayedMs={} queuedSilenceMs={}",
+                        playedUs / 1_000L, sourceStartSilenceUs / 1_000L);
+            }
+            sourceStartProbeQueued = false;
         });
     }
 
@@ -223,5 +268,7 @@ public final class CinemarrVideoAudio {
         if (channel != null) { channel.execute(com.mojang.blaze3d.audio.Channel::stop); channel=null; }
         if (stream != null) { stream.close(); stream=null; }
         channelPending=false;observedStarvations=0;driftTicks=0;stableTicks=0;audioTimelineUs=0;audioTimelineNanos=Long.MIN_VALUE;
+        sourceStartPending=false;sourceStartProbeQueued=false;sourceStartScheduledUs=0;sourceStartSilenceUs=0;
+        sourceStartSampleRate=0;sourceStartRequestedNanos=0;
     }
 }

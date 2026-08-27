@@ -44,6 +44,7 @@ final class VideoPcmAudioStreamTest {
         assertTrue(stream.offer(new DecodedAudioFrame(1_000, 1_000, 1,
                 new byte[]{1, 2, 3, 4, 5, 6, 7, 8}), 3_000));
         ByteBuffer value = stream.read(6);
+        assertEquals(1_000, stream.scheduledSilenceUs());
         assertEquals(0, value.get());
         assertEquals(0, value.get());
         assertEquals(5, value.get());
@@ -62,6 +63,7 @@ final class VideoPcmAudioStreamTest {
         now.set(5_000_000);
 
         ByteBuffer value = stream.read(4);
+        assertEquals(0, stream.scheduledSilenceUs());
         assertEquals(7, value.get());
         assertEquals(8, value.get());
         assertEquals(0, value.get());

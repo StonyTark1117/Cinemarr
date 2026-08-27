@@ -8,6 +8,8 @@ import org.spongepowered.asm.mixin.gen.Invoker;
 
 @Mixin(Channel.class)
 public interface ChannelAccessor {
+    @Accessor("source") int cinemarr$source();
+
     @Accessor("stream") void cinemarr$stream(AudioStream stream);
 
     @Accessor("streamingBufferSize") void cinemarr$streamingBufferSize(int bytes);
