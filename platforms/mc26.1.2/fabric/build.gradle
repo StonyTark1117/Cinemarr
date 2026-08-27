@@ -68,7 +68,21 @@ repositories {
     maven { url = 'https://maven.terraformersmc.com/releases/' }
 }
 
+configurations { javacvFacade }
+def extractJavaCvFacade = tasks.register('extractJavaCvFacade', Sync) {
+    from { configurations.javacvFacade.collect { zipTree(it) } }
+    include 'org/bytedeco/javacv/Frame.class', 'org/bytedeco/javacv/Frame$*.class',
+            'org/bytedeco/javacv/FrameGrabber.class', 'org/bytedeco/javacv/FrameGrabber$*.class',
+            'org/bytedeco/javacv/FFmpegFrameGrabber.class', 'org/bytedeco/javacv/FFmpegFrameGrabber$*.class',
+            'org/bytedeco/javacv/FFmpegLogCallback.class'
+    into(layout.buildDirectory.dir('generated/javacvFacade'))
+}
+sourceSets.main.output.dir(extractJavaCvFacade)
+
 dependencies {
+    def javaCppVersion = '1.5.14'
+    def ffmpegVersion = '8.1.2-1.5.14'
+    def javaCvVersion = '1.5.14'
     minecraft "com.mojang:minecraft:${libs.versions.minecraft.get()}"
     implementation quiltRuntime.get() ? libs.quilt.loader : "net.fabricmc:fabric-loader:${fabricLoaderVersion.get()}"
     if (quiltRuntime.get()) quiltRuntimeLibraries.each { implementation it }
@@ -84,6 +98,18 @@ dependencies {
     include libs.jlayer
     implementation libs.jump3r
     include libs.jump3r
+    javacvFacade("org.bytedeco:javacv:${javaCvVersion}") { transitive = false }
+    compileOnly("org.bytedeco:javacv:${javaCvVersion}") { transitive = false }
+    implementation("org.bytedeco:javacpp:${javaCppVersion}") { transitive = false }
+    include("org.bytedeco:javacpp:${javaCppVersion}") { transitive = false }
+    implementation("org.bytedeco:ffmpeg:${ffmpegVersion}") { transitive = false }
+    include("org.bytedeco:ffmpeg:${ffmpegVersion}") { transitive = false }
+    ['linux-x86_64', 'linux-arm64', 'windows-x86_64'].each { platform ->
+        implementation("org.bytedeco:javacpp:${javaCppVersion}:${platform}") { transitive = false }
+        include("org.bytedeco:javacpp:${javaCppVersion}:${platform}") { transitive = false }
+        implementation("org.bytedeco:ffmpeg:${ffmpegVersion}:${platform}") { transitive = false }
+        include("org.bytedeco:ffmpeg:${ffmpegVersion}:${platform}") { transitive = false }
+    }
     testImplementation platform(libs.junit.bom)
     testImplementation libs.junit.jupiter
     testRuntimeOnly libs.junit.launcher
@@ -106,16 +132,30 @@ sourceSets {
             exclude 'stonytark/cinemarr/client/CinemarrClientConfigScreen.java'
             exclude 'stonytark/cinemarr/client/CinemarrClientState.java'
             exclude 'stonytark/cinemarr/client/CinemarrScreen.java'
+            exclude 'stonytark/cinemarr/client/CinemarrVideoScreen.java'
+            exclude 'stonytark/cinemarr/client/CinemarrVideoAudio.java'
+            exclude 'stonytark/cinemarr/client/CinemarrVideoAudioManager.java'
+            exclude 'stonytark/cinemarr/client/CinemarrVideoTexture.java'
+            exclude 'stonytark/cinemarr/client/CinemarrVideoRenderer.java'
+            exclude 'stonytark/cinemarr/client/VideoResourceLocations.java'
             exclude 'stonytark/cinemarr/config/CinemarrConfig.java'
             exclude 'stonytark/cinemarr/gametest/**'
             exclude 'stonytark/cinemarr/network/CinemarrNetwork.java'
             exclude 'stonytark/cinemarr/network/CinemarrPayloads.java'
+            exclude 'stonytark/cinemarr/network/VideoPayloads.java'
             exclude 'stonytark/cinemarr/server/CinemarrCommands.java'
             exclude 'stonytark/cinemarr/server/CinemarrPermissions.java'
             exclude 'stonytark/cinemarr/server/CinemarrServer.java'
             exclude 'stonytark/cinemarr/server/CinemarrSavedData.java'
             exclude 'stonytark/cinemarr/server/QueueTrackCodec.java'
             exclude 'stonytark/cinemarr/server/StationDefinition.java'
+            exclude 'stonytark/cinemarr/server/CinemarrVideoSavedData.java'
+            exclude 'stonytark/cinemarr/server/ServerVideoManager.java'
+            exclude 'stonytark/cinemarr/screen/CinemarrWorldScreens.java'
+            exclude 'stonytark/cinemarr/screen/ScreenPixelBlock.java'
+            exclude 'stonytark/cinemarr/screen/TvControllerBlock.java'
+            exclude 'stonytark/cinemarr/registry/CinemarrBlocks.java'
+            exclude 'stonytark/cinemarr/registry/CinemarrItems.java'
         }
         resources {
             srcDir file('../../../src/main/resources')
@@ -132,6 +172,7 @@ sourceSets.test.resources { srcDir file('../../../test-fixtures'); exclude 'java
 tasks.withType(Test).configureEach { useJUnitPlatform() }
 
 tasks.named('processResources') {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     inputs.property 'version', artifactVersion
     filesMatching('fabric.mod.json') { expand version: artifactVersion }
     filesMatching('cinemarr.mixins.json') {
@@ -142,6 +183,7 @@ tasks.named('processResources') {
         }
     }
 }
+tasks.named('sourcesJar') { duplicatesStrategy = DuplicatesStrategy.EXCLUDE }
 
 tasks.named('jar', Jar) {
     archiveFileName = "cinemarr-${project.version}+mc26.1.2-fabric.jar"
@@ -157,6 +199,11 @@ def releaseArchive = tasks.named('jar', Jar).flatMap { it.archiveFile }
 def expectedReleaseName = "cinemarr-${artifactVersion}+mc26.1.2-fabric.jar"
 def releaseEntries = ['META-INF/jars/core-1.0.0.jar', 'META-INF/jars/jlayer-1.0.1.jar',
                       'META-INF/jars/jump3r-1.0.5.jar', 'META-INF/LICENSE-Cinemarr-CC0-1.0.txt',
+                      'META-INF/jars/javacpp-1.5.14.jar', 'META-INF/jars/ffmpeg-8.1.2-1.5.14.jar',
+                      'META-INF/jars/javacpp-1.5.14-linux-x86_64.jar', 'META-INF/jars/javacpp-1.5.14-linux-arm64.jar',
+                      'META-INF/jars/javacpp-1.5.14-windows-x86_64.jar', 'META-INF/jars/ffmpeg-8.1.2-1.5.14-linux-x86_64.jar',
+                      'META-INF/jars/ffmpeg-8.1.2-1.5.14-linux-arm64.jar', 'META-INF/jars/ffmpeg-8.1.2-1.5.14-windows-x86_64.jar',
+                      'org/bytedeco/javacv/FFmpegFrameGrabber.class', 'org/bytedeco/javacv/Frame.class',
                       'META-INF/LICENSE-LGPL-2.1-or-later.txt', 'META-INF/THIRD_PARTY_NOTICES.md',
                       'fabric.mod.json', 'cinemarr.mixins.json', 'cinemarr.png',
                       'assets/cinemarr/lang/en_us.json', 'stonytark/cinemarr/Cinemarr.class',

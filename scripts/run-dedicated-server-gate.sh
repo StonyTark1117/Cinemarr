@@ -271,7 +271,7 @@ fake_plex_requests_complete() {
 missing_client_rejection_logged() {
   local latest_log=$1
   local console_log=$2
-  grep -Eiq 'Cinemarr is required on the client|Cinemarr protocol (handshake )?timed out|Disconnecting VANILLA connection attempt:.*require (Forge|NeoForge)|incompatible.*Cinemarr' \
+  grep -Eiq 'Cinemarr is required on the client|Cinemarr protocol (handshake )?timed out|This server requires Fabric Loader and Fabric API installed on your client|Disconnecting VANILLA connection attempt:.*require (Forge|NeoForge)|incompatible.*Cinemarr' \
     "$latest_log" "$console_log" 2>/dev/null
 }
 
