@@ -1,9 +1,8 @@
 # Release acceptance
 
-No artifact is currently release-certified. All 20 modern runtime profiles have
-passed the deterministic real two-client A/V gate, but live Plex validation is
-still outstanding. The isolated Forge 1.7.10 implementation is build-, launch-,
-and protocol-tested; its latest physical audio synchronization reruns failed.
+No artifact is currently release-certified. All 21 runtime profiles have passed
+the deterministic real two-client A/V gate, including consecutive fresh Forge
+1.7.10 runs, but live Plex validation is still outstanding.
 A successful Gradle build alone is insufficient.
 
 Required checks:
@@ -62,12 +61,19 @@ comparison, and clean teardown.
 | Quilt 26.2 | 0.996959 | -20 ms |
 | Forge 26.2 | 0.996621 | 80 ms |
 | NeoForge 26.2 | 0.990375 | 40 ms |
+| Forge 1.7.10, fresh run 1 | 0.986105 | -10 ms |
+| Forge 1.7.10, fresh run 2 | 0.978383 | -30 ms |
 
 A historical Forge 1.7.10 run measured 0.657605 correlation at 120 ms, but that
-result did not reproduce: two fresh runs on 2026-08-27 rendered the same program
-and emitted audible program audio yet measured approximately 680 ms and 400 ms
-sink separation. Its A/V certification is therefore withdrawn. The modern
-profiles all exceeded 0.98 correlation and remained within 90 ms. Visual review caught a
+result did not reproduce: later fresh runs rendered the same program and emitted
+audible output yet measured approximately 680 ms and 400 ms sink separation.
+The legacy adapter now starts with silent preroll, waits for confirmed physical
+backend progress, accounts for consumed preroll when choosing the shared future
+media boundary, keeps a four-second queue runway, and coalesces one-second raw
+buffers through Paulscode's asynchronous command thread. Two consecutive fresh
+runs then passed at 0.986105 correlation / -10 ms and 0.978383 / -30 ms, restoring
+current A/V certification. The modern profiles all exceeded 0.98 correlation and
+remained within 90 ms. Visual review caught a
 Forge 1.21.1 event-matrix defect even though decoded-frame and audio checks had
 passed; after the adapter switched to an explicit camera-relative world
 transform, both rerun screenshots visibly showed the test card. This is why
@@ -186,23 +192,24 @@ the NeoForge scene was also night-darkened, but the program remained visible.
 Every client, server, fake Plex process, audio module, and target port stopped
 cleanly.
 
-Forge 1.7.10 historically passed its isolated Java 8 / LWJGL 2 gate on 2026-08-27. Two real
+Forge 1.7.10 first passed its isolated Java 8 / LWJGL 2 gate on 2026-08-27. Two real
 clients visibly rendered the synthetic program and shared decoded-frame SHA-256
 `028918a15a341e02f28328967c02c350685ed4b88e9cae106bcea6b6268618e0`.
 The 997 Hz captures measured 0.983183 correlation at -110 ms lag. The gate also
 proved master-playlist, media-playlist, and MPEG-TS relay, saved both rendered-TV
 screenshots, and left no client, server, fake Plex process, audio module, or
-target port behind. This historical pass is superseded by the failed fresh
-synchronization reruns documented above; it is retained as evidence that the
-rendering, HLS, and audible-output paths can run, not as current certification.
+target port behind. That historical pass was superseded by the failed fresh
+synchronization reruns documented above. After the physical-start correction,
+two further consecutive invocations again shared the same identifiable frame,
+passed the strict audible-envelope comparison at -10 ms and -30 ms, and left no
+client, server, fake Plex process, audio module, or target port behind.
 
 All four 1.20.1 and all four 1.20.2 loader profiles have the additional
 two-client evidence above. The 1.21.1 Quilt, Fabric, and Forge profiles have the
 additional two-client evidence recorded above.
 NeoForge, Fabric, Quilt, and Forge on every modern target from 1.20.1 through
-26.2 have passed the deterministic two-client A/V gate. Forge 1.7.10 remains
-uncertified for synchronized audio. All remain unreleased pending live Plex
-validation.
+26.2 have passed the deterministic two-client A/V gate, as has Forge 1.7.10.
+All remain unreleased pending live Plex validation.
 
 Keep logs, JAR listings, checksums, and process/port evidence for each release.
 Credentials are process-environment-only and must never appear in retained

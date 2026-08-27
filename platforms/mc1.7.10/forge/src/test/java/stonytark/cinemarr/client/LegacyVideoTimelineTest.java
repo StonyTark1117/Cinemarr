@@ -29,6 +29,25 @@ class LegacyVideoTimelineTest {
         assertArrayEquals(new float[] { 10.0F, 20.0F, 30.0F }, LegacyVideoAudio.nearestScreenPoint(north, -100, -100, 100));
     }
 
+    @Test
+    void physicalSourceDelayIsRemovedFromTheSharedMediaSchedule() {
+        long targetUs = 1_300_000L;
+        long scheduledUs = 4_000_000L;
+        long prerollUs = 2_000_000L;
+        long backendPlayedUs = 300_000L;
+        long extraUs = LegacyVideoAudio.additionalSilenceUs(targetUs, scheduledUs, prerollUs, backendPlayedUs);
+        assertEquals(1_000_000L, extraUs);
+        assertEquals(scheduledUs - targetUs,
+                prerollUs - backendPlayedUs + extraUs,
+                "remaining queued silence must land program audio on the shared media timestamp");
+    }
+
+    @Test
+    void backendCursorMapsToTheScheduledMediaTimeline() {
+        assertEquals(5_000_000L, LegacyVideoAudio.audioMediaUs(5_000_000L, 2_250_000L, 1_750_000L));
+        assertEquals(5_500_000L, LegacyVideoAudio.audioMediaUs(5_000_000L, 2_250_000L, 2_750_000L));
+    }
+
     private static VideoPackets.SessionState state(boolean paused, long position, long epoch) {
         VideoMediaItem item = new VideoMediaItem(MediaKind.MOVIE, "42", "Fixture", "", "PG", 0, 60_000, "", 0);
         return new VideoPackets.SessionState(UUID.fromString("12345678-1234-5678-9abc-def012345678"), 1L,

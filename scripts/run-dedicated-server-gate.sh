@@ -748,25 +748,33 @@ wait_for_video_audio_pair_stable() {
   local stable_since=$SECONDS
   local signature="" previous_signature=""
   local leader_event follower_event leader_timeline follower_timeline
+  local event_pattern='Acceptance video audio (scheduled|rebuffer):'
+  local timeline_marker='Acceptance video audio timeline:'
+  local buffer_pattern='javaBufferMs=[1-9][0-9]*'
+  if [[ "$label" == "1.7.10-forge" ]]; then
+    event_pattern='Acceptance legacy video audio (scheduled|rebuffer):'
+    timeline_marker='Acceptance legacy video audio timeline:'
+    buffer_pattern='pendingFrames=[1-9][0-9]*'
+  fi
 
   while (( SECONDS < deadline )); do
     if ! group_alive "$leader_pid" || ! group_alive "$follower_pid"; then
       echo "$label: a video client exited while its audio backend was stabilizing" >&2
       return 1
     fi
-    leader_event=$(grep -nE 'Acceptance video audio (scheduled|rebuffer):' "$leader_log" 2>/dev/null | tail -n 1)
-    follower_event=$(grep -nE 'Acceptance video audio (scheduled|rebuffer):' "$follower_log" 2>/dev/null | tail -n 1)
+    leader_event=$(grep -nE "$event_pattern" "$leader_log" 2>/dev/null | tail -n 1)
+    follower_event=$(grep -nE "$event_pattern" "$follower_log" 2>/dev/null | tail -n 1)
     signature="$leader_event|$follower_event"
     if [[ "$signature" != "$previous_signature" ]]; then
       previous_signature=$signature
       stable_since=$SECONDS
     fi
-    leader_timeline=$(grep -F 'Acceptance video audio timeline:' "$leader_log" 2>/dev/null | tail -n 1)
-    follower_timeline=$(grep -F 'Acceptance video audio timeline:' "$follower_log" 2>/dev/null | tail -n 1)
+    leader_timeline=$(grep -F "$timeline_marker" "$leader_log" 2>/dev/null | tail -n 1)
+    follower_timeline=$(grep -F "$timeline_marker" "$follower_log" 2>/dev/null | tail -n 1)
     if [[ "$leader_event" == *'audio scheduled:'* && "$follower_event" == *'audio scheduled:'* \
         && "$leader_timeline" == *'underruns=0'* && "$follower_timeline" == *'underruns=0'* \
-        && "$leader_timeline" =~ javaBufferMs=[1-9][0-9]* \
-        && "$follower_timeline" =~ javaBufferMs=[1-9][0-9]* \
+        && "$leader_timeline" =~ $buffer_pattern \
+        && "$follower_timeline" =~ $buffer_pattern \
         && $((SECONDS - stable_since)) -ge 8 ]]; then
       return 0
     fi

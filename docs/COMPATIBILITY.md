@@ -1,8 +1,8 @@
 # Compatibility
 
 Cinemarr has no release-certified artifact yet because live Plex validation
-remains incomplete. Deterministic real-client acceptance is complete for the 20
-modern runtime profiles; Forge 1.7.10 still has an unresolved audio-sync gap.
+remains incomplete. Deterministic real-client acceptance is complete for all 21
+runtime profiles, including the isolated Forge 1.7.10 implementation.
 The shared transport core is Java-8-compatible; loader networking, registries,
 render events, native decoder packaging, and Quick TV Kit registration are
 platform-specific.
@@ -21,7 +21,7 @@ platform-specific.
 | 26.1.2 | Forge / NeoForge | video port build-verified, dedicated-launch-tested, protocol-client-tested, and real two-client 144p Quick TV deterministic-HLS A/V-certified (Forge: 0.987922 correlation at 70 ms; NeoForge: 0.988920 at -40 ms); live Plex untested |
 | 26.2 | Fabric / Quilt | video port build-verified, dedicated-launch-tested, protocol-client-tested, and real two-client 144p Quick TV deterministic-HLS A/V-certified (Fabric: 0.999427 correlation at 20 ms; Quilt: 0.996959 at -20 ms); live Plex untested |
 | 26.2 | Forge / NeoForge | video port build-verified, dedicated-launch-tested, protocol-client-tested, and real two-client 144p Quick TV deterministic-HLS A/V-certified (Forge: 0.996621 correlation at 80 ms; NeoForge: 0.990375 at 40 ms); live Plex untested |
-| 1.7.10 | Forge | isolated video runtime build-verified, dedicated-launch-tested, and protocol-client-tested; two real clients render the same deterministic program and emit audible program audio, but fresh reruns measured 400–680 ms sink separation, so A/V remains untested/uncertified; live Plex untested |
+| 1.7.10 | Forge | isolated video runtime build-verified, dedicated-launch-tested, protocol-client-tested, and real two-client 144p Quick TV deterministic-HLS A/V-certified in consecutive fresh runs (0.986105 correlation at -10 ms; 0.978383 at -30 ms); live Plex untested |
 
 Every listed target contains the eight configurable Quick TV Kit registrations,
 the complete survival-craftable Screen Pixel/controller/casing/speaker set, the
@@ -29,12 +29,10 @@ TV Remote, and a TV Redstone Receiver whose rising edge toggles the adjacent
 controller's active session.
 On 2026-08-27, each of the 21 exact runtime profiles built its acceptance screen
 through the real 144p Quick TV block, then proved persisted 16x9 geometry, a
-256x144 rendition, and owner `CinemarrVideoA`. The 20 modern profiles completed
-the full fake-Plex HLS route, produced two screenshots with an identifiable test
+256x144 rendition, and owner `CinemarrVideoA`. All 21 profiles completed the
+full fake-Plex HLS route, produced two screenshots with an identifiable test
 card, passed their two-sink audible synchronization threshold, and left no
-client, server, fake-Plex process, audio module, or target port behind. The
-Forge 1.7.10 adapter retains the same construction, HLS, rendering, and audible
-output paths, but its latest physical synchronization reruns failed. The matrix
+client, server, fake-Plex process, audio module, or target port behind. The matrix
 also includes a follower-first 26.1.2 NeoForge run proving that a client already
 in tracking range receives a television constructed later.
 
