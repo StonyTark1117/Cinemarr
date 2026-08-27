@@ -433,11 +433,18 @@ def verify_jar(path: Path, minecraft: str, loader: str, java: int, expected_majo
             ):
                 verify_direct_interface(archive, interface_name, implementation_name, filename)
         else:
-            if "stonytark/cinemarr/screen/QuickTvBlock.class" not in names:
-                fail(f"{filename} is missing its Quick TV builder runtime")
+            required_modern = {
+                "stonytark/cinemarr/screen/QuickTvBlock.class",
+                "stonytark/cinemarr/client/CinemarrVideoAudio.class",
+                "stonytark/cinemarr/mixin/client/ChannelAccessor.class",
+            }
+            if required_modern - names:
+                fail(f"{filename} is missing modern runtime entries: {sorted(required_modern - names)}")
             if "cinemarr.mixins.json" not in names:
                 fail(f"{filename} is missing Mixin metadata")
             mixin = json.loads(archive.read("cinemarr.mixins.json"))
+            if "client.ChannelAccessor" not in mixin.get("client", []):
+                fail(f"{filename} does not register the synchronized audio Channel accessor")
             # Forge 26.1.2 still embeds Mixin 0.8.7, whose highest declared
             # compatibility constant is JAVA_21. The classes themselves are
             # independently required to be Java 25 bytecode above.

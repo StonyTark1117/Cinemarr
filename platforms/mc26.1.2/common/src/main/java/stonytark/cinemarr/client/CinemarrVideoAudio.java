@@ -10,6 +10,7 @@ import stonytark.cinemarr.core.platform.CinemarrSettings;
 import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.core.protocol.VideoPackets;
 import stonytark.cinemarr.core.screen.ScreenFacing;
+import stonytark.cinemarr.mixin.client.ChannelAccessor;
 import stonytark.cinemarr.mixin.client.SoundEngineAccessor;
 import stonytark.cinemarr.mixin.client.SoundManagerAccessor;
 
@@ -22,6 +23,8 @@ public final class CinemarrVideoAudio {
     private static final long START_BUFFER_US = 700_000;
     private static final long SCHEDULE_LEAD_US = 1_000_000;
     private static final long SCHEDULE_QUANTUM_US = 1_000_000;
+    private static final int STREAM_BUFFER_MS = 100;
+    private static final int INITIAL_STREAM_BUFFERS = 4;
     private static final int MAX_PENDING_FRAMES = 128;
     private final Queue<DecodedAudioFrame> pending = new ArrayDeque<>();
     private UUID sessionId;
@@ -125,7 +128,14 @@ public final class CinemarrVideoAudio {
                     startingStream.bufferedMs());
         }
         Vec3 origin = nearestScreenPoint(session, Minecraft.getInstance().gameRenderer.getMainCamera().position());
-        handle.execute(value -> { value.setRelative(false); value.setSelfPosition(origin); value.linearAttenuation(64); value.setVolume(0); value.attachBufferStream(startingStream); value.play(); });
+        handle.execute(value -> {
+            value.setRelative(false); value.setSelfPosition(origin); value.linearAttenuation(64); value.setVolume(0);
+            ChannelAccessor accessor = (ChannelAccessor) value;
+            accessor.cinemarr$stream(startingStream);
+            accessor.cinemarr$streamingBufferSize(streamBufferBytes(startingStream));
+            accessor.cinemarr$pumpBuffers(INITIAL_STREAM_BUFFERS);
+            value.play();
+        });
     }
 
     private static long endUs(DecodedAudioFrame frame) {
@@ -135,6 +145,12 @@ public final class CinemarrVideoAudio {
 
     private static long roundUp(long value, long quantum) {
         return Math.floorDiv(value + quantum - 1, quantum) * quantum;
+    }
+
+    private static int streamBufferBytes(VideoPcmAudioStream value) {
+        int frameSize = value.getFormat().getFrameSize();
+        int bytes = (int) value.getFormat().getSampleRate() * frameSize * STREAM_BUFFER_MS / 1_000;
+        return Math.max(frameSize, bytes - bytes % frameSize);
     }
 
     static Vec3 nearestScreenPoint(VideoPackets.SessionState state, Vec3 listener) {

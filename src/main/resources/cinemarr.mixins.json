@@ -6,6 +6,7 @@
   "mixins": [
   ],
   "client": [
+    "client.ChannelAccessor",
     "client.NativeImageAccessor",
     "client.SoundEngineAccessor",
     "client.SoundManagerAccessor"

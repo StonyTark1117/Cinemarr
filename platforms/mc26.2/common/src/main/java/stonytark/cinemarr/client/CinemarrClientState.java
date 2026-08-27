@@ -67,7 +67,10 @@ public final class CinemarrClientState {
                 queueAcceptanceAudio();
             }
         } else if (payload instanceof CinemarrPayloads.TimeSyncResponse value) {
-            clock.accept(value.clientSentEpochMs(), value.serverEpochMs(), System.currentTimeMillis());
+            ClockSynchronizer.Sample sample = clock.accept(value.clientSentEpochMs(), value.serverEpochMs(), System.currentTimeMillis());
+            if (ProtocolLimits.videoProbeEnabled()) Cinemarr.LOGGER.info(
+                    "Acceptance media clock: sample={} roundTripMs={} rawOffsetMs={} filteredOffsetMs={} bestRoundTripMs={}",
+                    clock.sampleCount(), sample.roundTripMs(), sample.rawOffsetMs(), sample.filteredOffsetMs(), clock.bestRoundTripMs());
         } else if (payload instanceof CinemarrPayloads.BrowseResults value) {
             browse = value; refreshScreen(minecraft);
         } else if (payload instanceof CinemarrPayloads.PlaybackState value) {

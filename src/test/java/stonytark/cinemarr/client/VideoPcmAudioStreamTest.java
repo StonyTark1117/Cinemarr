@@ -51,4 +51,20 @@ final class VideoPcmAudioStreamTest {
         assertEquals(7, value.get());
         assertEquals(8, value.get());
     }
+
+    @Test
+    void lateScheduledStartSkipsElapsedProgramAudio() {
+        AtomicLong now = new AtomicLong();
+        VideoPcmAudioStream stream = new VideoPcmAudioStream(1_000, 1, now::get);
+        stream.scheduleSilenceFor(2_000);
+        assertTrue(stream.offer(new DecodedAudioFrame(0, 1_000, 1,
+                new byte[]{1, 2, 3, 4, 5, 6, 7, 8})));
+        now.set(5_000_000);
+
+        ByteBuffer value = stream.read(4);
+        assertEquals(7, value.get());
+        assertEquals(8, value.get());
+        assertEquals(0, value.get());
+        assertEquals(0, value.get());
+    }
 }
