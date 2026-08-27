@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.forgegradle)
     alias(libs.plugins.forge.jarjar)
 }
+apply from: file('../../../gradle/mc26-recipe-resources.gradle')
 
 group = 'stonytark'
 version = '1.0.0'

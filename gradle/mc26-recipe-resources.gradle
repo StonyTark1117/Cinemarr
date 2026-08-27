@@ -1,0 +1,9 @@
+// Minecraft 26.x uses compact string ingredients while 1.21.1 uses
+// {"item":"..."} objects at the same singular recipe resource path.
+tasks.named('processResources') {
+    filesMatching('data/cinemarr/recipe/quick_tv_*.json') {
+        filter { line ->
+            line.replaceAll(/\{"item":"([^"]+)"\}/) { ignored, item -> "\"${item}\"" }
+        }
+    }
+}

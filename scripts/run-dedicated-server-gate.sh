@@ -1585,6 +1585,11 @@ run_target() {
   set_property "$run_dir/server.properties" online-mode false
   set_property "$run_dir/server.properties" enforce-secure-profile false
   set_property "$run_dir/server.properties" sync-chunk-writes false
+  # The acceptance scene fits within one chunk. Keep the isolated world small
+  # so software-rendered multi-client runs do not leave hundreds of generated
+  # chunks for the server to drain during the bounded clean-shutdown gate.
+  set_property "$run_dir/server.properties" view-distance 3
+  set_property "$run_dir/server.properties" simulation-distance 3
   isolate_gate_world "$run_dir" "$label" "$level_name"
   if [[ "$label" == "1.7.10-forge" ]]; then
     # Vanilla 1.7.10 closes an RCON connection after its authentication packet,

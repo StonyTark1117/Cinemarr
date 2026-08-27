@@ -12,6 +12,7 @@ import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.Screenshot;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.network.RegistryFriendlyByteBuf;
@@ -22,6 +23,7 @@ import org.lwjgl.glfw.GLFW;
 import stonytark.cinemarr.Cinemarr;
 import stonytark.cinemarr.core.platform.CanonicalConfigFiles;
 import stonytark.cinemarr.core.platform.CinemarrSettings;
+import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.network.ClientPayloadBridge;
 import stonytark.cinemarr.network.CinemarrNetwork;
 import stonytark.cinemarr.network.CinemarrPayloads;
@@ -35,6 +37,8 @@ public final class CinemarrClient implements ClientModInitializer {
     private static final CinemarrVideoPlaybackManager VIDEO = new CinemarrVideoPlaybackManager();
     private static final CinemarrVideoRenderer VIDEO_RENDERER = new CinemarrVideoRenderer();
     private static final CinemarrVideoAudioManager VIDEO_AUDIO = new CinemarrVideoAudioManager();
+    private int acceptanceVideoReadyTicks;
+    private boolean acceptanceVideoScreenshotSaved;
 
     @Override public void onInitializeClient() {
         installClientSettings();
@@ -47,6 +51,8 @@ public final class CinemarrClient implements ClientModInitializer {
             VIDEO_AUDIO.reset();
             VIDEO.reset();
             CinemarrClientState.INSTANCE.stop();
+            acceptanceVideoReadyTicks = 0;
+            acceptanceVideoScreenshotSaved = false;
         });
         ClientTickEvents.END_CLIENT_TICK.register(this::tick);
         WorldRenderEvents.LAST.register(context -> {
@@ -84,6 +90,23 @@ public final class CinemarrClient implements ClientModInitializer {
         CinemarrClientState.INSTANCE.tick();
         VIDEO.tick(CinemarrVideoClientState.INSTANCE);
         VIDEO_AUDIO.tick(VIDEO, CinemarrVideoClientState.INSTANCE);
+        captureAcceptanceVideo(minecraft);
+    }
+
+    private void captureAcceptanceVideo(Minecraft minecraft) {
+        if (!ProtocolLimits.videoProbeEnabled() || acceptanceVideoScreenshotSaved
+                || !VIDEO.hasPresentedFrame() || !VIDEO.presentedFrameCaughtUp() || !VIDEO_AUDIO.anyReady()) {
+            acceptanceVideoReadyTicks = 0;
+            return;
+        }
+        if (++acceptanceVideoReadyTicks < 40) return;
+        acceptanceVideoScreenshotSaved = true;
+        String frame = VIDEO.presentedFrameSha256();
+        long pts = VIDEO.presentedFrameTimeUs();
+        Cinemarr.LOGGER.info("Acceptance video ready: frameSha256={} ptsUs={} audio=true", frame, pts);
+        Screenshot.grab(minecraft.gameDirectory, "cinemarr-video-acceptance.png", minecraft.getMainRenderTarget(),
+                message -> Cinemarr.LOGGER.info("Acceptance video screenshot: frameSha256={} ptsUs={} result={}",
+                        frame, pts, message.getString()));
     }
 
     private static void registerReceivers() {
@@ -101,6 +124,7 @@ public final class CinemarrClient implements ClientModInitializer {
 
     private static <T extends CustomPacketPayload & stonytark.cinemarr.core.protocol.CinemarrMessage> void receive(CustomPacketPayload.Type<T> type,
                                                                  StreamCodec<? super RegistryFriendlyByteBuf, T> codec) {
-        ClientPlayNetworking.registerGlobalReceiver(type, (payload, context) -> ClientPayloadBridge.accept(payload));
+        ClientPlayNetworking.registerGlobalReceiver(type,
+                (payload, context) -> context.client().execute(() -> ClientPayloadBridge.accept(payload)));
     }
 }

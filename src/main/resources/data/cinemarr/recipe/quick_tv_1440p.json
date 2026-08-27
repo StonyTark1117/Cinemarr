@@ -1,1 +1,1 @@
-{"type":"minecraft:crafting_shaped","category":"building","pattern":["MMM","MKM","MMM"],"key":{"M":"minecraft:gold_block","K":"cinemarr:quick_tv_1080p"},"result":{"id":"cinemarr:quick_tv_1440p","count":1}}
+{"type":"minecraft:crafting_shaped","category":"building","pattern":["MMM","MKM","MMM"],"key":{"M":{"item":"minecraft:gold_block"},"K":{"item":"cinemarr:quick_tv_1080p"}},"result":{"id":"cinemarr:quick_tv_1440p","count":1}}

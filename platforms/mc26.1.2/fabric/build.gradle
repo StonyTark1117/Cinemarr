@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.fabric.loom)
 }
 apply from: file('../../../gradle/quilt-runtime.gradle')
+apply from: file('../../../gradle/mc26-recipe-resources.gradle')
 
 group = 'stonytark'
 version = '1.0.0'

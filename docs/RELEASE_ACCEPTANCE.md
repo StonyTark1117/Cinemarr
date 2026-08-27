@@ -1,8 +1,8 @@
 # Release acceptance
 
-No artifact is currently release-certified. NeoForge 1.21.1 has passed the
-deterministic real two-client A/V gate, but live Plex validation is still
-outstanding. A successful Gradle build alone is insufficient.
+No artifact is currently release-certified. NeoForge and Fabric on 1.21.1 have
+passed the deterministic real two-client A/V gate, but live Plex validation is
+still outstanding. A successful Gradle build alone is insufficient.
 
 Required checks:
 
@@ -35,16 +35,26 @@ master playlist, media playlist, and MPEG-TS segments each time. The clients,
 server, fake Plex process, audio modules, and target ports were gone after both
 gates.
 
+On the same date, `1.21.1-fabric` independently passed the full gate after its
+server adapter created the acceptance television and dispatched client payloads
+on the client thread. Both clients saved visible test-card screenshots, shared
+the same decoded-frame SHA-256 above, and produced 997 Hz captures with 0.986383
+correlation at -10 ms lag. The server then saved every dimension and stopped;
+its clients, fake Plex process, audio modules, and target ports were absent after
+the gate. The same launch also loaded all Quick TV recipes without parse errors.
+
 The 1.20.1 Fabric/Quilt, Forge, and transitional NeoForge adapters are build-
 verified, dedicated-launch-tested, and protocol-client-tested. The 1.20.2
 Fabric/Quilt, Forge, and NeoForge adapters have the same evidence. The 1.21.1
-Fabric/Quilt and Forge adapters have compile and dedicated-launch evidence.
+Quilt and Forge adapters have compile and dedicated-launch evidence; Fabric has
+the additional two-client evidence recorded above.
 The 26.1.2 and 26.2 Fabric/Quilt, Forge, and NeoForge adapters are build-verified,
 dedicated-launch-tested, and protocol-client-tested. Forge 1.7.10 is build-
 verified and has dedicated/protocol-rejection launch evidence, but no matching-
-client renderer/audio evidence. NeoForge 1.21.1 alone has passed the deterministic
-two-client A/V gate; it remains unreleased pending live Plex validation. All other
-targets remain unreleased pending their own two-client A/V and live Plex gates.
+client renderer/audio evidence. NeoForge and Fabric on 1.21.1 have passed the
+deterministic two-client A/V gate; both remain unreleased pending live Plex
+validation. All other targets remain unreleased pending their own two-client A/V
+and live Plex gates.
 
 Keep logs, JAR listings, checksums, and process/port evidence for each release.
 Credentials are process-environment-only and must never appear in retained

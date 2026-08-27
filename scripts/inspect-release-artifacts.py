@@ -378,6 +378,7 @@ def verify_jar(path: Path, minecraft: str, loader: str, java: int, expected_majo
         }
         if quick_assets - names:
             fail(f"{filename} is missing Quick TV assets: {sorted(quick_assets - names)}")
+        verify_quick_tv_recipes(archive, names, minecraft, filename)
         for notice in ("META-INF/LICENSE-Cinemarr-CC0-1.0.txt", "META-INF/LICENSE-LGPL-2.1-or-later.txt",
                        "META-INF/THIRD_PARTY_NOTICES.md"):
             if len(archive.read(notice).strip()) < 32:
@@ -461,6 +462,31 @@ def verify_jar(path: Path, minecraft: str, loader: str, java: int, expected_majo
                                  "de/sciss/jump3r/mp3/Lame.class", filename)
 
         verify_no_deployment_secrets(archive, filename)
+
+
+def verify_quick_tv_recipes(archive: zipfile.ZipFile, names: set[str], minecraft: str,
+                            filename: str) -> None:
+    if minecraft == "1.7.10":
+        return
+    directory = "recipes" if minecraft in ("1.20.1", "1.20.2") else "recipe"
+    expected = {f"data/cinemarr/{directory}/quick_tv_{quick_id}.json" for quick_id in QUICK_TV_IDS}
+    if expected - names:
+        fail(f"{filename} is missing active Quick TV recipes: {sorted(expected - names)}")
+    for entry in sorted(expected):
+        recipe = json.loads(archive.read(entry))
+        ingredients = recipe.get("key")
+        result = recipe.get("result")
+        if not isinstance(ingredients, dict) or not ingredients or not isinstance(result, dict):
+            fail(f"{filename}:{entry} has an invalid shaped-recipe structure")
+        if minecraft in ("26.1.2", "26.2"):
+            if not all(isinstance(ingredient, str) for ingredient in ingredients.values()):
+                fail(f"{filename}:{entry} does not use Minecraft 26.x string ingredients")
+        elif not all(isinstance(ingredient, dict) and "item" in ingredient
+                     for ingredient in ingredients.values()):
+            fail(f"{filename}:{entry} does not use object-form ingredients")
+        result_key = "item" if minecraft in ("1.20.1", "1.20.2") else "id"
+        if not isinstance(result.get(result_key), str):
+            fail(f"{filename}:{entry} does not use result.{result_key}")
 
 
 def main() -> int:

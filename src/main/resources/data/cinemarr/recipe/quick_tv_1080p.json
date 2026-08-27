@@ -1,1 +1,1 @@
-{"type":"minecraft:crafting_shaped","category":"building","pattern":["MMM","MKM","MMM"],"key":{"M":"minecraft:redstone_block","K":"cinemarr:quick_tv_720p"},"result":{"id":"cinemarr:quick_tv_1080p","count":1}}
+{"type":"minecraft:crafting_shaped","category":"building","pattern":["MMM","MKM","MMM"],"key":{"M":{"item":"minecraft:redstone_block"},"K":{"item":"cinemarr:quick_tv_720p"}},"result":{"id":"cinemarr:quick_tv_1080p","count":1}}
