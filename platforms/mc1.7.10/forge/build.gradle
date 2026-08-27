@@ -182,6 +182,8 @@ tasks.register('verifyRelease') {
                     'stonytark/cinemarr/core/server/PlaybackStore.class',
                     'stonytark/cinemarr/network/LegacyNetwork.class',
                     'stonytark/cinemarr/server/LegacyGlobalPlayer.class',
+                    'stonytark/cinemarr/server/LegacyVideoManager.class',
+                    'stonytark/cinemarr/server/LegacyVideoSavedData.class',
                     'stonytark/cinemarr/client/LegacyAudioPlayer.class',
                     'stonytark/cinemarr/client/LegacyScreen.class',
                     'stonytark/cinemarr/client/LegacyFfmpegVideoDecoder.class',

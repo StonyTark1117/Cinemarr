@@ -7,6 +7,9 @@ import stonytark.cinemarr.core.protocol.ControlPackets;
 import stonytark.cinemarr.core.protocol.ProtocolException;
 import stonytark.cinemarr.core.protocol.ProtocolGoldenVectors;
 import stonytark.cinemarr.core.protocol.TransportPackets;
+import stonytark.cinemarr.core.protocol.VideoPackets;
+import stonytark.cinemarr.core.protocol.ProtocolLimits;
+import stonytark.cinemarr.Cinemarr;
 
 import java.util.UUID;
 
@@ -15,6 +18,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class LegacyEnvelopeTest {
+    @Test
+    void advertisesTheCurrentVideoProtocol() {
+        assertEquals(ProtocolLimits.VERSION, Cinemarr.PROTOCOL);
+    }
+
     @Test
     void carriesCanonicalClientHelloBytes() {
         LegacyEnvelope outgoing = LegacyEnvelope.encode(LegacyPacketTypes.CLIENT_HELLO, new ControlPackets.ClientHello(5));
@@ -45,6 +53,18 @@ class LegacyEnvelopeTest {
         assertEquals(900L, decoded.startMs());
         assertEquals("abcd", decoded.sha256());
         assertArrayEquals(audio, decoded.data());
+    }
+
+    @Test
+    void preservesBoundedVideoChunkFields() {
+        UUID session = UUID.fromString("12345678-1234-5678-9abc-def012345678");
+        VideoPackets.SegmentChunk outgoing = new VideoPackets.SegmentChunk(session, 3, 11, 4, 1, 2,
+                9_000, true, "abcd", new byte[] { 5, 6, 7 });
+        LegacyEnvelope envelope = LegacyEnvelope.encode(LegacyPacketTypes.VIDEO_SEGMENT_CHUNK, outgoing);
+        VideoPackets.SegmentChunk decoded = (VideoPackets.SegmentChunk) envelope.decode(LegacyPacketTypes.Direction.CLIENTBOUND);
+        assertEquals(session, decoded.sessionId()); assertEquals(3, decoded.generation()); assertEquals(11, decoded.requestId());
+        assertEquals(4, decoded.segmentIndex()); assertEquals(1, decoded.chunkIndex()); assertEquals(2, decoded.totalChunks());
+        assertEquals(9_000, decoded.presentationTimeMs()); assertArrayEquals(new byte[] { 5, 6, 7 }, decoded.data());
     }
 
     @Test

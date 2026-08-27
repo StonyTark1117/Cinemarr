@@ -10,6 +10,7 @@ import net.minecraft.world.World;
 import net.minecraft.world.WorldServer;
 import stonytark.cinemarr.network.LegacyNetwork;
 import stonytark.cinemarr.network.LegacyPacketTypes;
+import stonytark.cinemarr.Cinemarr;
 
 /** Activates or refreshes an adjacent recorded screen silhouette. */
 public final class LegacyTvControllerBlock extends Block {
@@ -24,8 +25,11 @@ public final class LegacyTvControllerBlock extends Block {
         if (world.isRemote || !(world instanceof WorldServer)) return true;
         LegacyWorldScreens.Activation result = LegacyWorldScreens.get((WorldServer) world).activate(x, y, z, player.getUniqueID());
         player.addChatMessage(new ChatComponentText(result.message()));
-        if (result.success() && player instanceof EntityPlayerMP) LegacyNetwork.sendToPlayer((EntityPlayerMP) player,
-                LegacyPacketTypes.OPEN_VIDEO_SCREEN, new LegacyPacketTypes.OpenVideoScreen(LegacyBlockPos.pack(x, y, z)));
+        if (result.success() && player instanceof EntityPlayerMP) {
+            Cinemarr.televisionActivated((WorldServer) world, result.television());
+            LegacyNetwork.sendToPlayer((EntityPlayerMP) player, LegacyPacketTypes.OPEN_VIDEO_SCREEN,
+                    new LegacyPacketTypes.OpenVideoScreen(LegacyBlockPos.pack(x, y, z)));
+        }
         return true;
     }
 
