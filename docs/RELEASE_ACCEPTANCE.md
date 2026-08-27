@@ -85,6 +85,9 @@ regression gates on the compensation implementation passed for Fabric 1.21.1 at
 NeoForge 26.1.2 at 0.986400 / 20 ms, and NeoForge 26.2 at 0.995487 / 30 ms.
 An exact Fabric 26.2 regression after moving the authoritative-target sample
 into the same audio-executor callback passed at 0.993323 / 30 ms.
+The runtime gate also disables hostile-mob spawning after a hosted zombie moved
+both positional-audio probes during capture; a hardened NeoForge 1.21.1 rerun
+passed at 0.990618 / 40 ms without listener displacement.
 Each run also passed protocol and command-client checks and left no client,
 server, fake-Plex process, audio module, or target port behind.
 

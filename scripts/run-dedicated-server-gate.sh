@@ -1750,6 +1750,9 @@ run_target() {
   set_property "$run_dir/server.properties" online-mode false
   set_property "$run_dir/server.properties" enforce-secure-profile false
   set_property "$run_dir/server.properties" sync-chunk-writes false
+  # Keep hostile mobs from moving or killing the two physical-audio probes.
+  # Listener displacement changes positional gain and invalidates the capture.
+  set_property "$run_dir/server.properties" spawn-monsters false
   # The acceptance scene fits within one chunk. Keep the isolated world small
   # so software-rendered multi-client runs do not leave hundreds of generated
   # chunks for the server to drain during the bounded clean-shutdown gate.
