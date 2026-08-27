@@ -47,16 +47,38 @@ repositories {
 
 configurations {
     embeddedLibraries
+    javacvFacade
     implementation.extendsFrom(embeddedLibraries)
 }
+
+def extractJavaCvFacade = tasks.register('extractJavaCvFacade', Sync) {
+    from { configurations.javacvFacade.collect { zipTree(it) } }
+    include 'org/bytedeco/javacv/Frame.class', 'org/bytedeco/javacv/Frame$*.class',
+            'org/bytedeco/javacv/FrameGrabber.class', 'org/bytedeco/javacv/FrameGrabber$*.class',
+            'org/bytedeco/javacv/FFmpegFrameGrabber.class', 'org/bytedeco/javacv/FFmpegFrameGrabber$*.class',
+            'org/bytedeco/javacv/FFmpegLogCallback.class'
+    into(layout.buildDirectory.dir('generated/javacvFacade'))
+}
+sourceSets.main.output.dir(extractJavaCvFacade)
 
 dependencyLocking {
     lockAllConfigurations()
 }
 
 dependencies {
+    def javaCppVersion = '1.5.14'
+    def ffmpegVersion = '8.1.2-1.5.14'
+    def javaCvVersion = '1.5.14'
     embeddedLibraries('javazoom:jlayer:1.0.1')
     embeddedLibraries('de.sciss:jump3r:1.0.5')
+    javacvFacade("org.bytedeco:javacv:${javaCvVersion}") { transitive = false }
+    compileOnly("org.bytedeco:javacv:${javaCvVersion}") { transitive = false }
+    embeddedLibraries("org.bytedeco:javacpp:${javaCppVersion}") { transitive = false }
+    embeddedLibraries("org.bytedeco:ffmpeg:${ffmpegVersion}") { transitive = false }
+    ['linux-x86_64', 'linux-arm64', 'windows-x86_64'].each { platform ->
+        embeddedLibraries(group: 'org.bytedeco', name: 'javacpp', version: javaCppVersion, classifier: platform) { transitive = false }
+        embeddedLibraries(group: 'org.bytedeco', name: 'ffmpeg', version: ffmpegVersion, classifier: platform) { transitive = false }
+    }
     testImplementation(platform('org.junit:junit-bom:5.10.2'))
     testImplementation('org.junit.jupiter:junit-jupiter')
     testRuntimeOnly('org.junit.platform:junit-platform-launcher')
@@ -97,6 +119,7 @@ tasks.withType(Test).configureEach {
 def canonicalBaseName = "cinemarr-${modVersionValue}+mc${minecraftVersionValue}-forge"
 
 tasks.named('processResources', ProcessResources) {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     inputs.property('modVersion', modVersionValue)
     filesMatching('mcmod.info') {
         expand(modVersion: modVersionValue)
@@ -161,6 +184,9 @@ tasks.register('verifyRelease') {
                     'stonytark/cinemarr/server/LegacyGlobalPlayer.class',
                     'stonytark/cinemarr/client/LegacyAudioPlayer.class',
                     'stonytark/cinemarr/client/LegacyScreen.class',
+                    'stonytark/cinemarr/client/LegacyFfmpegVideoDecoder.class',
+                    'org/bytedeco/javacv/FFmpegFrameGrabber.class',
+                    'org/bytedeco/ffmpeg/global/avcodec.class',
                     'stonytark/cinemarr/server/LegacySavedData.class',
                     'javazoom/jl/decoder/Decoder.class',
                     'de/sciss/jump3r/mp3/Lame.class'
