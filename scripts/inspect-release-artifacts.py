@@ -452,6 +452,34 @@ def verify_jar(path: Path, minecraft: str, loader: str, java: int, expected_majo
             if mixin.get("compatibilityLevel") != f"JAVA_{mixin_java}":
                 fail(f"{filename} has incorrect Mixin Java compatibility")
             nested_prefix = "META-INF/jars" if loader == "fabric" else "META-INF/jarjar"
+            if loader != "fabric":
+                flattened_video_runtime = {
+                    "org/bytedeco/javacpp/Loader.class",
+                    "org/bytedeco/ffmpeg/global/avcodec.class",
+                    "org/bytedeco/javacpp/linux-x86_64/libjnijavacpp.so",
+                    "org/bytedeco/javacpp/linux-arm64/libjnijavacpp.so",
+                    "org/bytedeco/javacpp/windows-x86_64/jnijavacpp.dll",
+                    "org/bytedeco/ffmpeg/linux-x86_64/libjniavutil.so",
+                    "org/bytedeco/ffmpeg/linux-arm64/libjniavutil.so",
+                    "org/bytedeco/ffmpeg/windows-x86_64/avcodec-62.dll",
+                }
+                if flattened_video_runtime - names:
+                    fail(f"{filename} is missing flattened JavaCPP/FFmpeg runtime entries")
+                if any(name.startswith("META-INF/jarjar/javacpp-")
+                       or name.startswith("META-INF/jarjar/ffmpeg-") for name in names):
+                    fail(f"{filename} contains module-path JavaCPP/FFmpeg JARs")
+                if "module-info.class" in names or any(
+                        name.startswith("META-INF/versions/") and name.endswith("/module-info.class")
+                        for name in names):
+                    fail(f"{filename} contains a shaded dependency module descriptor")
+                jarjar_metadata = json.loads(archive.read("META-INF/jarjar/metadata.json"))
+                core_identifiers = {
+                    (entry.get("identifier", {}).get("group"), entry.get("identifier", {}).get("artifact"))
+                    for entry in jarjar_metadata.get("jars", [])
+                    if entry.get("identifier", {}).get("artifact") == "core"
+                }
+                if core_identifiers != {("stonytark.cinemarr", "core")}:
+                    fail(f"{filename} does not isolate Cinemarr's private core coordinate")
             core_candidates = sorted(name for name in names if name.startswith(f"{nested_prefix}/")
                                      and name.endswith("core-1.0.0.jar"))
             if len(core_candidates) != 1:

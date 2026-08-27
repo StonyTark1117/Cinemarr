@@ -1,0 +1,93 @@
+// Forge-family loaders place Jar-in-Jar dependencies on the Java module path.
+// JavaCPP's OS classifiers share Maven coordinates but declare distinct Java
+// modules which depend on the classifier-free base modules. JarJar resolves one
+// coordinate winner, so a multi-OS nested set can omit the base module and fail
+// before Minecraft starts. Keep the loader-neutral dependencies nested, but
+// flatten JavaCPP/FFmpeg classes and native resources into the Cinemarr module.
+
+def javaCppVersion = '1.5.14'
+def ffmpegVersion = '8.1.2-1.5.14'
+def bundledVideoRuntime = configurations.maybeCreate('bundledVideoRuntime')
+
+dependencies {
+    add('bundledVideoRuntime', "org.bytedeco:javacpp:${javaCppVersion}") { transitive = false }
+    add('bundledVideoRuntime', "org.bytedeco:ffmpeg:${ffmpegVersion}") { transitive = false }
+    ['linux-x86_64', 'linux-arm64', 'windows-x86_64'].each { platform ->
+        add('bundledVideoRuntime', "org.bytedeco:javacpp:${javaCppVersion}:${platform}") { transitive = false }
+        add('bundledVideoRuntime', "org.bytedeco:ffmpeg:${ffmpegVersion}:${platform}") { transitive = false }
+    }
+}
+
+def jarJarConfiguration = configurations.findByName('jarJar')
+if (jarJarConfiguration != null) {
+    jarJarConfiguration.withDependencies { dependencies ->
+        dependencies.removeAll { dependency -> dependency.group == 'org.bytedeco' }
+    }
+}
+
+if (!project.ext.has('cinemarrReleaseArchiveTask')) {
+    throw new GradleException('cinemarrReleaseArchiveTask must name the final release archive task')
+}
+def releaseTask = tasks.named(project.ext.cinemarrReleaseArchiveTask.toString())
+releaseTask.configure {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    exclude 'META-INF/jarjar/javacpp-*.jar', 'META-INF/jarjar/ffmpeg-*.jar'
+    from({ bundledVideoRuntime.collect { zipTree(it) } }) {
+        exclude 'META-INF/MANIFEST.MF', 'META-INF/*.SF', 'META-INF/*.RSA', 'META-INF/*.DSA',
+                'module-info.class', 'META-INF/versions/**/module-info.class'
+    }
+    // ForgeGradle's JarJar task injects dependency archives after the normal
+    // CopySpec exclusions run. Its metadata already omits the dependencies
+    // removed above, but strip the now-unreferenced physical entries too so a
+    // loader cannot discover their module descriptors by scanning the folder.
+    doLast {
+        def archive = archiveFile.get().asFile
+        def jarUri = java.net.URI.create("jar:${archive.toURI()}")
+        java.nio.file.FileSystems.newFileSystem(jarUri, [:]).withCloseable { fileSystem ->
+            def jarJarRoot = fileSystem.getPath('/META-INF/jarjar')
+            if (java.nio.file.Files.isDirectory(jarJarRoot)) {
+                def obsolete = java.nio.file.Files.list(jarJarRoot).withCloseable { paths ->
+                    paths.findAll { path ->
+                        def name = path.fileName.toString()
+                        name.startsWith('javacpp-') || name.startsWith('ffmpeg-')
+                    }
+                }
+                obsolete.each { java.nio.file.Files.delete(it) }
+            }
+        }
+    }
+}
+
+def verifyFlattenedVideoRuntime = tasks.register('verifyFlattenedVideoRuntime') {
+    group = 'verification'
+    dependsOn(releaseTask)
+    inputs.file(releaseTask.flatMap { it.archiveFile })
+    doLast {
+        def required = [
+                'org/bytedeco/javacpp/Loader.class',
+                'org/bytedeco/ffmpeg/global/avcodec.class',
+                'org/bytedeco/javacpp/linux-x86_64/libjnijavacpp.so',
+                'org/bytedeco/javacpp/linux-arm64/libjnijavacpp.so',
+                'org/bytedeco/javacpp/windows-x86_64/jnijavacpp.dll',
+                'org/bytedeco/ffmpeg/linux-x86_64/libjniavutil.so',
+                'org/bytedeco/ffmpeg/linux-arm64/libjniavutil.so',
+                'org/bytedeco/ffmpeg/windows-x86_64/avcodec-62.dll'
+        ]
+        new java.util.zip.ZipFile(inputs.files.singleFile).withCloseable { zip ->
+            def found = zip.entries().collect { it.name } as Set
+            required.each { entry ->
+                if (!found.contains(entry)) throw new GradleException("Release archive is missing flattened video runtime entry ${entry}")
+            }
+            if (found.any { it.startsWith('META-INF/jarjar/javacpp-') || it.startsWith('META-INF/jarjar/ffmpeg-') }) {
+                throw new GradleException('Release archive still contains module-path JavaCPP/FFmpeg jars')
+            }
+            if (found.contains('module-info.class') || found.any { it.matches('META-INF/versions/.*/module-info\\.class') }) {
+                throw new GradleException('Release archive contains a shaded dependency module descriptor')
+            }
+        }
+    }
+}
+
+tasks.matching { it.name == 'verifyRelease' }.configureEach {
+    dependsOn(verifyFlattenedVideoRuntime)
+}

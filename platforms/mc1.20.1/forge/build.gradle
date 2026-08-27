@@ -178,13 +178,6 @@ tasks.named('build') { dependsOn(tasks.named('jarJar')) }
 def releaseArchive = tasks.named('jarJar').flatMap { it.archiveFile }
 def releaseEntries = ['META-INF/jarjar/core-1.0.0.jar', 'META-INF/jarjar/jlayer-1.0.1.jar',
                       'META-INF/jarjar/jump3r-1.0.5.jar', 'META-INF/jarjar/metadata.json',
-                      'META-INF/jarjar/javacpp-1.5.14.jar', 'META-INF/jarjar/ffmpeg-8.1.2-1.5.14.jar',
-                      'META-INF/jarjar/javacpp-1.5.14-linux-x86_64.jar',
-                      'META-INF/jarjar/javacpp-1.5.14-linux-arm64.jar',
-                      'META-INF/jarjar/javacpp-1.5.14-windows-x86_64.jar',
-                      'META-INF/jarjar/ffmpeg-8.1.2-1.5.14-linux-x86_64.jar',
-                      'META-INF/jarjar/ffmpeg-8.1.2-1.5.14-linux-arm64.jar',
-                      'META-INF/jarjar/ffmpeg-8.1.2-1.5.14-windows-x86_64.jar',
                       'org/bytedeco/javacv/FFmpegFrameGrabber.class', 'org/bytedeco/javacv/Frame.class',
                       'META-INF/LICENSE-Cinemarr-CC0-1.0.txt', 'META-INF/LICENSE-LGPL-2.1-or-later.txt',
                       'META-INF/THIRD_PARTY_NOTICES.md', 'META-INF/mods.toml', 'cinemarr.mixins.json',
@@ -228,3 +221,6 @@ tasks.register('verifyRelease') {
         }
     }
 }
+
+ext.cinemarrReleaseArchiveTask = 'jarJar'
+apply from: file('../../../gradle/flatten-video-runtime.gradle')

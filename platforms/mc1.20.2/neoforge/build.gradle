@@ -188,16 +188,9 @@ tasks.register('verifyRelease') {
                 if (!found.contains(entry)) throw new GradleException("Release archive is missing ${entry}")
             }
             def nested = found.findAll { it.startsWith('META-INF/jarjar/') && it.endsWith('.jar') }
-            ['core', 'jlayer', 'jump3r', 'javacpp', 'ffmpeg'].each { dependency ->
+            ['core', 'jlayer', 'jump3r'].each { dependency ->
                 if (!nested.any { it.toLowerCase(java.util.Locale.ROOT).contains(dependency) }) {
                     throw new GradleException("Release archive does not bundle ${dependency}")
-                }
-            }
-            ['linux-x86_64', 'linux-arm64', 'windows-x86_64'].each { platform ->
-                ['javacpp', 'ffmpeg'].each { dependency ->
-                    if (!nested.any { it.contains(dependency) && it.contains(platform) }) {
-                        throw new GradleException("Release archive does not bundle ${dependency} ${platform}")
-                    }
                 }
             }
             def metadata = zip.getInputStream(zip.getEntry('META-INF/mods.toml')).getText('UTF-8')
@@ -225,3 +218,6 @@ tasks.register('verifyRelease') {
         }
     }
 }
+
+ext.cinemarrReleaseArchiveTask = 'jarJar'
+apply from: file('../../../gradle/flatten-video-runtime.gradle')

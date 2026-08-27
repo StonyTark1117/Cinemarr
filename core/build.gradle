@@ -2,7 +2,10 @@ plugins {
     id 'java-library'
 }
 
-group = rootProject.group
+// JarJar identifies nested libraries by Maven coordinates before examining
+// their Java module names. Keep Cinemarr's private core distinct from the
+// similarly named private core used by sibling mods such as Jammarr.
+group = "${rootProject.group}.cinemarr"
 version = rootProject.version
 
 java {

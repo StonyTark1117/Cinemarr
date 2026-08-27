@@ -164,17 +164,9 @@ tasks.named('jar', Jar) {
 }
 
 def releaseArchive = tasks.named('jar', Jar).flatMap { it.archiveFile }
-def coreJarEntry = "META-INF/jarjar/stonytark.core-${mod_version}.jar".toString()
+def coreJarEntry = "META-INF/jarjar/stonytark.cinemarr.core-${mod_version}.jar".toString()
 def releaseEntries = [coreJarEntry, 'META-INF/jarjar/jlayer-1.0.1.jar', 'META-INF/jarjar/jump3r-1.0.5.jar',
                       'org/bytedeco/javacv/FFmpegFrameGrabber.class', 'org/bytedeco/javacv/Frame.class',
-                      'META-INF/jarjar/javacpp-1.5.14.jar',
-                      'META-INF/jarjar/ffmpeg-8.1.2-1.5.14.jar',
-                      'META-INF/jarjar/javacpp-1.5.14-linux-x86_64.jar',
-                      'META-INF/jarjar/javacpp-1.5.14-linux-arm64.jar',
-                      'META-INF/jarjar/javacpp-1.5.14-windows-x86_64.jar',
-                      'META-INF/jarjar/ffmpeg-8.1.2-1.5.14-linux-x86_64.jar',
-                      'META-INF/jarjar/ffmpeg-8.1.2-1.5.14-linux-arm64.jar',
-                      'META-INF/jarjar/ffmpeg-8.1.2-1.5.14-windows-x86_64.jar',
                       'META-INF/LICENSE-Cinemarr-CC0-1.0.txt', 'META-INF/LICENSE-LGPL-2.1-or-later.txt', 'META-INF/LICENSE-Apache-2.0.txt',
                       'META-INF/THIRD_PARTY_NOTICES.md', 'META-INF/neoforge.mods.toml',
                       'assets/cinemarr/lang/en_us.json', 'cinemarr.mixins.json', 'cinemarr.png']
@@ -210,6 +202,9 @@ tasks.register('verifyRelease') {
         }
     }
 }
+
+ext.cinemarrReleaseArchiveTask = 'jar'
+apply from: rootProject.file('gradle/flatten-video-runtime.gradle')
 
 def verifyFabric1211 = tasks.register('verifyFabric1211', Exec) {
     group = 'verification'

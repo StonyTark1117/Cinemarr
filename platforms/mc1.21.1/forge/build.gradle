@@ -176,3 +176,6 @@ tasks.register('verifyRelease') {
         }
     }
 }
+
+ext.cinemarrReleaseArchiveTask = 'jarJar'
+apply from: file('../../../gradle/flatten-video-runtime.gradle')
