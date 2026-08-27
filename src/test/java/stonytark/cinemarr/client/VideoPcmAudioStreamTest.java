@@ -67,4 +67,19 @@ final class VideoPcmAudioStreamTest {
         assertEquals(0, value.get());
         assertEquals(0, value.get());
     }
+
+    @Test
+    void initialPumpNeverRequestsMoreAudioThanIsReadableAfterExecutorDelay() {
+        AtomicLong now = new AtomicLong();
+        VideoPcmAudioStream stream = new VideoPcmAudioStream(1_000, 1, now::get);
+        stream.scheduleSilenceFor(2_000_000);
+        assertTrue(stream.offer(new DecodedAudioFrame(0, 1_000, 1, new byte[2_000])));
+        now.set(300_000_000);
+
+        assertEquals(9, stream.initialBufferCount(250, 12));
+
+        now.set(2_900_000_000L);
+        assertEquals(0, stream.initialBufferCount(250, 12),
+                "a severely delayed executor must reschedule instead of forcing a starving read");
+    }
 }

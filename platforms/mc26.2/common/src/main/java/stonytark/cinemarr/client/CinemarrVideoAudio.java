@@ -167,7 +167,13 @@ public final class CinemarrVideoAudio {
             ChannelAccessor accessor = (ChannelAccessor) value;
             accessor.cinemarr$stream(startingStream);
             accessor.cinemarr$streamingBufferSize(streamBufferBytes(startingStream));
-            accessor.cinemarr$pumpBuffers(INITIAL_STREAM_BUFFERS);
+            int initialBuffers = startingStream.initialBufferCount(STREAM_BUFFER_MS, INITIAL_STREAM_BUFFERS);
+            if (initialBuffers == 0) {
+                value.stop();
+                Minecraft.getInstance().execute(() -> { if (expectedAttempt == channelAttempt) { resetChannel(); caughtUpTicks = 0; } });
+                return;
+            }
+            accessor.cinemarr$pumpBuffers(initialBuffers);
             value.play();
             // ChannelHandle work runs on Minecraft's audio executor and can be
             // delayed substantially on loaded clients. Anchor the logical

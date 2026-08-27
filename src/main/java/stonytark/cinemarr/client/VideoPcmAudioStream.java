@@ -72,6 +72,18 @@ final class VideoPcmAudioStream implements AudioStream {
         silenceDeadlineNanos = nanoTime.getAsLong() + Math.max(0L, durationUs) * 1_000L;
     }
 
+    synchronized int initialBufferCount(int bufferDurationMs, int maximum) {
+        if (bufferDurationMs <= 0 || maximum <= 0) throw new IllegalArgumentException("Invalid initial buffer bounds");
+        long scheduleDeltaMs = silenceDeadlineNanos == Long.MIN_VALUE ? 0
+                : Math.floorDiv(silenceDeadlineNanos - nanoTime.getAsLong(), 1_000_000L);
+        // A positive delta becomes leading silence. A negative delta is PCM
+        // that read() must discard to catch up to the shared media deadline.
+        long readableMs = Math.max(0L, bufferedMs() + scheduleDeltaMs);
+        // Leave one complete buffer unread so the first streaming update has
+        // runway even when the executor crosses a duration boundary here.
+        return Math.max(0, Math.min(maximum, (int) (readableMs / bufferDurationMs) - 1));
+    }
+
     synchronized long bufferedMs() {
         return bufferedBytes * 1_000L / Math.max(1, (long) format.getSampleRate() * format.getChannels() * 2L);
     }

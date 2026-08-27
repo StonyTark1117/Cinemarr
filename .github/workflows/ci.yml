@@ -172,6 +172,21 @@ jobs:
             echo "Fabric client asset download failed once; retrying with the populated cache."
             sleep 15
           done
+      - name: Warm NeoForge 1.20.2 runtime assets
+        if: ${{ matrix.name == '1.20.2-neoforge' }}
+        run: |
+          cd platforms/mc1.20.2/neoforge
+          for attempt in 1 2; do
+            if timeout --foreground 900s ./gradlew neoFormJoined1.20.2-20231019.002635DownloadAssets \
+                --no-daemon --max-workers=1 --no-configuration-cache; then
+              exit 0
+            fi
+            if [[ "$attempt" == 2 ]]; then
+              exit 1
+            fi
+            echo "NeoForm asset download failed once; retrying with the populated cache."
+            sleep 15
+          done
       - name: Upload verified artifact
         uses: actions/upload-artifact@v4
         with:
