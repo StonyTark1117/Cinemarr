@@ -37,6 +37,11 @@ client, server, fake-Plex process, audio module, or target port behind. The matr
 also includes a follower-first 26.1.2 NeoForge run proving that a client already
 in tracking range receives a television constructed later.
 
+Modern targets additionally share physical OpenAL output-latency compensation.
+Fresh final-implementation regression captures across Fabric 1.21.1 and
+NeoForge 1.21.1, 26.1.2, and 26.2 measured 10 ms, 40 ms, 20 ms, and 30 ms
+inter-client lag, respectively, with correlation from 0.968840 to 0.995487.
+
 The repository decoder also passed a Windows-x64 native smoke under a Windows
 Temurin 21 JVM: JavaCV/FFmpeg loaded and decoded three video frames and 30 audio
 frames. This proves the packaged Windows decoder path, not a full Windows

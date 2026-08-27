@@ -84,4 +84,32 @@ final class VideoPcmAudioStreamTest {
         assertEquals(0, stream.initialBufferCount(250, 12),
                 "a severely delayed executor must reschedule instead of forcing a starving read");
     }
+
+    @Test
+    void physicalBoundaryIncludesBackendLatencyAfterConsumedPreroll() {
+        assertEquals(2_130_000, VideoPcmAudioStream.physicalBoundaryDelayUs(2_000_000, 50_000, 180_000));
+        assertEquals(180_000, VideoPcmAudioStream.physicalBoundaryDelayUs(2_000_000, 2_100_000, 180_000));
+        assertEquals(0, VideoPcmAudioStream.physicalBoundaryDelayUs(2_000_000, 2_100_000, -1));
+    }
+
+    @Test
+    void compensatedSilenceMakesPhysicalOutputReachTheSharedBoundary() {
+        assertEquals(1_370_000, VideoPcmAudioStream.compensatingSilenceUs(2_500_000, 950_000, 180_000));
+        assertEquals(0, VideoPcmAudioStream.compensatingSilenceUs(500_000, 600_000, 80_000));
+    }
+
+    @Test
+    void compensationSilenceIsInsertedAheadOfQueuedProgramAudio() {
+        VideoPcmAudioStream stream = new VideoPcmAudioStream(1_000, 1);
+        assertTrue(stream.offer(new DecodedAudioFrame(0, 1_000, 1, new byte[]{1, 2, 3, 4})));
+        assertTrue(stream.prependSilenceFor(1_000));
+
+        ByteBuffer value = stream.read(6);
+        assertEquals(0, value.get());
+        assertEquals(0, value.get());
+        assertEquals(1, value.get());
+        assertEquals(2, value.get());
+        assertEquals(3, value.get());
+        assertEquals(4, value.get());
+    }
 }

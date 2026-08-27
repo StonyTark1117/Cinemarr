@@ -69,6 +69,18 @@ final class VideoPcmAudioStream implements AudioStream {
         return true;
     }
 
+    synchronized boolean prependSilenceFor(long durationUs) {
+        if (closed || durationUs < 0) return false;
+        long bytes = bytesForDurationUs(durationUs);
+        if (bytes > Integer.MAX_VALUE) return false;
+        if (bytes > 0) {
+            queue.addFirst(new byte[(int) bytes]);
+            bufferedBytes += bytes;
+        }
+        starving = false;
+        return true;
+    }
+
     synchronized void scheduleSilenceFor(long durationUs) {
         silenceDeadlineNanos = nanoTime.getAsLong() + Math.max(0L, durationUs) * 1_000L;
     }
@@ -127,6 +139,14 @@ final class VideoPcmAudioStream implements AudioStream {
     synchronized int starvations() { return starvations; }
 
     synchronized long scheduledSilenceUs() { return scheduledSilenceUs; }
+
+    static long physicalBoundaryDelayUs(long scheduledSilenceUs, long playedUs, long outputLatencyUs) {
+        return Math.max(0L, scheduledSilenceUs - Math.max(0L, playedUs)) + Math.max(0L, outputLatencyUs);
+    }
+
+    static long compensatingSilenceUs(long untilMediaStartUs, long remainingPrerollUs, long outputLatencyUs) {
+        return Math.max(0L, untilMediaStartUs - Math.max(0L, remainingPrerollUs) - Math.max(0L, outputLatencyUs));
+    }
 
     private long bytesForDurationUs(long durationUs) {
         long samples = durationUs * (long) format.getSampleRate() / 1_000_000L;

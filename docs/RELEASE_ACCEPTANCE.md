@@ -34,8 +34,8 @@ On 2026-08-27, `PlexVideoLiveSmokeTest` ran against the operator-supplied LAN
 Plex server with its credential handed directly into the process environment.
 It resolved the real `Movies` library, selected a media item, created a 640x360
 H.264/AAC universal-transcode session, fetched the referenced playlist media,
-and completed the clean-stop request without error. The JUnit report recorded one
-executed test in 0.932 seconds with zero skips, failures, or errors and empty
+and completed the clean-stop request without error. The final JUnit report recorded one
+executed test in 0.783 seconds with zero skips, failures, or errors and empty
 stdout/stderr. The process exited, the worktree remained clean, and a post-run
 byte scan found zero credential residue in the checkout or Gradle daemon logs.
 
@@ -75,6 +75,16 @@ comparison, and clean teardown.
 | NeoForge 26.2 | 0.990375 | 40 ms |
 | Forge 1.7.10, fresh run 1 | 0.986105 | -10 ms |
 | Forge 1.7.10, fresh run 2 | 0.978383 | -30 ms |
+
+The modern audio adapter now queries `AL_SOFT_source_latency` atomically with
+the source cursor during a bounded silent preroll. It subtracts the measured
+physical backend latency when choosing the remaining queued silence, then
+anchors the logical media clock to the same physical boundary. Fresh local
+regression gates on the final implementation passed for Fabric 1.21.1 at
+0.989222 correlation / 10 ms lag, NeoForge 1.21.1 at 0.968840 / 40 ms,
+NeoForge 26.1.2 at 0.986400 / 20 ms, and NeoForge 26.2 at 0.995487 / 30 ms.
+Each run also passed protocol and command-client checks and left no client,
+server, fake-Plex process, audio module, or target port behind.
 
 A historical Forge 1.7.10 run measured 0.657605 correlation at 120 ms, but that
 result did not reproduce: later fresh runs rendered the same program and emitted
