@@ -674,13 +674,22 @@ start_audio_client() {
       return 1
       ;;
   esac
+  # Give OpenAL Soft enough mix-ahead to keep two software-rendered clients
+  # moving at the same device rate when a hosted runner is briefly CPU-bound.
+  # The sink monitors still measure real output and the sync gate still applies
+  # its 150 ms physical lag limit; this only prevents backend mixer starvation.
+  printf '%s\n' \
+    '[general]' \
+    'period_size = 512' \
+    'periods = 8' > "$client_dir/alsoft.conf"
   (
     cd "$target_dir" || exit 1
     exec setsid env -u WAYLAND_DISPLAY XDG_SESSION_TYPE=x11 \
       xvfb-run -a -s '-screen 0 1280x720x24 -ac +extension GLX +render -noreset' env \
       JAVA_HOME="$java_home" PATH="$java_home/bin:$PATH" \
       JAVA_TOOL_OPTIONS="$java_options" \
-      ALSA_CONFIG_PATH="$client_dir/alsa.conf" ALSOFT_DRIVERS=alsa LIBGL_ALWAYS_SOFTWARE=1 \
+      ALSA_CONFIG_PATH="$client_dir/alsa.conf" ALSOFT_CONF="$client_dir/alsoft.conf" \
+      ALSOFT_DRIVERS=alsa LIBGL_ALWAYS_SOFTWARE=1 \
       ./gradlew runClient --no-daemon --max-workers=1 --console=plain "${cache_args[@]}" \
       "${runtime_args[@]}" \
       -PcinemarrAcceptanceUsername="$username" \

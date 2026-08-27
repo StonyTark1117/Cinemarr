@@ -227,14 +227,17 @@ jobs:
             build/dedicated-server-gate/**/*.txt
             build/dedicated-server-gate/**/*.json
             build/dedicated-server-gate/**/*.tsv
+            build/dedicated-server-gate/**/*.s16le
             build/quilt-gate/**/*.log
             build/quilt-gate/**/*.txt
             build/quilt-gate/**/*.json
             build/quilt-gate/**/*.tsv
+            build/quilt-gate/**/*.s16le
             build/quilt-modmenu-gate/**/*.log
             build/quilt-modmenu-gate/**/*.txt
             build/quilt-modmenu-gate/**/*.json
             build/quilt-modmenu-gate/**/*.tsv
+            build/quilt-modmenu-gate/**/*.s16le
             build/fabric-loader-0.19.2-gate/**/*.log
             build/fabric-loader-0.19.2-gate/**/*.txt
             build/fabric-loader-0.19.2-gate/**/*.json
