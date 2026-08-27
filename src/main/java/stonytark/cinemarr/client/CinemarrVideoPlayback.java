@@ -2,6 +2,8 @@ package stonytark.cinemarr.client;
 
 import stonytark.cinemarr.Cinemarr;
 import stonytark.cinemarr.core.client.VideoSegmentAssembler;
+import stonytark.cinemarr.core.network.Hashing;
+import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.core.protocol.VideoPackets;
 import stonytark.cinemarr.network.CinemarrNetwork;
 import stonytark.cinemarr.network.VideoPayloads;
@@ -22,6 +24,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public final class CinemarrVideoPlayback implements AutoCloseable {
     private static final int MAX_DECODE_JOBS = 2;
     private static final int MAX_QUEUED_VIDEO_FRAMES = 180;
+    private static final int MAX_QUEUED_AUDIO_FRAMES = 128;
     private final ExecutorService decoderExecutor = Executors.newSingleThreadExecutor(r -> {
         Thread thread = new Thread(r, "Cinemarr FFmpeg decoder");
         thread.setDaemon(true);
@@ -38,7 +41,9 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
     private int decoderRecoveries;
     private int videoDrops;
     private long lastPresentedUs;
+    private String lastFrameSha256 = "";
     private long lastHealthMs;
+    private boolean caughtUp;
 
     public void tick(CinemarrVideoClientState.StreamState state) {
         VideoPackets.SessionState session = state.session();
@@ -52,8 +57,9 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
             generation = session.generation();
         }
         VideoSegmentAssembler.CompletedSegment segment;
-        while (pending.get() < MAX_DECODE_JOBS && (segment = state.pollSegment()) != null) submit(segment);
-        for (DecodedBatch batch; (batch = decoded.poll()) != null; ) {
+        while (pending.get() < MAX_DECODE_JOBS && decoded.size() < MAX_DECODE_JOBS
+                && audio.size() < MAX_QUEUED_AUDIO_FRAMES && (segment = state.pollSegment()) != null) submit(segment);
+        for (DecodedBatch batch; audio.size() < MAX_QUEUED_AUDIO_FRAMES && (batch = decoded.poll()) != null; ) {
             if (!batch.sessionId.equals(sessionId) || batch.generation != generation) continue;
             for (DecodedVideoFrame frame : batch.video) {
                 if (video.size() >= MAX_QUEUED_VIDEO_FRAMES) { video.poll(); videoDrops++; }
@@ -61,10 +67,18 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
             }
             audio.addAll(batch.audio);
         }
-        long targetUs = authoritativePositionMs(session, CinemarrClientState.INSTANCE.serverToLocalEpoch(System.currentTimeMillis())) * 1_000L;
+        long targetUs = authoritativePositionMsLocal(session) * 1_000L;
         DecodedVideoFrame current = null;
         while (!video.isEmpty() && video.peek().presentationTimeUs() <= targetUs + 40_000L) current = video.poll();
-        if (current != null) { texture.upload(current); lastPresentedUs = current.presentationTimeUs(); }
+        if (current != null) {
+            texture.upload(current);
+            lastPresentedUs = current.presentationTimeUs();
+            lastFrameSha256 = Hashing.sha256(current.rgbaView());
+            if (ProtocolLimits.videoProbeEnabled()) Cinemarr.LOGGER.info(
+                    "Acceptance video frame: session={} generation={} ptsUs={} sha256={} dimensions={}x{}",
+                    sessionId, generation, lastPresentedUs, lastFrameSha256, current.width(), current.height());
+        }
+        caughtUp = lastPresentedUs > 0 && Math.abs(lastPresentedUs - targetUs) <= 250_000L;
     }
 
     private void submit(VideoSegmentAssembler.CompletedSegment segment) {
@@ -100,15 +114,25 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
         return Math.min(session.durationMs(), Math.max(0, session.positionMs() + Math.max(0, now - session.serverEpochMs())));
     }
 
+    static long authoritativePositionMsLocal(VideoPackets.SessionState session) {
+        long localEpoch = CinemarrClientState.INSTANCE.serverToLocalEpoch(session.serverEpochMs());
+        long estimatedServerNow = session.serverEpochMs() + Math.max(0, System.currentTimeMillis() - localEpoch);
+        return authoritativePositionMs(session, estimatedServerNow);
+    }
+
     public CinemarrVideoTexture texture() { return texture; }
     public DecodedAudioFrame pollAudio() { return audio.poll(); }
     public int decoderRecoveries() { return decoderRecoveries; }
     public int videoDrops() { return videoDrops; }
+    public long lastPresentedUs() { return lastPresentedUs; }
+    public String lastFrameSha256() { return lastFrameSha256; }
+    public boolean caughtUp() { return caughtUp; }
+    int queuedAudioFrames() { return audio.size(); }
 
     public void sendHealth(CinemarrVideoClientState.StreamState streamState, int audioUnderruns) {
-        VideoPackets.SessionState session = streamState.session(); long now = CinemarrClientState.INSTANCE.serverToLocalEpoch(System.currentTimeMillis());
+        VideoPackets.SessionState session = streamState.session(); long now = System.currentTimeMillis();
         if (session == null || session.item() == null || now - lastHealthMs < 5_000) return;
-        long targetUs = authoritativePositionMs(session, now) * 1_000L;
+        long targetUs = authoritativePositionMsLocal(session) * 1_000L;
         long lastQueuedUs = video.isEmpty() ? lastPresentedUs : Math.max(lastPresentedUs,
                 video.stream().mapToLong(DecodedVideoFrame::presentationTimeUs).max().orElse(lastPresentedUs));
         long bufferedMs = Math.max(0, (lastQueuedUs - targetUs) / 1_000L);
@@ -123,6 +147,8 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
         sessionId = null;
         generation = -1;
         lastPresentedUs = 0;
+        lastFrameSha256 = "";
+        caughtUp = false;
         lastHealthMs = 0;
         resetQueues();
         texture.close();

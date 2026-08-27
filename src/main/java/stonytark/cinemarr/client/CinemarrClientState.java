@@ -18,6 +18,9 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public final class CinemarrClientState {
     private static final int BROWSE_PAGE_SIZE = 20;
+    private static final int STARTUP_CLOCK_SAMPLES = 8;
+    private static final long STARTUP_CLOCK_SYNC_INTERVAL_MS = 250;
+    private static final long STEADY_CLOCK_SYNC_INTERVAL_MS = 10_000;
     public static final CinemarrClientState INSTANCE = new CinemarrClientState();
     private final ClockSynchronizer clock = new ClockSynchronizer();
     private final CinemarrAudioPlayer audio = new CinemarrAudioPlayer(clock);
@@ -34,10 +37,16 @@ public final class CinemarrClientState {
     private boolean operatorCommandsVerified;
     private boolean acceptanceAudioQueued;
     private AudioPlaybackState lastAcceptanceAudioState;
+    private long acceptanceVideoController;
+    private boolean acceptanceVideoTuneSent;
+    private boolean acceptanceVideoLibrariesRequested;
+    private boolean acceptanceVideoBrowseRequested;
+    private boolean acceptanceVideoPlaySent;
 
     public void accept(CinemarrMessage payload) {
         Minecraft minecraft = Minecraft.getInstance();
         if (CinemarrVideoClientState.INSTANCE.accept(payload)) {
+            acceptVideoProbe(payload);
             refreshScreen(minecraft);
             return;
         }
@@ -128,7 +137,9 @@ public final class CinemarrClientState {
         runAcceptanceControl();
         logAcceptanceAudioState();
         long now = System.currentTimeMillis();
-        if (now - lastTimeSync >= 10_000) requestTimeSync();
+        long syncInterval = clock.sampleCount() < STARTUP_CLOCK_SAMPLES
+                ? STARTUP_CLOCK_SYNC_INTERVAL_MS : STEADY_CLOCK_SYNC_INTERVAL_MS;
+        if (now - lastTimeSync >= syncInterval) requestTimeSync();
         audio.tick();
     }
     public void hello() { CinemarrNetwork.sendToServer(new CinemarrPayloads.ClientHello(ProtocolLimits.clientHelloVersion())); requestTimeSync(); }
@@ -136,6 +147,7 @@ public final class CinemarrClientState {
     public long serverToLocalEpoch(long serverEpochMs) {
         return clock.initialized() ? clock.toLocalTime(serverEpochMs) : serverEpochMs;
     }
+    public boolean mediaClockReady() { return clock.sampleCount() >= STARTUP_CLOCK_SAMPLES; }
     public void ensureAudio() { audio.ensureStarted(); }
     public void listeningChanged() { audio.listeningChanged(); }
     public void retryAudio() { audio.retry(); refreshScreen(Minecraft.getInstance()); }
@@ -145,6 +157,9 @@ public final class CinemarrClientState {
         CinemarrVideoClientState.INSTANCE.reset();
         nonOperatorCommandsVerified = false; operatorCommandsVerified = false;
         acceptanceAudioQueued = false; lastAcceptanceAudioState = null;
+        acceptanceVideoController = 0; acceptanceVideoTuneSent = false;
+        acceptanceVideoLibrariesRequested = false; acceptanceVideoBrowseRequested = false;
+        acceptanceVideoPlaySent = false;
         acceptanceControl.reset();
         playback = new CinemarrPayloads.PlaybackState(CinemarrPayloads.PlaybackStatus.IDLE, "", "", "", true, 0, 0, 0, false, List.of());
         station = new CinemarrPayloads.StationState(CinemarrPayloads.StationType.NONE, false, false, 0,
@@ -197,6 +212,53 @@ public final class CinemarrClientState {
         }
         Cinemarr.LOGGER.info("Acceptance playback state: status={} paused={} title={} origin={} queue={}",
                 value.status(), value.paused(), value.title(), value.origin(), queue);
+    }
+    private void acceptVideoProbe(CinemarrMessage payload) {
+        if (!ProtocolLimits.videoProbeEnabled()) return;
+        if (payload instanceof VideoPayloads.SessionState value) {
+            VideoPackets.SessionState state = value.value();
+            Cinemarr.LOGGER.info("Acceptance video session: controller={} session={} generation={} status={} item={} positionMs={} canControl={}",
+                    state.controllerPos(), state.sessionId(), state.generation(), state.status(),
+                    state.item() == null ? "" : state.item().key(), state.positionMs(), state.canControl());
+            if (!ProtocolLimits.videoProbeLeader() || !state.canControl()) return;
+            acceptanceVideoController = state.controllerPos();
+            if (!acceptanceVideoTuneSent) {
+                acceptanceVideoTuneSent = true;
+                CinemarrVideoClientState.INSTANCE.command(new VideoPackets.SessionCommand(VideoPackets.SessionAction.TUNE,
+                        state.controllerPos(), "", "", "cinemarr-acceptance", PresentationMode.FIT,
+                        state.generation(), 0, -1, -1));
+                Cinemarr.LOGGER.info("Acceptance video leader tuned the test television");
+            } else if (state.item() == null && !acceptanceVideoLibrariesRequested) {
+                acceptanceVideoLibrariesRequested = true;
+                CinemarrVideoClientState.INSTANCE.requestLibraries();
+                Cinemarr.LOGGER.info("Acceptance video leader requested allowed libraries");
+            }
+        } else if (payload instanceof VideoPayloads.LibraryList value) {
+            Cinemarr.LOGGER.info("Acceptance video libraries: count={}", value.value().libraries().size());
+            if (ProtocolLimits.videoProbeLeader() && acceptanceVideoController != 0
+                    && !acceptanceVideoBrowseRequested && !value.value().libraries().isEmpty()) {
+                acceptanceVideoBrowseRequested = true;
+                CinemarrVideoClientState.INSTANCE.browse(value.value().libraries().get(0).id(), "", "", 0);
+                Cinemarr.LOGGER.info("Acceptance video leader browsed library {}", value.value().libraries().get(0).id());
+            }
+        } else if (payload instanceof VideoPayloads.BrowseResults value) {
+            Cinemarr.LOGGER.info("Acceptance video browse: library={} items={}",
+                    value.value().libraryId(), value.value().items().size());
+            if (ProtocolLimits.videoProbeLeader() && !acceptanceVideoPlaySent
+                    && acceptanceVideoController != 0 && !value.value().items().isEmpty()) {
+                VideoPackets.SessionState state = CinemarrVideoClientState.INSTANCE.session(acceptanceVideoController);
+                if (state == null) return;
+                acceptanceVideoPlaySent = true;
+                CinemarrVideoClientState.INSTANCE.command(new VideoPackets.SessionCommand(VideoPackets.SessionAction.PLAY,
+                        acceptanceVideoController, value.value().libraryId(), value.value().items().get(0).key(),
+                        "", PresentationMode.FIT, state.generation(), 0, -1, -1));
+                Cinemarr.LOGGER.info("Acceptance video leader requested playback of item {}", value.value().items().get(0).key());
+            }
+        } else if (payload instanceof VideoPayloads.SegmentManifest value) {
+            Cinemarr.LOGGER.info("Acceptance video manifest: session={} generation={} dimensions={}x{} segments={}",
+                    value.value().sessionId(), value.value().generation(), value.value().width(),
+                    value.value().height(), value.value().segments().size());
+        }
     }
     private void runAcceptanceControl() {
         String command = acceptanceControl.poll();

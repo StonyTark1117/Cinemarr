@@ -7,6 +7,7 @@ import java.util.Map;
 /** One positional OpenAL stream per independently playing visible session. */
 public final class CinemarrVideoAudioManager {
     private final Map<CinemarrVideoClientState.StreamKey,CinemarrVideoAudio> players=new LinkedHashMap<>();
+    private final java.util.Set<CinemarrVideoClientState.StreamKey> acceptanceReady=new java.util.LinkedHashSet<>();
     public void tick(CinemarrVideoPlaybackManager playback,CinemarrVideoClientState state){
         java.util.Set<CinemarrVideoClientState.StreamKey> current=new java.util.LinkedHashSet<>();
         for(CinemarrVideoClientState.StreamState stream:state.streamStates()){
@@ -15,9 +16,12 @@ public final class CinemarrVideoAudioManager {
             net.minecraft.world.phys.Vec3 listener=net.minecraft.client.Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
             stonytark.cinemarr.core.protocol.VideoPackets.SessionState nearest=televisions.stream().min(java.util.Comparator.comparingDouble(tv->CinemarrVideoAudio.nearestScreenPoint(tv,listener).distanceToSqr(listener))).orElse(televisions.get(0));
             current.add(stream.key());CinemarrVideoAudio audio=players.computeIfAbsent(stream.key(),ignored->new CinemarrVideoAudio());audio.tick(pipeline,nearest);pipeline.sendHealth(stream,audio.underruns());
+            if(stonytark.cinemarr.core.protocol.ProtocolLimits.videoProbeEnabled()&&audio.ready()&&acceptanceReady.add(stream.key()))stonytark.cinemarr.Cinemarr.LOGGER.info(
+                    "Acceptance video audio: session={} generation={} ready=true underruns={}",stream.key().sessionId(),stream.key().generation(),audio.underruns());
         }
-        for(CinemarrVideoClientState.StreamKey key:new ArrayList<>(players.keySet()))if(!current.contains(key)){players.remove(key).reset();}
+        for(CinemarrVideoClientState.StreamKey key:new ArrayList<>(players.keySet()))if(!current.contains(key)){players.remove(key).reset();acceptanceReady.remove(key);}
     }
+    public boolean anyReady(){for(CinemarrVideoAudio value:players.values())if(value.ready())return true;return false;}
     public void audioEngineReloaded(){for(CinemarrVideoAudio value:players.values())value.audioEngineReloaded();}
-    public void reset(){for(CinemarrVideoAudio value:players.values())value.reset();players.clear();}
+    public void reset(){for(CinemarrVideoAudio value:players.values())value.reset();players.clear();acceptanceReady.clear();}
 }

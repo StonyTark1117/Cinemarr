@@ -18,6 +18,9 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public final class CinemarrClientState {
     private static final int BROWSE_PAGE_SIZE = 20;
+    private static final int STARTUP_CLOCK_SAMPLES = 8;
+    private static final long STARTUP_CLOCK_SYNC_INTERVAL_MS = 250;
+    private static final long STEADY_CLOCK_SYNC_INTERVAL_MS = 10_000;
     public static final CinemarrClientState INSTANCE = new CinemarrClientState();
     private final ClockSynchronizer clock = new ClockSynchronizer();
     private final CinemarrAudioPlayer audio = new CinemarrAudioPlayer(clock);
@@ -128,7 +131,9 @@ public final class CinemarrClientState {
         runAcceptanceControl();
         logAcceptanceAudioState();
         long now = System.currentTimeMillis();
-        if (now - lastTimeSync >= 10_000) requestTimeSync();
+        long syncInterval = clock.sampleCount() < STARTUP_CLOCK_SAMPLES
+                ? STARTUP_CLOCK_SYNC_INTERVAL_MS : STEADY_CLOCK_SYNC_INTERVAL_MS;
+        if (now - lastTimeSync >= syncInterval) requestTimeSync();
         audio.tick();
     }
     public void hello() { CinemarrNetwork.sendToServer(new CinemarrPayloads.ClientHello(ProtocolLimits.clientHelloVersion())); requestTimeSync(); }
@@ -136,6 +141,7 @@ public final class CinemarrClientState {
     public long serverToLocalEpoch(long serverEpochMs) {
         return clock.initialized() ? clock.toLocalTime(serverEpochMs) : serverEpochMs;
     }
+    public boolean mediaClockReady() { return clock.sampleCount() >= STARTUP_CLOCK_SAMPLES; }
     public void ensureAudio() { audio.ensureStarted(); }
     public void listeningChanged() { audio.listeningChanged(); }
     public void retryAudio() { audio.retry(); refreshScreen(Minecraft.getInstance()); }

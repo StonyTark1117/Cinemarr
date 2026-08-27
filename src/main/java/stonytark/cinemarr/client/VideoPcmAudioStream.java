@@ -5,26 +5,64 @@ import net.minecraft.client.sounds.AudioStream;
 import javax.sound.sampled.AudioFormat;
 import java.nio.ByteBuffer;
 import java.util.ArrayDeque;
-import java.util.Queue;
+import java.util.Deque;
+import java.util.function.LongSupplier;
 
-/** Blocking, bounded PCM bridge from the decoder thread to Minecraft's streaming OpenAL worker. */
+/** Non-blocking, bounded PCM bridge from the decoder thread to Minecraft's streaming OpenAL worker. */
 final class VideoPcmAudioStream implements AudioStream {
-    private static final long MAX_BUFFERED_MS = 8_000;
+    private static final long MAX_BUFFERED_MS = 4_000;
     private final AudioFormat format;
-    private final Queue<byte[]> queue = new ArrayDeque<>();
+    private final Deque<byte[]> queue = new ArrayDeque<>();
+    private final LongSupplier nanoTime;
     private byte[] current;
     private int offset;
     private long bufferedBytes;
     private boolean closed;
+    private boolean starving;
+    private int starvations;
+    private long silenceDeadlineNanos = Long.MIN_VALUE;
 
     VideoPcmAudioStream(int sampleRate, int channels) {
+        this(sampleRate, channels, System::nanoTime);
+    }
+
+    VideoPcmAudioStream(int sampleRate, int channels, LongSupplier nanoTime) {
         format = new AudioFormat(sampleRate, 16, channels, true, false);
+        this.nanoTime = nanoTime;
     }
 
     synchronized boolean offer(DecodedAudioFrame frame) {
+        return offer(frame, frame.presentationTimeUs());
+    }
+
+    synchronized boolean offer(DecodedAudioFrame frame, long minimumPresentationTimeUs) {
         if (closed || frame.sampleRate() != (int) format.getSampleRate() || frame.channels() != format.getChannels()
                 || bufferedMs() >= MAX_BUFFERED_MS) return false;
-        byte[] pcm = frame.pcmView(); queue.add(pcm); bufferedBytes += pcm.length; notifyAll(); return true;
+        int frameSize = format.getFrameSize();
+        long skippedSamples = Math.max(0L, minimumPresentationTimeUs - frame.presentationTimeUs())
+                * frame.sampleRate() / 1_000_000L;
+        int offset = (int) Math.min(frame.byteLength(), skippedSamples * frameSize);
+        offset -= offset % frameSize;
+        if (offset >= frame.byteLength()) return true;
+        byte[] source = frame.pcmView();
+        byte[] pcm = new byte[source.length - offset];
+        System.arraycopy(source, offset, pcm, 0, pcm.length);
+        queue.add(pcm); bufferedBytes += pcm.length; starving = false; return true;
+    }
+
+    synchronized boolean offerSilence(long durationUs) {
+        if (closed || durationUs < 0 || bufferedMs() >= MAX_BUFFERED_MS) return false;
+        long samples = durationUs * (long) format.getSampleRate() / 1_000_000L;
+        long bytes = samples * format.getFrameSize();
+        if (bytes > Integer.MAX_VALUE || bufferedBytes + bytes > MAX_BUFFERED_MS
+                * (long) format.getSampleRate() * format.getChannels() * 2L / 1_000L) return false;
+        if (bytes > 0) { queue.add(new byte[(int) bytes]); bufferedBytes += bytes; }
+        starving = false;
+        return true;
+    }
+
+    synchronized void scheduleSilenceFor(long durationUs) {
+        silenceDeadlineNanos = nanoTime.getAsLong() + Math.max(0L, durationUs) * 1_000L;
     }
 
     synchronized long bufferedMs() {
@@ -35,13 +73,25 @@ final class VideoPcmAudioStream implements AudioStream {
 
     @Override public synchronized ByteBuffer read(int requested) {
         int aligned = Math.max(format.getFrameSize(), requested - requested % format.getFrameSize());
-        while (!closed && current == null && queue.isEmpty()) {
-            try { wait(250); } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); return null; }
-        }
         if (closed && current == null && queue.isEmpty()) return null;
+        if (silenceDeadlineNanos != Long.MIN_VALUE) {
+            long remainingUs = Math.max(0L, silenceDeadlineNanos - nanoTime.getAsLong()) / 1_000L;
+            silenceDeadlineNanos = Long.MIN_VALUE;
+            long samples = remainingUs * (long) format.getSampleRate() / 1_000_000L;
+            long bytes = Math.min(Integer.MAX_VALUE, samples * format.getFrameSize());
+            bytes -= bytes % format.getFrameSize();
+            if (bytes > 0) { queue.addFirst(new byte[(int) bytes]); bufferedBytes += bytes; }
+        }
         ByteBuffer output = ByteBuffer.allocateDirect(aligned);
         while (output.hasRemaining()) {
-            if (current == null) { current = queue.poll(); offset = 0; if (current == null) break; }
+            if (current == null) {
+                current = queue.poll(); offset = 0;
+                if (current == null) {
+                    if (!starving) { starving = true; starvations++; }
+                    while (output.hasRemaining()) output.put((byte) 0);
+                    break;
+                }
+            }
             int count = Math.min(output.remaining(), current.length - offset);
             output.put(current, offset, count); offset += count; bufferedBytes -= count;
             if (offset == current.length) { current = null; offset = 0; }
@@ -49,5 +99,7 @@ final class VideoPcmAudioStream implements AudioStream {
         output.flip(); return output.hasRemaining() ? output : null;
     }
 
-    @Override public synchronized void close() { closed = true; queue.clear(); current = null; bufferedBytes = 0; notifyAll(); }
+    synchronized int starvations() { return starvations; }
+
+    @Override public synchronized void close() { closed = true; queue.clear(); current = null; bufferedBytes = 0; }
 }

@@ -1,6 +1,12 @@
 package stonytark.cinemarr.server;
 
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.commands.arguments.EntityAnchorArgument;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.DirectionalBlock;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.level.storage.LevelResource;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.loading.FMLPaths;
@@ -19,9 +25,13 @@ import stonytark.cinemarr.core.library.LibraryRule;
 import stonytark.cinemarr.core.server.PlexVideoService;
 import stonytark.cinemarr.core.protocol.VideoPackets;
 import stonytark.cinemarr.core.protocol.ProtocolLimits;
+import stonytark.cinemarr.registry.CinemarrBlocks;
+import stonytark.cinemarr.screen.CinemarrWorldScreens;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
+import java.util.UUID;
 
 public final class CinemarrServer {
     private static volatile CinemarrServer INSTANCE;
@@ -70,7 +80,12 @@ public final class CinemarrServer {
         videoService = null; videoLibraries = Collections.emptyList();
     }
     @SubscribeEvent public void tick(ServerTickEvent.Post event) { if (player != null) player.tick(); if (videoManager != null) videoManager.tick(); }
-    @SubscribeEvent public void joined(PlayerEvent.PlayerLoggedInEvent event) { if (player != null && event.getEntity() instanceof ServerPlayer serverPlayer) player.playerJoined(serverPlayer); }
+    @SubscribeEvent public void joined(PlayerEvent.PlayerLoggedInEvent event) {
+        if (event.getEntity() instanceof ServerPlayer serverPlayer) {
+            if (player != null) player.playerJoined(serverPlayer);
+            prepareAcceptanceVideo(serverPlayer);
+        }
+    }
     @SubscribeEvent public void left(PlayerEvent.PlayerLoggedOutEvent event) { if (event.getEntity() instanceof ServerPlayer serverPlayer) { if (player != null) player.playerLeft(serverPlayer); if(videoManager!=null)videoManager.playerLeft(serverPlayer); } }
     @SubscribeEvent public void chunkSent(ChunkWatchEvent.Sent event) { if(videoManager!=null)videoManager.chunkSent(event.getPlayer(),event.getLevel(),event.getPos()); }
     @SubscribeEvent public void chunkUnwatched(ChunkWatchEvent.UnWatch event) { if(videoManager!=null)videoManager.chunkUnwatched(event.getPlayer(),event.getLevel(),event.getPos()); }
@@ -103,4 +118,38 @@ public final class CinemarrServer {
     public void videoHealth(ServerPlayer player, VideoPackets.ClientHealth value) { if (videoManager != null) videoManager.health(player, value); }
     public String videoStatus(){return videoManager==null?"Cinemarr video is unavailable":videoManager.status();}
     public String videoDiagnostics(){return videoManager==null?"Plex=unavailable; libraries=0; sessions=0; transcodes=0":videoManager.diagnostics();}
+
+    private void prepareAcceptanceVideo(ServerPlayer player) {
+        if (!ProtocolLimits.videoProbeEnabled() || videoManager == null) return;
+        net.minecraft.server.level.ServerLevel level = player.serverLevel();
+        BlockPos controller = new BlockPos(-5, 100, 0);
+        CinemarrWorldScreens screens = CinemarrWorldScreens.get(level);
+        if (screens.television(controller) == null) {
+            for (int x = -4; x <= 3; x++) for (int y = 100; y <= 103; y++) {
+                level.setBlockAndUpdate(new BlockPos(x, y, 0), CinemarrBlocks.SCREEN_PIXEL.get().defaultBlockState()
+                        .setValue(DirectionalBlock.FACING, Direction.SOUTH));
+            }
+            level.setBlockAndUpdate(controller, CinemarrBlocks.TV_CONTROLLER.get().defaultBlockState());
+            UUID acceptanceOwner = UUID.nameUUIDFromBytes("OfflinePlayer:CinemarrVideoA".getBytes(StandardCharsets.UTF_8));
+            CinemarrWorldScreens.Activation activation = screens.activate(controller, acceptanceOwner);
+            if (!activation.success()) throw new IllegalStateException("Unable to create acceptance television: " + activation.message());
+            screens.updateRendition(controller, 320, 180);
+            Cinemarr.LOGGER.info("Acceptance video television: controller={} dimensions=8x4 rendition=320x180 owner={}",
+                    controller.asLong(), "CinemarrVideoA");
+        }
+        for (int x = -4; x <= 4; x++) for (int z = 1; z <= 8; z++) {
+            level.setBlockAndUpdate(new BlockPos(x, 99, z), Blocks.SMOOTH_STONE.defaultBlockState());
+            for (int y = 100; y <= 103; y++) level.setBlockAndUpdate(new BlockPos(x, y, z), Blocks.AIR.defaultBlockState());
+        }
+        level.setDayTime(6000);
+        int playerIndex = Math.max(0, eventPlayerIndex(player));
+        double cameraX = (playerIndex & 1) == 0 ? -1.5 : 1.5;
+        player.teleportTo(level, cameraX, 100.0, 7.5, 180.0F, 0.0F);
+        player.lookAt(EntityAnchorArgument.Anchor.EYES, Vec3.atCenterOf(new BlockPos(0, 102, 0)));
+        videoManager.synchronizeTrackingRadius(player);
+    }
+
+    private static int eventPlayerIndex(ServerPlayer player) {
+        return player.server.getPlayerList().getPlayers().indexOf(player);
+    }
 }

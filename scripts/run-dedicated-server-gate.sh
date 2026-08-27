@@ -14,6 +14,7 @@ fake_plex_token="cinemarr-dedicated-gate-token"
 fake_plex_port_file="$output_root/fake-plex.port"
 fake_plex_request_log="$output_root/fake-plex.requests.tsv"
 fake_plex_audio="$output_root/fake-plex-tone.mp3"
+fake_plex_video_dir=""
 fake_plex_state="$output_root/fake-plex.state"
 fake_audio_duration_seconds=${CINEMARR_GATE_AUDIO_DURATION_SECONDS:-600}
 fake_plex_pid=""
@@ -72,6 +73,7 @@ protocol_client_gate=${CINEMARR_PROTOCOL_CLIENT_GATE:-false}
 command_client_gate=${CINEMARR_COMMAND_CLIENT_GATE:-false}
 audio_client_gate=${CINEMARR_AUDIO_CLIENT_GATE:-false}
 audio_scenario_gate=${CINEMARR_AUDIO_SCENARIO_GATE:-false}
+video_client_gate=${CINEMARR_VIDEO_CLIENT_GATE:-false}
 fabric_loader_version=${CINEMARR_FABRIC_LOADER_VERSION:-}
 quilt_modmenu_gate=${CINEMARR_QUILT_MODMENU_GATE:-false}
 
@@ -188,6 +190,10 @@ cleanup_all() {
   fi
   rm -f -- "$fake_plex_port_file"
   rm -f -- "$fake_plex_state"
+  if [[ -n "$fake_plex_video_dir" && -d "$fake_plex_video_dir" ]]; then
+    rm -rf -- "$fake_plex_video_dir"
+    fake_plex_video_dir=""
+  fi
 }
 
 cleanup_audio_processes() {
@@ -225,6 +231,7 @@ trap 'exit 130' INT TERM
 start_fake_plex() {
   rm -f -- "$fake_plex_port_file"
   local -a audio_args=()
+  local -a video_args=()
   if [[ "$audio_client_gate" == "true" ]]; then
     if ! command -v ffmpeg > /dev/null || ! command -v pactl > /dev/null \
         || ! command -v parec > /dev/null; then
@@ -242,9 +249,27 @@ start_fake_plex() {
     audio_args+=(--audio-file "$fake_plex_audio" \
       --track-duration-ms "$((fake_audio_duration_seconds * 1000))")
   fi
+  if [[ "$video_client_gate" == "true" ]]; then
+    if ! command -v ffmpeg > /dev/null || ! command -v pactl > /dev/null \
+        || ! command -v parec > /dev/null; then
+      echo "Two-client video acceptance requires ffmpeg, pactl, and parec" >&2
+      return 1
+    fi
+    fake_plex_video_dir=$(mktemp -d "$output_root/fake-plex-video.XXXXXX")
+    ffmpeg -hide_banner -loglevel error -y \
+      -f lavfi -i 'testsrc2=size=160x90:rate=5:duration=18' \
+      -f lavfi -i 'sine=frequency=997:sample_rate=48000:duration=18' \
+      -filter_complex "[1:a]volume='if(lt(mod(t,3),2.25),1.4,0.3)':eval=frame[a]" \
+      -map 0:v -map '[a]' -c:v libx264 -preset ultrafast -tune zerolatency \
+      -profile:v baseline -pix_fmt yuv420p -g 5 -keyint_min 5 -sc_threshold 0 \
+      -c:a aac -b:a 128k -ac 2 -ar 48000 -f hls -hls_time 1 -hls_playlist_type vod \
+      -hls_segment_filename "$fake_plex_video_dir/segment%03d.ts" \
+      "$fake_plex_video_dir/media.m3u8" || return 1
+    video_args+=(--video-directory "$fake_plex_video_dir" --track-duration-ms 600000)
+  fi
   python3 "$repo_root/scripts/fake-plex-server.py" \
     --port-file "$fake_plex_port_file" --request-log "$fake_plex_request_log" \
-    --token "$fake_plex_token" --state-file "$fake_plex_state" "${audio_args[@]}" &
+    --token "$fake_plex_token" --state-file "$fake_plex_state" "${audio_args[@]}" "${video_args[@]}" &
   fake_plex_pid=$!
   local deadline=$((SECONDS + 10))
   while [[ ! -s "$fake_plex_port_file" ]]; do
@@ -553,12 +578,19 @@ start_audio_client() {
   local client_console="$output_root/$label.audio-$role.console.log"
   local control_file="$output_root/$label.audio-$role.control"
   local leader=false
+  local java_options='-Dcinemarr.acceptance.enabled=true -Dorg.lwjgl.opengl.Display.allowSoftwareOpenGL=true'
   local -a cache_args=()
   local -a runtime_args=()
   [[ "$label" == *-quilt ]] && runtime_args+=(-PcinemarrRuntimeLoader=quilt)
   [[ "$label" == *-quilt && "$quilt_modmenu_gate" == true ]] && runtime_args+=(-PcinemarrIncludeModMenu=true)
   [[ "$label" == *-fabric && -n "$fabric_loader_version" ]] && runtime_args+=(-PcinemarrFabricLoaderVersion="$fabric_loader_version")
   [[ "$role" == "leader" ]] && leader=true
+  if [[ "$audio_client_gate" == "true" ]]; then
+    java_options+=" -Dcinemarr.acceptance.audioProbe=true -Dcinemarr.acceptance.audioLeader=$leader -Dcinemarr.acceptance.audioControlFile=$control_file"
+  fi
+  if [[ "$video_client_gate" == "true" ]]; then
+    java_options+=" -Dcinemarr.acceptance.videoProbe=true -Dcinemarr.acceptance.videoLeader=$leader"
+  fi
   case "$label" in
     1.20.1-forge|1.20.1-neoforge|1.20.2-forge|1.20.2-neoforge)
       cache_args+=(--no-configuration-cache)
@@ -568,6 +600,9 @@ start_audio_client() {
   mkdir -p "$client_dir/config"
   : > "$client_console"
   : > "$control_file"
+  if [[ "$video_client_gate" == "true" ]]; then
+    rm -f -- "$client_dir/screenshots/cinemarr-video-acceptance.png"
+  fi
   printf '%s\n' \
     'onboardAccessibility:false' \
     'skipMultiplayerWarning:true' \
@@ -607,7 +642,7 @@ start_audio_client() {
     cd "$target_dir" || exit 1
     exec setsid xvfb-run -a env \
       JAVA_HOME="$java_home" PATH="$java_home/bin:$PATH" \
-      JAVA_TOOL_OPTIONS="-Dcinemarr.acceptance.enabled=true -Dcinemarr.acceptance.audioProbe=true -Dcinemarr.acceptance.audioLeader=$leader -Dcinemarr.acceptance.audioControlFile=$control_file -Dorg.lwjgl.opengl.Display.allowSoftwareOpenGL=true" \
+      JAVA_TOOL_OPTIONS="$java_options" \
       ALSA_CONFIG_PATH="$client_dir/alsa.conf" ALSOFT_DRIVERS=alsa LIBGL_ALWAYS_SOFTWARE=1 \
       ./gradlew runClient --no-daemon --max-workers=1 --console=plain "${cache_args[@]}" \
       "${runtime_args[@]}" \
@@ -628,15 +663,17 @@ wait_for_audio_playing() {
   local initialized=0
   local initialization_deadline=$((SECONDS + 180))
   local deadline=$((SECONDS + 600))
-  while ! grep -Fq 'Acceptance audio state: PLAYING' "$client_console" 2>/dev/null; do
-    if grep -Fq 'Acceptance audio state:' "$client_console" 2>/dev/null; then initialized=1; fi
-    if grep -Eq 'Acceptance audio state: ERROR|Failed to open OpenAL device|Error starting SoundSystem|NoClassDefFoundError: (javazoom|de/sciss)' \
+  local ready_marker='Acceptance audio state: PLAYING'
+  [[ "$video_client_gate" == "true" ]] && ready_marker='Acceptance video ready:'
+  while ! grep -Fq "$ready_marker" "$client_console" 2>/dev/null; do
+    if grep -Eq 'Acceptance (audio state:|video session:|video libraries:)' "$client_console" 2>/dev/null; then initialized=1; fi
+    if grep -Eq 'Acceptance audio state: ERROR|Cinemarr rejected video segment|Failed to open OpenAL device|Error starting SoundSystem|NoClassDefFoundError: (javazoom|de/sciss)' \
         "$client_console" 2>/dev/null; then
       echo "$label: $role client failed before playback; see $client_console" >&2
       return 2
     fi
     if ! group_alive "$pid"; then
-      echo "$label: $role client did not reach real Cinemarr PLAYING state; see $client_console" >&2
+      echo "$label: $role client did not reach the real-client acceptance-ready state; see $client_console" >&2
       (( initialized == 0 )) && return 1 || return 2
     fi
     if (( initialized == 0 && SECONDS >= initialization_deadline )); then
@@ -644,7 +681,7 @@ wait_for_audio_playing() {
       return 1
     fi
     if (( SECONDS >= deadline )); then
-      echo "$label: $role client initialized but did not reach real Cinemarr PLAYING state; see $client_console" >&2
+      echo "$label: $role client initialized but did not reach the real-client acceptance-ready state; see $client_console" >&2
       return 2
     fi
     sleep 1
@@ -1133,6 +1170,104 @@ run_two_client_audio() {
   return "$result"
 }
 
+run_two_client_video() {
+  local label=$1
+  local target_dir=$2
+  local java_home=$3
+  local port=$4
+  local sink_prefix="cinemarr_${BASHPID}_${label//[^a-zA-Z0-9]/_}_video"
+  local sink_leader="${sink_prefix}_leader" sink_follower="${sink_prefix}_follower"
+  local raw_leader="$output_root/$label.video-leader.s16le"
+  local raw_follower="$output_root/$label.video-follower.s16le"
+  local metrics_leader="$output_root/$label.video-leader.metrics.txt"
+  local metrics_follower="$output_root/$label.video-follower.metrics.txt"
+  local sync_evidence="$output_root/$label.video-audio-sync.json"
+  local evidence="$output_root/$label.two-client-video.evidence.txt"
+  local leader_log="$output_root/$label.audio-leader.console.log"
+  local follower_log="$output_root/$label.audio-follower.console.log"
+  local leader_shot="$output_root/$label.audio-leader/screenshots/cinemarr-video-acceptance.png"
+  local follower_shot="$output_root/$label.audio-follower/screenshots/cinemarr-video-acceptance.png"
+  local module leader_pid follower_pid recorder_leader recorder_follower common_frame result=0
+
+  module=$(pactl load-module module-null-sink sink_name="$sink_leader" rate=48000 channels=2) || return 1
+  active_audio_modules+=("$module")
+  module=$(pactl load-module module-null-sink sink_name="$sink_follower" rate=48000 channels=2) || return 1
+  active_audio_modules+=("$module")
+
+  # Start both GUI clients before waiting for either one. This makes the probe
+  # exercise actual simultaneous co-viewing instead of serial client startup.
+  start_audio_client "$label" "$target_dir" "$java_home" "$port" leader CinemarrVideoA "$sink_leader"
+  leader_pid=$started_audio_client_pid
+  start_audio_client "$label" "$target_dir" "$java_home" "$port" follower CinemarrVideoB "$sink_follower"
+  follower_pid=$started_audio_client_pid
+  wait_for_audio_playing "$label" leader "$leader_pid" || result=1
+  if (( result == 0 )); then wait_for_audio_playing "$label" follower "$follower_pid" || result=1; fi
+
+  if (( result == 0 )); then
+    sleep 3
+    : > "$raw_leader"
+    : > "$raw_follower"
+    parec --raw --latency-msec=50 --device="${sink_leader}.monitor" --format=s16le --rate=48000 --channels=2 > "$raw_leader" &
+    recorder_leader=$!; active_audio_recorder_pids+=("$recorder_leader")
+    parec --raw --latency-msec=50 --device="${sink_follower}.monitor" --format=s16le --rate=48000 --channels=2 > "$raw_follower" &
+    recorder_follower=$!; active_audio_recorder_pids+=("$recorder_follower")
+    sleep 8
+    kill -TERM "$recorder_leader" "$recorder_follower" 2>/dev/null || true
+    wait "$recorder_leader" 2>/dev/null || true
+    wait "$recorder_follower" 2>/dev/null || true
+    active_audio_recorder_pids=()
+  fi
+
+  if (( result == 0 )) && ! audio_capture_is_audible "$raw_leader" "$metrics_leader"; then
+    echo "$label: leader video client did not emit audible 997 Hz program audio" >&2
+    result=1
+  fi
+  if (( result == 0 )) && ! audio_capture_is_audible "$raw_follower" "$metrics_follower"; then
+    echo "$label: follower video client did not emit audible 997 Hz program audio" >&2
+    result=1
+  fi
+  if (( result == 0 )) && ! python3 "$repo_root/scripts/compare-pcm-sync.py" \
+      "$raw_leader" "$raw_follower" > "$sync_evidence"; then
+    echo "$label: client video-program audio captures were not synchronized; see $sync_evidence" >&2
+    result=1
+  fi
+  if (( result == 0 )); then
+    common_frame=$(comm -12 \
+      <(sed -n 's/.*Acceptance video rendered:.*frameSha256=\([0-9a-f]\{64\}\).*/\1/p' "$leader_log" | sort -u) \
+      <(sed -n 's/.*Acceptance video rendered:.*frameSha256=\([0-9a-f]\{64\}\).*/\1/p' "$follower_log" | sort -u) \
+      | head -n 1)
+    if [[ -z "$common_frame" ]]; then
+      echo "$label: clients did not render a common identifiable decoded frame" >&2
+      result=1
+    fi
+  fi
+  if (( result == 0 )) && [[ ! -s "$leader_shot" || ! -s "$follower_shot" ]]; then
+    echo "$label: one or both real clients did not save the rendered-TV screenshot" >&2
+    result=1
+  fi
+  if (( result == 0 )) && ! awk -F '\t' '
+      $2 == "/video/:/transcode/universal/start.m3u8" { start = 1 }
+      $2 == "/video/:/transcode/universal/media.m3u8" { manifest = 1 }
+      $2 ~ /^\/video\/:\/transcode\/universal\/segment[0-9]+\.ts$/ { segment = 1 }
+      END { exit !(start && manifest && segment) }' "$fake_plex_request_log"; then
+    echo "$label: fake Plex did not serve the complete HLS path" >&2
+    result=1
+  fi
+  if (( result == 0 )); then
+    {
+      printf 'Common rendered frame SHA-256: %s\n' "$common_frame"
+      grep -F 'Acceptance video ready:' "$leader_log" | tail -n 1
+      grep -F 'Acceptance video ready:' "$follower_log" | tail -n 1
+      printf 'Leader screenshot SHA-256: '; sha256sum "$leader_shot" | awk '{print $1}'
+      printf 'Follower screenshot SHA-256: '; sha256sum "$follower_shot" | awk '{print $1}'
+      cat "$sync_evidence"
+      printf 'Fake Plex served master playlist, media playlist, and MPEG-TS program segments.\n'
+    } > "$evidence"
+  fi
+  cleanup_audio_processes
+  return "$result"
+}
+
 install_fake_plex_config() {
   local run_dir=$1
   local label=$2
@@ -1405,11 +1540,15 @@ run_target() {
   local console_log="$output_root/$label.console.log"
   local fifo_dir fifo fifo_fd pid server_pid server_group port rcon_port rcon_password result=0
   local fake_plex_port fake_request_start plex_deadline level_name probe_output
+  local server_java_options=""
   local -a probe_args=()
   local -a cache_args=()
   local -a runtime_args=(-PcinemarrServerGameDir="$run_dir")
   [[ "$label" == *-quilt ]] && runtime_args+=(-PcinemarrRuntimeLoader=quilt)
   [[ "$label" == *-fabric && -n "$fabric_loader_version" ]] && runtime_args+=(-PcinemarrFabricLoaderVersion="$fabric_loader_version")
+  if [[ "$video_client_gate" == "true" ]]; then
+    server_java_options='-Dcinemarr.acceptance.enabled=true -Dcinemarr.acceptance.videoProbe=true'
+  fi
 
   # Every target must start from a healthy fake Plex service. In particular,
   # an earlier audio assertion may have failed during its intentional outage;
@@ -1471,7 +1610,7 @@ run_target() {
   fake_plex_port=$(<"$fake_plex_port_file")
   fake_request_start=$(wc -l < "$fake_plex_request_log")
   install_fake_plex_config "$run_dir" "$label" "$level_name" "$fake_plex_port"
-  if [[ "$audio_client_gate" == "true" ]]; then
+  if [[ "$audio_client_gate" == "true" || "$video_client_gate" == "true" ]]; then
     isolate_audio_cache "$run_dir" "$label"
   fi
 
@@ -1484,6 +1623,7 @@ run_target() {
     cd "$target_dir" || exit 1
     exec setsid env JAVA_HOME="$java_home" PATH="$java_home/bin:$PATH" \
       CINEMARR_PLEX_TOKEN="$fake_plex_token" \
+      JAVA_TOOL_OPTIONS="$server_java_options" \
       ./gradlew runServer --no-daemon --max-workers=1 --console=plain "${cache_args[@]}" \
       "${runtime_args[@]}" \
       < "$fifo" > "$console_log" 2>&1
@@ -1550,7 +1690,11 @@ run_target() {
     fi
   fi
 
-  if (( result == 0 )) && [[ "$audio_client_gate" == "true" ]]; then
+  if (( result == 0 )) && [[ "$video_client_gate" == "true" ]]; then
+    if ! run_two_client_video "$label" "$target_dir" "$java_home" "$port"; then
+      result=1
+    fi
+  elif (( result == 0 )) && [[ "$audio_client_gate" == "true" ]]; then
     if ! run_two_client_audio "$label" "$target_dir" "$java_home" "$port" \
         "$rcon_port" "$rcon_password" "$fifo_fd"; then
       result=1

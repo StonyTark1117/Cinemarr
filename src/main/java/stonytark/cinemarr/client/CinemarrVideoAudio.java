@@ -7,6 +7,8 @@ import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.phys.Vec3;
 import stonytark.cinemarr.core.platform.CinemarrSettings;
 import stonytark.cinemarr.core.protocol.VideoPackets;
+import stonytark.cinemarr.core.protocol.ProtocolLimits;
+import stonytark.cinemarr.Cinemarr;
 import stonytark.cinemarr.core.screen.ScreenFacing;
 import stonytark.cinemarr.mixin.client.SoundEngineAccessor;
 import stonytark.cinemarr.mixin.client.SoundManagerAccessor;
@@ -18,6 +20,9 @@ import java.util.UUID;
 /** Timeline-gated positional TV audio. Audio starts only after a future buffer exists. */
 public final class CinemarrVideoAudio {
     private static final long START_BUFFER_US = 700_000;
+    private static final long SCHEDULE_LEAD_US = 1_000_000;
+    private static final long SCHEDULE_QUANTUM_US = 1_000_000;
+    private static final int MAX_PENDING_FRAMES = 128;
     private final Queue<DecodedAudioFrame> pending = new ArrayDeque<>();
     private UUID sessionId;
     private long generation = -1;
@@ -26,19 +31,40 @@ public final class CinemarrVideoAudio {
     private boolean channelPending;
     private long channelAttempt;
     private int underruns;
+    private int observedStarvations;
+    private int caughtUpTicks;
+    private long lastAcceptanceLogMs;
 
     public void tick(CinemarrVideoPlayback playback, VideoPackets.SessionState session) {
         if (session == null || session.item() == null || session.status() == VideoPackets.SessionStatus.IDLE) { reset(); return; }
         if (!session.sessionId().equals(sessionId) || session.generation() != generation) {
             reset(); sessionId = session.sessionId(); generation = session.generation();
         }
-        long targetUs = CinemarrVideoPlayback.authoritativePositionMs(session, System.currentTimeMillis()) * 1_000L;
-        for (DecodedAudioFrame frame; (frame = playback.pollAudio()) != null;) {
-            if (endUs(frame) < targetUs - 100_000L) continue;
-            if (stream == null) pending.add(frame); else if (!stream.offer(frame)) underruns++;
+        long targetUs = CinemarrVideoPlayback.authoritativePositionMsLocal(session) * 1_000L;
+        boolean acceptMore = pending.size() < MAX_PENDING_FRAMES;
+        if (stream != null) {
+            while (!pending.isEmpty()) {
+                if (endUs(pending.peek()) < targetUs - 100_000L) { pending.poll(); continue; }
+                if (!stream.offer(pending.peek())) { acceptMore = false; break; }
+                pending.poll();
+            }
         }
-        if (stream == null && !channelPending) prepareAndStart(session, targetUs);
+        if (acceptMore) for (DecodedAudioFrame frame; (frame = playback.pollAudio()) != null;) {
+            if (endUs(frame) < targetUs - 100_000L) continue;
+            if (stream == null) {
+                pending.add(frame);
+                if (pending.size() >= MAX_PENDING_FRAMES) break;
+            }
+            else if (!stream.offer(frame)) { pending.add(frame); break; }
+        }
+        if (playback.caughtUp()) caughtUpTicks++; else caughtUpTicks = 0;
+        if (stream == null && !channelPending && CinemarrClientState.INSTANCE.mediaClockReady()
+                && targetUs >= 2_000_000L && caughtUpTicks >= 10) {
+            prepareAndStart(session, targetUs);
+        }
         if (channel != null) {
+            int starvations = stream == null ? 0 : stream.starvations();
+            if (starvations > observedStarvations) { underruns += starvations - observedStarvations; observedStarvations = starvations; }
             Vec3 origin = nearestScreenPoint(session, Minecraft.getInstance().gameRenderer.getMainCamera().getPosition());
             float volume = CinemarrSettings.enabled() ? (float) (CinemarrSettings.volume()
                     * Minecraft.getInstance().options.getSoundSourceVolume(SoundSource.RECORDS)) : 0;
@@ -48,6 +74,14 @@ public final class CinemarrVideoAudio {
             });
             if (channel.isStopped() && !session.paused()) { underruns++; resetChannel(); }
         }
+        if (ProtocolLimits.videoProbeEnabled() && System.currentTimeMillis() - lastAcceptanceLogMs >= 1_000) {
+            lastAcceptanceLogMs = System.currentTimeMillis();
+            Cinemarr.LOGGER.info("Acceptance video audio timeline: targetMs={} videoMs={} javaBufferMs={} pendingFrames={} pendingFirstMs={} decodedFrames={} starvations={} underruns={}",
+                    targetUs / 1_000L, playback.lastPresentedUs() / 1_000L,
+                    stream == null ? 0 : stream.bufferedMs(), pending.size(),
+                    pending.isEmpty() ? -1 : pending.peek().presentationTimeUs() / 1_000L,
+                    playback.queuedAudioFrames(), stream == null ? 0 : stream.starvations(), underruns);
+        }
     }
 
     private void prepareAndStart(VideoPackets.SessionState session, long targetUs) {
@@ -56,25 +90,53 @@ public final class CinemarrVideoAudio {
         DecodedAudioFrame first = pending.peek(), last = first;
         for (DecodedAudioFrame value : pending) last = value;
         if (endUs(last) - Math.max(targetUs, first.presentationTimeUs()) < START_BUFFER_US || first.presentationTimeUs() > targetUs + 100_000L) return;
-        VideoPcmAudioStream startingStream = new VideoPcmAudioStream(first.sampleRate(), first.channels());
-        while (!pending.isEmpty()) startingStream.offer(pending.poll());
         UUID expectedSession = sessionId; long expectedGeneration = generation; long expectedAttempt = ++channelAttempt; channelPending = true;
         ChannelAccess access = ((SoundEngineAccessor) ((SoundManagerAccessor) (Object) Minecraft.getInstance().getSoundManager()).cinemarr$soundEngine()).cinemarr$channelAccess();
-        access.createHandle(Library.Pool.STREAMING).whenComplete((handle, error) -> {
-            if (expectedAttempt != channelAttempt) { startingStream.close(); if (handle != null) handle.execute(com.mojang.blaze3d.audio.Channel::stop); return; }
-            channelPending = false;
-            if (error != null || handle == null || !expectedSession.equals(sessionId) || expectedGeneration != generation) {
-                startingStream.close(); if (handle != null) handle.execute(com.mojang.blaze3d.audio.Channel::stop); return;
-            }
-            stream = startingStream; channel = handle;
-            Vec3 origin = nearestScreenPoint(session, Minecraft.getInstance().gameRenderer.getMainCamera().getPosition());
-            handle.execute(value -> { value.setRelative(false); value.setSelfPosition(origin); value.linearAttenuation(64); value.setVolume(0); value.attachBufferStream(startingStream); value.play(); });
-        });
+        access.createHandle(Library.Pool.STREAMING).whenComplete((handle, error) -> Minecraft.getInstance().execute(
+                () -> finishStart(session, expectedSession, expectedGeneration, expectedAttempt, handle, error)));
+    }
+
+    private void finishStart(VideoPackets.SessionState session, UUID expectedSession, long expectedGeneration,
+                             long expectedAttempt, ChannelAccess.ChannelHandle handle, Throwable error) {
+        if (expectedAttempt != channelAttempt) { if (handle != null) handle.execute(com.mojang.blaze3d.audio.Channel::stop); return; }
+        channelPending = false;
+        if (error != null || handle == null || !expectedSession.equals(sessionId) || expectedGeneration != generation) {
+            if (handle != null) handle.execute(com.mojang.blaze3d.audio.Channel::stop); return;
+        }
+        long targetUs = CinemarrVideoPlayback.authoritativePositionMsLocal(session) * 1_000L;
+        long scheduledStartUs = roundUp(targetUs + SCHEDULE_LEAD_US, SCHEDULE_QUANTUM_US);
+        while (!pending.isEmpty() && endUs(pending.peek()) <= scheduledStartUs) pending.poll();
+        if (pending.isEmpty()) { handle.execute(com.mojang.blaze3d.audio.Channel::stop); return; }
+        DecodedAudioFrame first = pending.peek(), last = first;
+        for (DecodedAudioFrame value : pending) last = value;
+        if (endUs(last) - Math.max(scheduledStartUs, first.presentationTimeUs()) < START_BUFFER_US
+                || first.presentationTimeUs() > scheduledStartUs + 100_000L) {
+            handle.execute(com.mojang.blaze3d.audio.Channel::stop); return;
+        }
+        VideoPcmAudioStream startingStream = new VideoPcmAudioStream(first.sampleRate(), first.channels());
+        startingStream.scheduleSilenceFor(scheduledStartUs - targetUs);
+        boolean firstFrame = true;
+        while (!pending.isEmpty() && startingStream.offer(pending.peek(), firstFrame ? scheduledStartUs : pending.peek().presentationTimeUs())) {
+            pending.poll();
+            firstFrame = false;
+        }
+        stream = startingStream; channel = handle; observedStarvations = startingStream.starvations(); underruns += observedStarvations;
+        if (ProtocolLimits.videoProbeEnabled()) {
+            Cinemarr.LOGGER.info("Acceptance video audio scheduled: targetMs={} mediaStartMs={} silenceMs={} bufferedMs={}",
+                    targetUs / 1_000L, scheduledStartUs / 1_000L, (scheduledStartUs - targetUs) / 1_000L,
+                    startingStream.bufferedMs());
+        }
+        Vec3 origin = nearestScreenPoint(session, Minecraft.getInstance().gameRenderer.getMainCamera().getPosition());
+        handle.execute(value -> { value.setRelative(false); value.setSelfPosition(origin); value.linearAttenuation(64); value.setVolume(0); value.attachBufferStream(startingStream); value.play(); });
     }
 
     private static long endUs(DecodedAudioFrame frame) {
         long samples = frame.byteLength() / (2L * frame.channels());
         return frame.presentationTimeUs() + samples * 1_000_000L / frame.sampleRate();
+    }
+
+    private static long roundUp(long value, long quantum) {
+        return Math.floorDiv(value + quantum - 1, quantum) * quantum;
     }
 
     static Vec3 nearestScreenPoint(VideoPackets.SessionState state, Vec3 listener) {
@@ -90,12 +152,13 @@ public final class CinemarrVideoAudio {
     }
 
     public int underruns() { return underruns; }
+    public boolean ready() { return stream != null && channel != null && !channel.isStopped(); }
     public void audioEngineReloaded() { resetChannel(); }
-    public void reset() { resetChannel(); pending.clear(); sessionId=null; generation=-1; underruns=0; }
+    public void reset() { resetChannel(); pending.clear(); sessionId=null; generation=-1; underruns=0;caughtUpTicks=0;lastAcceptanceLogMs=0; }
     private void resetChannel() {
         channelAttempt++;
         if (channel != null) { channel.execute(com.mojang.blaze3d.audio.Channel::stop); channel=null; }
         if (stream != null) { stream.close(); stream=null; }
-        channelPending=false;
+        channelPending=false;observedStarvations=0;
     }
 }

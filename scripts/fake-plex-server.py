@@ -10,12 +10,40 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 
+def looped_hls_playlist(path: Path, duration_ms: int) -> bytes:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    header = [line for line in lines if line.startswith("#") and not line.startswith("#EXTINF:")
+              and line != "#EXT-X-ENDLIST"]
+    segments = []
+    duration = None
+    for line in lines:
+        if line.startswith("#EXTINF:"):
+            duration = line
+        elif line and not line.startswith("#") and duration is not None:
+            segments.append((duration, line))
+            duration = None
+    if not segments:
+        raise ValueError(f"video playlist has no segments: {path}")
+    target_seconds = max(1.0, duration_ms / 1000.0)
+    output = header
+    elapsed = 0.0
+    index = 0
+    while elapsed < target_seconds:
+        extinf, name = segments[index % len(segments)]
+        output.extend((extinf, name))
+        elapsed += float(extinf.removeprefix("#EXTINF:").rstrip(","))
+        index += 1
+    output.append("#EXT-X-ENDLIST")
+    return ("\n".join(output) + "\n").encode("utf-8")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--port-file", required=True)
     parser.add_argument("--request-log", required=True)
     parser.add_argument("--token", required=True)
     parser.add_argument("--audio-file")
+    parser.add_argument("--video-directory")
     parser.add_argument("--track-duration-ms", type=int, default=120000)
     parser.add_argument("--state-file")
     args = parser.parse_args()
@@ -24,6 +52,19 @@ def main() -> None:
     if audio_file is not None and not audio_file.is_file():
         parser.error(f"audio file does not exist: {audio_file}")
     state_file = Path(args.state_file) if args.state_file else None
+    video_directory = Path(args.video_directory) if args.video_directory else None
+    if video_directory is not None and not (video_directory / "media.m3u8").is_file():
+        parser.error(f"video directory has no media.m3u8: {video_directory}")
+    video_manifest = looped_hls_playlist(video_directory / "media.m3u8", args.track_duration_ms) \
+        if video_directory is not None else b""
+    movie = {
+        "type": "movie", "ratingKey": "9001", "title": "Cinemarr A/V Acceptance",
+        "contentRating": "G", "duration": args.track_duration_ms,
+        "Media": [{"Part": [{"Stream": [
+            {"streamType": 2, "id": 101, "language": "English", "languageCode": "eng",
+             "codec": "aac", "selected": 1}
+        ]}]}],
+    }
     tracks = [
         {
             "type": "track", "ratingKey": str(key),
@@ -70,7 +111,7 @@ def main() -> None:
                     "myPlexSubscription": True
                 }}
             elif path == "/library/sections/1/all":
-                body = {"MediaContainer": {"Metadata": tracks}}
+                body = {"MediaContainer": {"Metadata": [movie] if video_directory is not None else tracks}}
             elif path.startswith("/library/metadata/") and path.endswith("/nearest"):
                 key = path.removeprefix("/library/metadata/").removesuffix("/nearest")
                 if key not in tracks_by_key:
@@ -95,6 +136,10 @@ def main() -> None:
                 body = {"MediaContainer": {"Metadata": [tracks_by_key[start], middle, tracks_by_key[end]]}}
             elif path.startswith("/library/metadata/"):
                 key = path.removeprefix("/library/metadata/")
+                if video_directory is not None and key == movie["ratingKey"]:
+                    body = {"MediaContainer": {"Metadata": [movie]}}
+                    self.respond(200, body)
+                    return
                 track = tracks_by_key.get(key)
                 if track is None:
                     self.respond(404, {})
@@ -102,6 +147,27 @@ def main() -> None:
                 body = {"MediaContainer": {"Metadata": [track]}}
             elif path == "/music/:/transcode/universal/start.mp3" and audio_file is not None:
                 self.respond_bytes(200, audio_file.read_bytes(), "audio/mpeg")
+                return
+            elif path == "/video/:/transcode/universal/start.m3u8" and video_directory is not None:
+                master = ("#EXTM3U\n#EXT-X-VERSION:3\n"
+                          "#EXT-X-STREAM-INF:BANDWIDTH=500000,RESOLUTION=160x90,"
+                          "CODECS=\"avc1.42e01e,mp4a.40.2\"\nmedia.m3u8\n")
+                self.respond_bytes(200, master.encode("utf-8"), "application/vnd.apple.mpegurl")
+                return
+            elif path == "/video/:/transcode/universal/stop" and video_directory is not None:
+                self.respond_bytes(200, b"", "application/octet-stream")
+                return
+            elif path.startswith("/video/:/transcode/universal/") and video_directory is not None:
+                name = path.removeprefix("/video/:/transcode/universal/")
+                if name == "media.m3u8":
+                    self.respond_bytes(200, video_manifest, "application/vnd.apple.mpegurl")
+                    return
+                candidate = video_directory / name
+                if candidate.parent != video_directory or not candidate.is_file():
+                    self.respond(404, {})
+                    return
+                content_type = "application/vnd.apple.mpegurl" if candidate.suffix == ".m3u8" else "video/mp2t"
+                self.respond_bytes(200, candidate.read_bytes(), content_type)
                 return
             else:
                 self.respond(404, {})

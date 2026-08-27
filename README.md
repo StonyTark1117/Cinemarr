@@ -6,7 +6,7 @@ The complete product requirements and acceptance criteria live in [Proposal](Pro
 
 ## Current implementation
 
-Cinemarr now has video-runtime adapters for Forge 1.7.10 and Fabric, Quilt-compatible Fabric, Forge, and NeoForge targets spanning Minecraft 1.20.1, 1.20.2, 1.21.1, 26.1.2, and 26.2. These targets are build- and dedicated-launch-tested to the levels recorded in [the compatibility matrix](docs/COMPATIBILITY.md); none is release-certified until the real two-client audio/video acceptance test passes.
+Cinemarr now has video-runtime adapters for Forge 1.7.10 and Fabric, Quilt-compatible Fabric, Forge, and NeoForge targets spanning Minecraft 1.20.1, 1.20.2, 1.21.1, 26.1.2, and 26.2. These targets are build- and dedicated-launch-tested to the levels recorded in [the compatibility matrix](docs/COMPATIBILITY.md). NeoForge 1.21.1 additionally has real two-client deterministic-HLS visual/audio evidence; no artifact is release-certified until its remaining gates, including live Plex validation, pass.
 
 Implemented foundations include:
 
@@ -19,7 +19,7 @@ Implemented foundations include:
 - Eight progressively crafted Quick TV Kit blocks: 144p, 240p, 480p, 720p, 1080p, 1440p, 4K, and 8K. Placing one preflights a loaded, unobstructed 16:9 footprint, builds a bounded dense screen, activates it, and persists the exact named rendition target. A literal 8K one-block-per-pixel wall would contain 33,177,600 blocks, so quick kits are deliberately bounded prefabs; hand-built Screen Pixels retain exact one-block/one-logical-pixel behavior.
 - Global `quickTvKitsEnabled` and per-resolution `quickTv...Enabled` server settings. A disabled kit stays registered for world/save compatibility but cannot construct or activate its prefab.
 
-The in-world decoder/renderer, control UI, subtitle/audio-track selection, positional sound, persistence/reconnect behavior, server-owned HLS relay, and clean protocol rejection paths are implemented. Real matching-client runtime evidence—especially two clients showing the same identifiable frame with synchronized audible output—is still an acceptance gate and is not implied by a passing build or server log.
+The in-world decoder/renderer, control UI, subtitle/audio-track selection, positional sound, persistence/reconnect behavior, server-owned HLS relay, and clean protocol rejection paths are implemented. On NeoForge 1.21.1, two consecutive fresh gates made two real clients visibly render the same identifiable synthetic H.264/AAC program and produce synchronized audible output. The captures measured 0.993263 correlation at 70 ms lag and 0.993801 at 90 ms lag. Other targets still require equivalent matching-client evidence, and the recorded synthetic results do not substitute for live Plex validation.
 
 ## Server files
 
@@ -67,3 +67,10 @@ CINEMARR_LIVE_VIDEO_LIBRARY='Movies' \
 ```
 
 Credentialed smoke results are deliberately non-cacheable. Credentials are not packaged into artifacts.
+
+The opt-in real two-client NeoForge 1.21.1 gate creates a deterministic fake-Plex HLS program, launches two independent GUI clients and audio sinks, requires a common rendered frame plus visible screenshots, checks audible PCM synchronization, and verifies clean shutdown:
+
+```bash
+CINEMARR_VIDEO_CLIENT_GATE=true \
+./scripts/run-dedicated-server-gate.sh 1.21.1-neoforge
+```

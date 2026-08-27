@@ -9,6 +9,8 @@ public final class ProtocolLimits {
     public static final String ACCEPTANCE_AUDIO_PROBE_PROPERTY = "cinemarr.acceptance.audioProbe";
     public static final String ACCEPTANCE_AUDIO_LEADER_PROPERTY = "cinemarr.acceptance.audioLeader";
     public static final String ACCEPTANCE_AUDIO_CONTROL_FILE_PROPERTY = "cinemarr.acceptance.audioControlFile";
+    public static final String ACCEPTANCE_VIDEO_PROBE_PROPERTY = "cinemarr.acceptance.videoProbe";
+    public static final String ACCEPTANCE_VIDEO_LEADER_PROPERTY = "cinemarr.acceptance.videoLeader";
     public static final int MAX_BROWSE_RESULTS = 50;
     public static final int MAX_STATION_SEEDS = 5;
     public static final int MAX_PLAYBACK_ENTRIES = 504;
@@ -66,6 +68,16 @@ public final class ProtocolLimits {
         if (!audioProbeEnabled()) return "";
         String configured = System.getProperty(ACCEPTANCE_AUDIO_CONTROL_FILE_PROPERTY);
         return configured == null ? "" : configured.trim();
+    }
+
+    /** Enables the isolated real-client HLS video acceptance probe. */
+    public static boolean videoProbeEnabled() {
+        return Boolean.getBoolean(ACCEPTANCE_ENABLED_PROPERTY)
+                && Boolean.getBoolean(ACCEPTANCE_VIDEO_PROBE_PROPERTY);
+    }
+
+    public static boolean videoProbeLeader() {
+        return videoProbeEnabled() && Boolean.getBoolean(ACCEPTANCE_VIDEO_LEADER_PROPERTY);
     }
 
     private ProtocolLimits() {}

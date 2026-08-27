@@ -13,6 +13,10 @@ class TransportTimingTest {
         assertEquals(100, first.filteredOffsetMs()); assertEquals(1_900, clock.toLocalTime(2_000));
         clock.accept(2_000, 2_500, 2_800);
         assertEquals(100, clock.offsetMs());
+        ClockSynchronizer.Sample better = clock.accept(3_000, 3_042, 3_020);
+        assertEquals(32, better.filteredOffsetMs());
+        assertEquals(20, clock.bestRoundTripMs());
+        assertEquals(3, clock.sampleCount());
     }
 
     @Test void retriesMissingWindowAndAcknowledgesOnlyWhenComplete() {
