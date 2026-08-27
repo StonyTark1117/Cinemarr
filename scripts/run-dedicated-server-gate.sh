@@ -1474,7 +1474,7 @@ run_invalid_config_check() {
   local level_name=$6
   local console_log="$output_root/$label.invalid-config.console.log"
   local latest_log="$run_dir/logs/latest.log"
-  local pid result=0
+  local pid server_pid server_group result=0 rejection_seen=0
   local -a cache_args=()
   local -a runtime_args=(-PcinemarrServerGameDir="$run_dir")
   [[ "$label" == *-quilt ]] && runtime_args+=(-PcinemarrRuntimeLoader=quilt)
@@ -1498,20 +1498,52 @@ run_invalid_config_check() {
   active_server_pid=$pid
 
   local deadline=$((SECONDS + 600))
-  while group_alive "$pid"; do
-    if grep -Fq 'Invalid Cinemarr configuration value for plexUrl' "$console_log" 2>/dev/null; then
+  while (( SECONDS < deadline )); do
+    if [[ -z "$active_server_group" ]]; then
+      server_pid=$(ss -ltnp "sport = :$port" \
+        | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -n 1)
+      server_group=""
+      if [[ -n "$server_pid" ]]; then
+        server_group=$(ps -o pgid= -p "$server_pid" 2>/dev/null | tr -d '[:space:]')
+      fi
+      if [[ "$server_group" =~ ^[0-9]+$ ]] && (( server_group > 1 )); then
+        active_server_group=$server_group
+      fi
+    fi
+    if grep -Fq 'Invalid Cinemarr configuration value for plexUrl' "$latest_log" "$console_log" 2>/dev/null; then
+      rejection_seen=1
       break
     fi
-    if (( SECONDS >= deadline )); then
-      echo "$label: invalid-configuration rejection timed out" >&2
-      result=1
+    # Some Gradle versions fork a single-use daemon into a different process
+    # group while downloading Minecraft assets. Only treat an exited wrapper
+    # as terminal once its server port is also closed and Gradle logged an end.
+    if ! group_alive "$pid" && ! ss -ltnH "sport = :$port" | grep -q . \
+        && grep -Eq 'BUILD (FAILED|SUCCESSFUL)|FAILURE:' "$console_log" 2>/dev/null; then
       break
     fi
     sleep 1
   done
 
-  if ! wait_for_group_exit "$pid" 60; then
-    echo "$label: server did not fail closed after rejecting invalid Cinemarr configuration" >&2
+  if (( rejection_seen == 0 )); then
+    echo "$label: invalid-configuration rejection timed out or the launcher exited without the rejected key" >&2
+    result=1
+  fi
+  local close_deadline=$((SECONDS + 120))
+  while ss -ltnH "sport = :$port" | grep -q . && (( SECONDS < close_deadline )); do sleep 1; done
+  if ss -ltnH "sport = :$port" | grep -q .; then
+    echo "$label: server did not close port $port after rejecting invalid Cinemarr configuration" >&2
+    stop_listening_port "$port"
+    result=1
+  fi
+  if [[ -n "$active_server_group" ]]; then
+    if ! wait_for_group_exit "$active_server_group" 60; then
+      stop_group "$active_server_group" TERM
+      wait_for_group_exit "$active_server_group" 10 || stop_group "$active_server_group" KILL
+      result=1
+    fi
+    active_server_group=""
+  fi
+  if group_alive "$pid" && ! wait_for_group_exit "$pid" 60; then
     stop_group "$pid" TERM
     wait_for_group_exit "$pid" 10 || stop_group "$pid" KILL
     result=1
@@ -1524,10 +1556,6 @@ run_invalid_config_check() {
   fi
   if grep -Fq 'private-pass' "$latest_log" "$console_log" 2>/dev/null; then
     echo "$label: invalid configuration diagnostics leaked a credential" >&2
-    result=1
-  fi
-  if ss -ltnH "sport = :$port" | grep -q .; then
-    echo "$label: port $port remains open after invalid-configuration rejection" >&2
     result=1
   fi
   restore_server_config
