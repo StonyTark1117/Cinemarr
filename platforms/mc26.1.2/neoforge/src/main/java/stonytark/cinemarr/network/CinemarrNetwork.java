@@ -26,6 +26,7 @@ public final class CinemarrNetwork {
         PayloadRegistrar registrar = event.registrar(VERSION);
         registrar.playToClient(CinemarrPayloads.ServerHello.TYPE, CinemarrPayloads.ServerHello.CODEC, CinemarrNetwork::client);
         registrar.playToClient(CinemarrPayloads.TimeSyncResponse.TYPE, CinemarrPayloads.TimeSyncResponse.CODEC, CinemarrNetwork::client);
+        registrar.playToClient(CinemarrPayloads.ErrorMessage.TYPE, CinemarrPayloads.ErrorMessage.CODEC, CinemarrNetwork::client);
         registrar.playToClient(VideoPayloads.LibraryList.TYPE, VideoPayloads.LibraryList.CODEC, CinemarrNetwork::client);
         registrar.playToClient(VideoPayloads.OpenVideoScreen.TYPE, VideoPayloads.OpenVideoScreen.CODEC, CinemarrNetwork::client);
         registrar.playToClient(VideoPayloads.BrowseResults.TYPE, VideoPayloads.BrowseResults.CODEC, CinemarrNetwork::client);

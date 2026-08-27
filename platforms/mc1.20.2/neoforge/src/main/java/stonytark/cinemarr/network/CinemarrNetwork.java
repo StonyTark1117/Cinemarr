@@ -70,8 +70,9 @@ public final class CinemarrNetwork {
                 (player, payload) -> CinemarrServer.instance().videoManifest(player, payload.value()));
         server(id++, VideoPayloads.SegmentAcknowledgement.class, VideoPayloads.SegmentAcknowledgement::write, VideoPayloads.SegmentAcknowledgement::read,
                 (player, payload) -> CinemarrServer.instance().videoAcknowledge(player, payload.value()));
-        server(id, VideoPayloads.ClientHealth.class, VideoPayloads.ClientHealth::write, VideoPayloads.ClientHealth::read,
+        server(id++, VideoPayloads.ClientHealth.class, VideoPayloads.ClientHealth::write, VideoPayloads.ClientHealth::read,
                 (player, payload) -> CinemarrServer.instance().videoHealth(player, payload.value()));
+        client(id, CinemarrPayloads.ErrorMessage.class, CinemarrPayloads.ErrorMessage::write, CinemarrPayloads.ErrorMessage::read);
     }
 
     public static void sendToServer(CinemarrMessage payload) { required().sendToServer(payload); }

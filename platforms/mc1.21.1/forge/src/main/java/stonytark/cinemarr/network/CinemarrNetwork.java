@@ -33,6 +33,7 @@ public final class CinemarrNetwork {
         PayloadFlow<RegistryFriendlyByteBuf, CustomPacketPayload> clientbound = connection.play().flow(PacketFlow.CLIENTBOUND);
         client(clientbound, CinemarrPayloads.ServerHello.TYPE, CinemarrPayloads.ServerHello.CODEC);
         client(clientbound, CinemarrPayloads.TimeSyncResponse.TYPE, CinemarrPayloads.TimeSyncResponse.CODEC);
+        client(clientbound, CinemarrPayloads.ErrorMessage.TYPE, CinemarrPayloads.ErrorMessage.CODEC);
         client(clientbound, VideoPayloads.LibraryList.TYPE, VideoPayloads.LibraryList.CODEC);
         client(clientbound, VideoPayloads.OpenVideoScreen.TYPE, VideoPayloads.OpenVideoScreen.CODEC);
         client(clientbound, VideoPayloads.BrowseResults.TYPE, VideoPayloads.BrowseResults.CODEC);

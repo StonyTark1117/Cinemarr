@@ -50,6 +50,8 @@ An exact Quilt 26.2 gate with Mod Menu 20.0.1 then exercised Cinemarr's
 clientbound error response, verified its Fabric codec/receiver registration,
 and passed the two-client capture at 0.980075 correlation / 0 ms lag with clean
 teardown.
+The corresponding exact Forge 26.2 response-path regression passed at 0.991658
+correlation / 0 ms lag with matching frame evidence and clean teardown.
 
 The repository decoder also passed a Windows-x64 native smoke under a Windows
 Temurin 21 JVM: JavaCV/FFmpeg loaded and decoded three video frames and 30 audio

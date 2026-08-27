@@ -97,9 +97,11 @@ Exact local regressions then passed for Fabric 26.1.2 at 0.986959 / 10 ms and
 the serial late-join NeoForge 1.21.1 profile at 0.990159 / 70 ms.
 The exact Quilt 26.2 + Mod Menu 20.0.1 profile subsequently exposed an omitted
 Fabric codec/receiver registration for the server's `cinemarr:error` response.
-After registering that response on every Fabric target, the same profile kept
-both clients connected, rendered matching frame SHA-256 and PTS evidence, and
-passed at 0.980075 correlation / 0 ms lag.
+After auditing and registering that response across every modern loader
+adapter, the same profile kept both clients connected, rendered matching frame
+SHA-256 and PTS evidence, and passed at 0.980075 correlation / 0 ms lag. The
+corresponding exact Forge 26.2 response-path regression passed at 0.991658 / 0
+ms with matching frame evidence.
 Each run also passed protocol and command-client checks and left no client,
 server, fake-Plex process, audio module, or target port behind.
 
