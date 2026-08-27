@@ -81,6 +81,10 @@
   Cinemarr would never force-load the whole structure; only
   currently tracked portions render.
 
+  Make sure there are blocks that can be "quick" shortcuts to common resolution TVs
+	- examples: 144, 240, 480, 720, 1080, 1440, 4k, 8k, TV Blocks that automatically make a TV multiblock of matching resolution.
+	- These should require appropriate amount of resources and have config options to disable
+
   ## Exact and unusual resolutions
 
   The TV has three presentation modes:
