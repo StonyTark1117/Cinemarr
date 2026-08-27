@@ -2,7 +2,7 @@
   {
     "modid": "cinemarr",
     "name": "Cinemarr",
-    "description": "Streams a shared, synchronized Plex music queue to every player.",
+  "description": "Streams shared, synchronized Plex video to in-world television screens.",
     "version": "${modVersion}",
     "mcversion": "1.7.10",
     "url": "",

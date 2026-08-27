@@ -6,7 +6,7 @@ version="${version}"
 displayName="Cinemarr"
 logoFile="cinemarr.png"
 authors="stonytark_mkii"
-description='''Streams a shared, synchronized Plex music queue to every player.'''
+description='''Streams shared, synchronized Plex video to in-world television screens.'''
 
 [[mixins]]
 config="cinemarr.mixins.json"

@@ -3,7 +3,7 @@
   "id": "cinemarr",
   "version": "${version}",
   "name": "Cinemarr",
-  "description": "Streams a shared, synchronized Plex music queue to every player.",
+  "description": "Streams shared, synchronized Plex video to in-world television screens.",
   "authors": ["stonytark_mkii"],
   "license": "CC0-1.0",
   "icon": "cinemarr.png",

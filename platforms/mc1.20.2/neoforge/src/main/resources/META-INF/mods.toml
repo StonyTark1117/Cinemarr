@@ -9,7 +9,7 @@ displayName="Cinemarr"
 logoFile="cinemarr.png"
 authors="stonytark_mkii"
 displayTest="MATCH_VERSION"
-description='''Streams a shared, synchronized Plex music queue to every player.'''
+description='''Streams shared, synchronized Plex video to in-world television screens.'''
 
 [[dependencies.cinemarr]]
 modId="neoforge"
