@@ -10,6 +10,9 @@ import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.core.platform.CinemarrSettings;
 import stonytark.cinemarr.network.CinemarrNetwork;
 import stonytark.cinemarr.network.CinemarrPayloads;
+import stonytark.cinemarr.network.VideoPayloads;
+import stonytark.cinemarr.core.protocol.VideoPackets;
+import stonytark.cinemarr.core.video.PresentationMode;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -34,7 +37,16 @@ public final class CinemarrClientState {
 
     public void accept(CinemarrMessage payload) {
         Minecraft minecraft = Minecraft.getInstance();
-        if (payload instanceof CinemarrPayloads.OpenScreen) {
+        if (CinemarrVideoClientState.INSTANCE.accept(payload)) {
+            refreshScreen(minecraft);
+            return;
+        }
+        if (payload instanceof VideoPayloads.OpenVideoScreen value) {
+            CinemarrVideoClientState.INSTANCE.requestLibraries();
+            CinemarrVideoClientState.INSTANCE.command(new VideoPackets.SessionCommand(VideoPackets.SessionAction.TUNE,
+                    value.controllerPos(), "", "", "", PresentationMode.FIT, 0, 0, -1, -1));
+            minecraft.setScreenAndShow(new CinemarrVideoScreen(value.controllerPos(), CinemarrVideoClientState.INSTANCE));
+        } else if (payload instanceof CinemarrPayloads.OpenScreen) {
             minecraft.setScreenAndShow(new CinemarrScreen(this));
             CinemarrNetwork.sendToServer(new CinemarrPayloads.BrowseRequest(CinemarrPayloads.BrowseKind.SEARCH, "", 0));
         } else if (payload instanceof CinemarrPayloads.ServerHello value) {
@@ -120,12 +132,17 @@ public final class CinemarrClientState {
         audio.tick();
     }
     public void hello() { CinemarrNetwork.sendToServer(new CinemarrPayloads.ClientHello(ProtocolLimits.clientHelloVersion())); requestTimeSync(); }
+    /** Converts a server epoch using the filtered synchronization estimate. */
+    public long serverToLocalEpoch(long serverEpochMs) {
+        return clock.initialized() ? clock.toLocalTime(serverEpochMs) : serverEpochMs;
+    }
     public void ensureAudio() { audio.ensureStarted(); }
     public void listeningChanged() { audio.listeningChanged(); }
     public void retryAudio() { audio.retry(); refreshScreen(Minecraft.getInstance()); }
     public void audioEngineReloaded() { audio.audioEngineReloaded(); }
     public void stop() {
         audio.stop(); clock.reset(); notice = ""; lastTimeSync = 0;
+        CinemarrVideoClientState.INSTANCE.reset();
         nonOperatorCommandsVerified = false; operatorCommandsVerified = false;
         acceptanceAudioQueued = false; lastAcceptanceAudioState = null;
         acceptanceControl.reset();
@@ -231,6 +248,9 @@ public final class CinemarrClientState {
             Cinemarr.LOGGER.error("Acceptance control failed: {}", command, error);
         }
     }
-    private static void refreshScreen(Minecraft minecraft) { if (minecraft.gui.screen() instanceof CinemarrScreen screen) screen.resultsChanged(); }
+    private static void refreshScreen(Minecraft minecraft) {
+        if (minecraft.gui.screen() instanceof CinemarrScreen screen) screen.resultsChanged();
+        else if(minecraft.gui.screen() instanceof CinemarrVideoScreen screen)screen.stateChanged();
+    }
     private CinemarrClientState() {}
 }

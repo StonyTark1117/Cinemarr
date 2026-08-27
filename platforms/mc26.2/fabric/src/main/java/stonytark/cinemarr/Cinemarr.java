@@ -7,6 +7,8 @@ import org.slf4j.LoggerFactory;
 import stonytark.cinemarr.network.CinemarrNetwork;
 import stonytark.cinemarr.server.CinemarrCommands;
 import stonytark.cinemarr.server.CinemarrServer;
+import stonytark.cinemarr.registry.CinemarrBlocks;
+import stonytark.cinemarr.registry.CinemarrItems;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -25,6 +27,8 @@ public final class Cinemarr implements ModInitializer {
 
     private static void initializeOnce() {
         if (!INITIALIZED.compareAndSet(false, true)) return;
+        CinemarrBlocks.register();
+        CinemarrItems.register();
         CinemarrNetwork.register();
         CinemarrServer.register();
         CinemarrCommands.register();

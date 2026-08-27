@@ -348,6 +348,16 @@ def verifyFabric262 = tasks.register('verifyFabric262', Exec) {
     commandLine('./gradlew', 'verifyRelease', ':core:test', '--no-daemon', '--max-workers=1')
 }
 
+def verifyQuilt262 = tasks.register('verifyQuilt262', Exec) {
+    group = 'verification'
+    description = 'Runs the Minecraft 26.2 Fabric artifact under the Quilt dependency profile.'
+    workingDir(layout.projectDirectory.dir('platforms/mc26.2/fabric'))
+    environment 'JAVA_HOME', java26Home
+    environment 'PATH', java26Path
+    commandLine('./gradlew', '-PcinemarrRuntimeLoader=quilt', 'verifyRelease', ':core:test', '--no-daemon', '--max-workers=1', '--no-configuration-cache')
+    mustRunAfter(verifyFabric262)
+}
+
 def verifyForge262 = tasks.register('verifyForge262', Exec) {
     group = 'verification'
     description = 'Runs the isolated Java 25 Minecraft 26.2 Forge release gate.'
@@ -355,7 +365,7 @@ def verifyForge262 = tasks.register('verifyForge262', Exec) {
     environment 'JAVA_HOME', java26Home
     environment 'PATH', java26Path
     commandLine('./gradlew', 'verifyRelease', ':core:test', '--no-daemon', '--max-workers=1')
-    mustRunAfter(verifyFabric262)
+    mustRunAfter(verifyQuilt262)
 }
 
 def verifyNeoForge262 = tasks.register('verifyNeoForge262', Exec) {
@@ -410,8 +420,8 @@ tasks.register('verify2612Family') {
 
 tasks.register('verify262Family') {
     group = 'verification'
-    description = 'Builds and verifies the Java 25 Fabric, Forge, and NeoForge Minecraft 26.2 artifacts.'
-    dependsOn(verifyFabric262, verifyForge262, verifyNeoForge262)
+    description = 'Builds and verifies the Java 25 Fabric/Quilt, Forge, and NeoForge Minecraft 26.2 artifacts.'
+    dependsOn(verifyFabric262, verifyQuilt262, verifyForge262, verifyNeoForge262)
 }
 
 tasks.register('verifyAllTargets') {
