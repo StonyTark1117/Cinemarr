@@ -22,4 +22,5 @@ public final class LegacyDecodedVideoFrame {
     public int width() { return width; }
     public int height() { return height; }
     public byte[] rgba() { return rgba.clone(); }
+    byte[] rgbaView() { return rgba; }
 }

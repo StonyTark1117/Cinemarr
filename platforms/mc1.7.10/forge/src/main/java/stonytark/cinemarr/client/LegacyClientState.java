@@ -42,6 +42,7 @@ final class LegacyClientState implements LegacyNetwork.ClientListener {
     private String notice = "";
 
     @Override public void accept(LegacyPacketTypes.Type<?> type, Object message) {
+        if (LegacyVideoClientState.INSTANCE.accept(type, message)) return;
         Minecraft minecraft = Minecraft.getMinecraft();
         if (type == LegacyPacketTypes.OPEN_SCREEN) {
             minecraft.displayGuiScreen(new LegacyScreen(this));
@@ -111,6 +112,7 @@ final class LegacyClientState implements LegacyNetwork.ClientListener {
         long now = System.currentTimeMillis();
         if (now - lastTimeSync >= 10_000L) requestTimeSync();
         audio.tick();
+        LegacyVideoRuntime.INSTANCE.tick();
     }
 
     private void hello() {
@@ -128,6 +130,8 @@ final class LegacyClientState implements LegacyNetwork.ClientListener {
         browse = new ControlPackets.BrowseResults(ControlPackets.BrowseKind.SEARCH, "", 0,
                 false, Collections.<StationModels.MediaItem>emptyList());
         adventure = new StatePackets.AdventurePreview(0L, "", Collections.<StatePackets.QueueEntry>emptyList());
+        LegacyVideoClientState.INSTANCE.reset();
+        LegacyVideoRuntime.INSTANCE.reset();
     }
 
     void operatorCommandProbe() {
@@ -258,6 +262,8 @@ final class LegacyClientState implements LegacyNetwork.ClientListener {
                 new ControlPackets.TimeSyncRequest(timeNonce.incrementAndGet(), now));
         lastTimeSync = now;
     }
+
+    long serverEpoch(long localEpochMs) { return clock.initialized() ? clock.toServerTime(localEpochMs) : localEpochMs; }
 
     private LegacyScreen screen() {
         return Minecraft.getMinecraft().currentScreen instanceof LegacyScreen

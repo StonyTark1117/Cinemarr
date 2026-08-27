@@ -14,6 +14,7 @@ import net.minecraft.network.NetworkManager;
 import net.minecraft.util.IChatComponent;
 import net.minecraftforge.client.event.ClientChatReceivedEvent;
 import net.minecraftforge.client.event.sound.SoundLoadEvent;
+import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.common.MinecraftForge;
 import org.lwjgl.input.Keyboard;
 import stonytark.cinemarr.Cinemarr;
@@ -79,6 +80,11 @@ public final class LegacyClient {
 
     @SubscribeEvent public void soundLoaded(SoundLoadEvent event) {
         LegacyClientState.INSTANCE.audioEngineReloaded();
+        LegacyVideoRuntime.INSTANCE.audioEngineReloaded();
+    }
+
+    @SubscribeEvent public void renderWorld(RenderWorldLastEvent event) {
+        LegacyVideoRuntime.INSTANCE.render();
     }
 
     private void logDisconnectReason() {

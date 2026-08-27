@@ -22,4 +22,5 @@ public final class LegacyDecodedAudioFrame {
     public int sampleRate() { return sampleRate; }
     public int channels() { return channels; }
     public byte[] pcm() { return pcm.clone(); }
+    byte[] pcmView() { return pcm; }
 }
