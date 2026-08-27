@@ -18,6 +18,7 @@ import stonytark.cinemarr.network.LegacyNetwork;
 import stonytark.cinemarr.server.LegacyCommands;
 import stonytark.cinemarr.server.LegacyGlobalPlayer;
 import stonytark.cinemarr.server.LegacySavedData;
+import stonytark.cinemarr.screen.LegacyBlocks;
 
 import java.io.IOException;
 import java.util.Map;
@@ -33,7 +34,7 @@ public final class Cinemarr {
     public static final String MOD_ID = "cinemarr";
     public static final String MOD_NAME = "Cinemarr";
     public static final String VERSION = "1.0.0";
-    public static final int PROTOCOL = 5;
+    public static final int PROTOCOL = 8;
 
     public static Logger LOGGER;
     private static LegacyGlobalPlayer coordinator;
@@ -42,6 +43,7 @@ public final class Cinemarr {
     public void preInit(FMLPreInitializationEvent event) {
         LOGGER = event.getModLog();
         LOGGER.info("Initializing Cinemarr {} for Forge 1.7.10 protocol {}", VERSION, PROTOCOL);
+        LegacyBlocks.register();
         if (event.getSide().isClient()) {
             try {
                 LegacyConfig.installClient(event.getModConfigurationDirectory());
@@ -53,6 +55,7 @@ public final class Cinemarr {
 
     @Mod.EventHandler
     public void init(FMLInitializationEvent event) {
+        LegacyBlocks.registerRecipes();
         LegacyNetwork.register();
         FMLCommonHandler.instance().bus().register(this);
         if (event.getSide().isClient()) LegacyClient.register();
@@ -94,7 +97,7 @@ public final class Cinemarr {
     @NetworkCheckHandler
     public boolean requireMatchingClient(Map<String, String> remoteVersions, Side remoteSide) {
         if (remoteSide == Side.CLIENT) {
-            // Let an absent/older client reach LegacyNetwork's explicit protocol-5 hello gate so
+            // Let an absent/older client reach LegacyNetwork's explicit protocol-8 hello gate so
             // it receives Cinemarr's clear timeout/mismatch text instead of FML's generic timeout.
             return true;
         }

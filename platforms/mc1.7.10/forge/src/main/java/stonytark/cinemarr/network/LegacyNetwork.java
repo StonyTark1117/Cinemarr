@@ -25,7 +25,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
-/** Forge 1.7.10 SimpleNetworkWrapper adapter for the canonical protocol-5 codecs. */
+/** Forge 1.7.10 SimpleNetworkWrapper adapter for the canonical protocol-8 codecs. */
 public final class LegacyNetwork {
     public interface ServerListener {
         void accept(EntityPlayerMP player, LegacyPacketTypes.Type<?> type, Object message);
