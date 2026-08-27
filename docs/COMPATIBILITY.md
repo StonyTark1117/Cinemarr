@@ -43,6 +43,9 @@ NeoForge 1.21.1, 26.1.2, and 26.2 measured 10 ms, 40 ms, 20 ms, and 30 ms
 inter-client lag, respectively, with correlation from 0.968840 to 0.995487.
 The exact Fabric 26.2 executor-delay regression also passed at 0.993323
 correlation / 30 ms lag.
+The final boundary calculation is server-epoch-based rather than join-time-
+based; exact Fabric 26.1.2 and serial late-join NeoForge 1.21.1 regressions
+passed at 0.986959 / 10 ms and 0.990159 / 70 ms, respectively.
 
 The repository decoder also passed a Windows-x64 native smoke under a Windows
 Temurin 21 JVM: JavaCV/FFmpeg loaded and decoded three video frames and 30 audio

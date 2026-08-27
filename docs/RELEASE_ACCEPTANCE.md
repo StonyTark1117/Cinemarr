@@ -88,6 +88,13 @@ into the same audio-executor callback passed at 0.993323 / 30 ms.
 The runtime gate also disables hostile-mob spawning after a hosted zombie moved
 both positional-audio probes during capture; a hardened NeoForge 1.21.1 rerun
 passed at 0.990618 / 40 ms without listener displacement.
+One later hosted 26.1.2 Fabric run exposed that deriving wall time indirectly
+from a render-thread media estimate could still leave 180 ms of skew. The
+adapter now converts each rounded media position back to its exact server epoch
+from the authoritative session snapshot, maps that epoch through the client
+clock filter inside the OpenAL callback, and compensates against that boundary.
+Exact local regressions then passed for Fabric 26.1.2 at 0.986959 / 10 ms and
+the serial late-join NeoForge 1.21.1 profile at 0.990159 / 70 ms.
 Each run also passed protocol and command-client checks and left no client,
 server, fake-Plex process, audio module, or target port behind.
 

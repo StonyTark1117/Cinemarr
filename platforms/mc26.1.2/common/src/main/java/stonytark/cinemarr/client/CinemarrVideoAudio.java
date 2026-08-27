@@ -53,6 +53,7 @@ public final class CinemarrVideoAudio {
     private volatile boolean sourceStartPending;
     private volatile boolean sourceStartProbeQueued;
     private volatile long sourceStartScheduledUs;
+    private volatile long sourceStartServerBoundaryEpochMs;
     private volatile long sourceStartSilenceUs;
     private volatile int sourceStartSampleRate;
     private volatile long sourceStartRequestedNanos;
@@ -198,6 +199,8 @@ public final class CinemarrVideoAudio {
             accessor.cinemarr$pumpBuffers(SOURCE_PREROLL_BUFFERS);
             value.play();
             sourceStartScheduledUs = scheduledStartUs;
+            sourceStartServerBoundaryEpochMs = session.paused() ? 0L
+                    : session.serverEpochMs() + scheduledStartUs / 1_000L - session.positionMs();
             sourceStartSilenceUs = startingStream.scheduledSilenceUs();
             sourceStartSampleRate = (int) startingStream.getFormat().getSampleRate();
             sourceStartRequestedNanos = System.nanoTime();
@@ -238,10 +241,18 @@ public final class CinemarrVideoAudio {
                 outputLatencyUs = 0L;
             }
             if (playedUs > 0) {
-                // Resample here so audio-executor queueing cannot become extra silence.
-                long targetUs = CinemarrVideoPlayback.authoritativePositionMsLocal(session) * 1_000L;
                 long remainingPrerollUs = Math.max(0L, sourceStartSilenceUs - playedUs);
-                long untilMediaStartUs = Math.max(0L, sourceStartScheduledUs - targetUs);
+                // Map the server-owned media boundary directly to local wall
+                // time here so executor delay and join time cannot skew it.
+                long untilMediaStartUs;
+                if (sourceStartServerBoundaryEpochMs > 0L) {
+                    long localBoundaryEpochMs = CinemarrClientState.INSTANCE.serverToLocalEpoch(
+                            sourceStartServerBoundaryEpochMs);
+                    untilMediaStartUs = Math.max(0L, localBoundaryEpochMs - System.currentTimeMillis()) * 1_000L;
+                } else {
+                    long targetUs = CinemarrVideoPlayback.authoritativePositionMsLocal(session) * 1_000L;
+                    untilMediaStartUs = Math.max(0L, sourceStartScheduledUs - targetUs);
+                }
                 if (remainingPrerollUs + outputLatencyUs > untilMediaStartUs + 50_000L) {
                     sourceStartPending = false;
                     sourceStartProbeQueued = false;
@@ -327,7 +338,7 @@ public final class CinemarrVideoAudio {
         if (channel != null) { channel.execute(com.mojang.blaze3d.audio.Channel::stop); channel=null; }
         if (stream != null) { stream.close(); stream=null; }
         channelPending=false;observedStarvations=0;driftTicks=0;stableTicks=0;audioTimelineUs=0;audioTimelineNanos=Long.MIN_VALUE;
-        sourceStartPending=false;sourceStartProbeQueued=false;sourceStartScheduledUs=0;sourceStartSilenceUs=0;
+        sourceStartPending=false;sourceStartProbeQueued=false;sourceStartScheduledUs=0;sourceStartServerBoundaryEpochMs=0;sourceStartSilenceUs=0;
         sourceStartSampleRate=0;sourceStartRequestedNanos=0;
     }
 }
