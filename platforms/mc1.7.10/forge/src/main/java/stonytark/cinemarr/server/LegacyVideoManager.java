@@ -15,6 +15,7 @@ import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.core.protocol.StatePackets;
 import stonytark.cinemarr.core.protocol.VideoPackets;
 import stonytark.cinemarr.core.server.PlexVideoService;
+import stonytark.cinemarr.core.server.RedstoneControlPolicy;
 import stonytark.cinemarr.core.server.SecretRedactor;
 import stonytark.cinemarr.core.server.SlidingWindowRateLimiter;
 import stonytark.cinemarr.core.server.VideoSessionCoordinator;
@@ -69,6 +70,7 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
     private final Map<UUID, HealthRecord> clientHealth = new ConcurrentHashMap<UUID, HealthRecord>();
     private final Map<UUID, Set<String>> viewingSessions = new HashMap<UUID, Set<String>>();
     private final Map<UUID, Map<UUID, Long>> visibleTelevisions = new HashMap<UUID, Map<UUID, Long>>();
+    private final Map<UUID, Boolean> receiverPower = new HashMap<UUID, Boolean>();
     private final VideoSessionCoordinator sessions;
     private long ticks;
     private long lastCheckpointMs;
@@ -80,7 +82,7 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
         this.saved = saved;
         sessions = new VideoSessionCoordinator(CinemarrSettings.maximumActiveTelevisions(),
                 CinemarrSettings.inactiveSessionGraceSeconds() * 1000L, this::startMedia);
-        restoreSessions(); LegacyNetwork.setServerListener(this);
+        restoreSessions(); initializeReceiverPower(); LegacyNetwork.setServerListener(this);
     }
 
     private void restoreSessions() {
@@ -130,7 +132,7 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
         if (++ticks % 10L == 0L) for (EntityPlayerMP player : players()) synchronizeTracking(player);
         long now = System.currentTimeMillis();
         try {
-            sessions.tick(now); Set<String> names = sessions.sessionNames();
+            sessions.tick(now); tickRedstoneReceivers(now); Set<String> names = sessions.sessionNames();
             for (String name : names) {
                 VideoSessionCoordinator.Snapshot state = sessions.snapshotIfPresent(name, now);
                 if (state != null && state.transcoding() && !state.paused() && state.item() != null
@@ -143,6 +145,54 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
         } catch (IOException failure) {
             Cinemarr.LOGGER.warn("Unable to stop inactive Plex video session: {}", SecretRedactor.message(failure, CinemarrSettings.plexToken()));
         }
+    }
+
+    private void tickRedstoneReceivers(long now) {
+        Set<UUID> present = new LinkedHashSet<UUID>();
+        Set<String> risingSessions = new LinkedHashSet<String>();
+        for (WorldServer world : server.worldServers) if (world != null) {
+            for (LegacyWorldScreens.Television television : LegacyWorldScreens.get(world).televisions()) {
+                present.add(television.id());
+                boolean powered = receiverPowered(world, television);
+                Boolean previous = receiverPower.put(television.id(), powered);
+                if (television.sessionName().trim().isEmpty()) continue;
+                VideoSessionCoordinator.Snapshot state = sessions.snapshotIfPresent(television.sessionName(), now);
+                if (state != null && RedstoneControlPolicy.action(previous != null && previous.booleanValue(), powered,
+                        state.item() != null, state.paused()) != RedstoneControlPolicy.Action.NONE) {
+                    risingSessions.add(television.sessionName());
+                }
+            }
+        }
+        receiverPower.keySet().retainAll(present);
+        for (String name : risingSessions) {
+            VideoSessionCoordinator.Snapshot state = sessions.snapshotIfPresent(name, now);
+            if (state == null || state.item() == null) continue;
+            if (state.paused()) sessions.resume(name, now); else sessions.pause(name, now);
+            VideoSessionCoordinator.Snapshot changed = sessions.snapshot(name, now);
+            persist(changed);
+            publishSession(changed, changed.paused() ? "Paused by redstone receiver" : "Resumed by redstone receiver", false, null);
+        }
+    }
+
+    private void initializeReceiverPower() {
+        for (WorldServer world : server.worldServers) if (world != null) {
+            for (LegacyWorldScreens.Television television : LegacyWorldScreens.get(world).televisions()) {
+                receiverPower.put(television.id(), receiverPowered(world, television));
+            }
+        }
+    }
+
+    private boolean receiverPowered(WorldServer world, LegacyWorldScreens.Television television) {
+        int x = LegacyBlockPos.x(television.controllerPos());
+        int y = LegacyBlockPos.y(television.controllerPos());
+        int z = LegacyBlockPos.z(television.controllerPos());
+        int[][] offsets = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+        for (int[] offset : offsets) {
+            int receiverX = x + offset[0], receiverY = y + offset[1], receiverZ = z + offset[2];
+            if (world.getBlock(receiverX, receiverY, receiverZ) == LegacyBlocks.REDSTONE_RECEIVER
+                    && world.isBlockIndirectlyGettingPowered(receiverX, receiverY, receiverZ)) return true;
+        }
+        return false;
     }
 
     private void prepareAcceptanceVideo(EntityPlayerMP player) {

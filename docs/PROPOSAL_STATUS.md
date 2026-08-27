@@ -1,0 +1,21 @@
+# Proposal implementation status
+
+This file maps the checked-in `Proposal` to implementation and acceptance evidence. “Implemented” describes repository code and generated artifacts; it does not promote a target to release-certified status. Live Plex acceptance remains a separate required gate.
+
+| Proposal area | Status | Implementation / evidence |
+| --- | --- | --- |
+| Standalone sibling mod and Jammarr-aligned matrix | Implemented | Independent `cinemarr` mod ID and 16 artifacts covering Forge 1.7.10 plus Fabric/Quilt, Forge, and NeoForge families for 1.20.1, 1.20.2, 1.21.1, 26.1.2, and 26.2. |
+| Server-owned Plex credentials and allowlisted libraries | Implemented | Canonical server/library files, environment token override, permission/rating filters, and client models that exclude the Plex URL/token. |
+| Arbitrary planar screens | Implemented and tested | Four-connected silhouettes, masks/holes, all six facings, exact bounding-box resolution, persisted pixel membership, ordinary pixel blocks, unloaded-chunk-safe activation, and 4x4 / 2000x20 topology tests. |
+| Screen limits | Implemented and tested | Configurable minimum/maximum pixels, dimension limits, owner limits, and concurrent active-session limits. |
+| Construction components | Implemented and packaged | Screen Pixel, TV Controller, casing, speaker, TV Remote, and redstone receiver registrations, assets, translations, and survival recipes across the target matrix. The Remote uses the controller path; an adjacent powered receiver toggles playback on each rising edge. |
+| Quick TV shortcuts | Implemented and runtime-tested | Configurable 144p through 8K progressive recipes and bounded 16:9 prefabs. Every runtime profile built the 144p acceptance TV and persisted its 16x9 / 256x144 contract. |
+| Fit, fill, stretch, odd dimensions, and masking | Implemented and tested | Exact client presentation transforms, codec-safe even rendition requests, final client resampling, cropping, and per-pixel visibility masks. |
+| Plex browsing and controls | Implemented and tested | Movies, search, shows/seasons/episodes, continue episode, queue/now playing, stream selection, presentation mode, permissions, play/pause/seek/skip/stop, and local volume/screen-disable controls. |
+| Watch parties and session limits | Implemented and tested | Named sessions share one timeline/transcode; independent sessions consume separate slots; generation checks reject stale work. |
+| Bounded media relay | Implemented and tested | Server-confined HLS, 16 KiB payloads, SHA-256, pull/ack windows, rate and lead limits, keyframe-aware seeking, rolling cache, and viewer-driven shutdown. |
+| Client video/audio | Implemented; modern matrix runtime-tested | One decoder/dynamic texture per visible session, batched masked screen rendering, positional audio from the nearest screen point, clock filtering, and drift correction. All 20 modern profiles have deterministic two-client visual/audio evidence. Forge 1.7.10 is launch-tested and renders/emits the program, but fresh two-client captures missed the audio-sync bound and remain uncertified. |
+| Native decoder packaging | Implemented with bounded evidence | LGPL notices and Linux x64/arm64 plus Windows x64 JavaCV/FFmpeg classifiers are packaged. Linux real-client gates and a Windows-native decode smoke pass; a complete Windows Minecraft-client run remains distinct. |
+| Live Plex feasibility spike | Pending external acceptance | The opt-in smoke resolves an allowed library, creates a real H.264/AAC session, fetches media, and terminates it. It has not yet been run with the supplied live server through the safe environment-file handoff. |
+
+See [release acceptance](RELEASE_ACCEPTANCE.md) and [compatibility](COMPATIBILITY.md) for the exact certification boundary and recorded runtime evidence.

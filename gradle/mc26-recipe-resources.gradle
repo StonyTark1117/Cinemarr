@@ -1,7 +1,9 @@
 // Minecraft 26.x uses compact string ingredients while 1.21.1 uses
 // {"item":"..."} objects at the same singular recipe resource path.
+// Convert every Cinemarr recipe copied from the shared resource tree.
 tasks.named('processResources') {
-    filesMatching('data/cinemarr/recipe/quick_tv_*.json') {
+    inputs.property 'cinemarrMc26RecipeSchema', 2
+    filesMatching('data/cinemarr/recipe/*.json') {
         filter { line ->
             line.replaceAll(/\{"item":"([^"]+)"\}/) { ignored, item -> "\"${item}\"" }
         }

@@ -353,7 +353,7 @@ run_acceptance_client() {
     'narrator:0' > "$client_dir/options.txt"
   (
     cd "$target_dir" || exit 1
-    exec setsid xvfb-run -a env \
+    exec setsid xvfb-run -a -s '-screen 0 1280x720x24 -ac +extension GLX +render -noreset' env \
       JAVA_HOME="$java_home" PATH="$java_home/bin:$PATH" \
       JAVA_TOOL_OPTIONS="$java_tool_options" \
       LIBGL_ALWAYS_SOFTWARE=1 \
@@ -446,7 +446,7 @@ run_command_client() {
 
   (
     cd "$target_dir" || exit 1
-    exec setsid xvfb-run -a env \
+    exec setsid xvfb-run -a -s '-screen 0 1280x720x24 -ac +extension GLX +render -noreset' env \
       JAVA_HOME="$java_home" PATH="$java_home/bin:$PATH" \
       JAVA_TOOL_OPTIONS='-Dcinemarr.acceptance.enabled=true -Dcinemarr.acceptance.commandProbe=true -Dorg.lwjgl.opengl.Display.allowSoftwareOpenGL=true' \
       LIBGL_ALWAYS_SOFTWARE=1 \
@@ -462,7 +462,7 @@ run_command_client() {
 
   deadline=$((SECONDS + 600))
   if [[ "$label" == "1.7.10-forge" ]]; then
-    while ! grep -Fq 'Acceptance command response: Queue is empty' "$client_console" 2>/dev/null \
+    while ! grep -Fq 'Acceptance command response: Cinemarr video:' "$client_console" 2>/dev/null \
         || ! grep -Fq 'Acceptance command response: Operator permission is required' "$client_console" 2>/dev/null; do
       if ! group_alive "$pid" || (( SECONDS >= deadline )); then
         echo "$label: legacy non-operator command responses were not observed; see $client_console" >&2
@@ -552,7 +552,7 @@ run_command_client() {
   fi
   if (( result == 0 )); then
     {
-      grep -E 'Acceptance command permissions:|Acceptance command response: (Queue is empty|Operator permission is required|Plex=)' \
+      grep -E 'Acceptance command permissions:|Acceptance command response: (Cinemarr video:|Operator permission is required|Plex=)' \
         "$client_console" || true
       cat "$diagnostics"
     } > "$evidence"
@@ -641,7 +641,7 @@ start_audio_client() {
   esac
   (
     cd "$target_dir" || exit 1
-    exec setsid xvfb-run -a env \
+    exec setsid xvfb-run -a -s '-screen 0 1280x720x24 -ac +extension GLX +render -noreset' env \
       JAVA_HOME="$java_home" PATH="$java_home/bin:$PATH" \
       JAVA_TOOL_OPTIONS="$java_options" \
       ALSA_CONFIG_PATH="$client_dir/alsa.conf" ALSOFT_DRIVERS=alsa LIBGL_ALWAYS_SOFTWARE=1 \

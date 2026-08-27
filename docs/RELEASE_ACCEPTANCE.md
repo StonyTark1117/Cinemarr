@@ -1,9 +1,10 @@
 # Release acceptance
 
-No artifact is currently release-certified. Every listed runtime, including the
-isolated Forge 1.7.10 implementation, has passed the deterministic real
-two-client A/V gate, but live Plex validation is still outstanding. A successful
-Gradle build alone is insufficient.
+No artifact is currently release-certified. All 20 modern runtime profiles have
+passed the deterministic real two-client A/V gate, but live Plex validation is
+still outstanding. The isolated Forge 1.7.10 implementation is build-, launch-,
+and protocol-tested; its latest physical audio synchronization reruns failed.
+A successful Gradle build alone is insufficient.
 
 Required checks:
 
@@ -17,6 +18,11 @@ Required checks:
 * Every enabled Quick TV Kit constructs only after its entire footprint is
   loaded and unobstructed, persists its named rendition target, honors global
   and per-resolution server switches, and tears down without stale TV state.
+* Screen Pixel, controller, casing, speaker, TV Remote, and redstone receiver
+  registrations, assets, translations, and survival recipes are present in
+  every applicable artifact. Using the Remote on a controller follows the
+  controller's authoritative activation/UI path. Receiver input toggles
+  playback only on a rising edge and does not repeat while power remains high.
 * Two real clients show the same identifiable frame with synchronized audible
   output on one named session. This is the decisive visual acceptance gate.
 * A credentialed live Plex server creates and cleanly terminates a compatible
@@ -26,17 +32,16 @@ Required checks:
 
 ### 2026-08-27 Quick TV placement matrix
 
-All 21 exact runtime profiles passed a fresh deterministic two-client gate whose
-server scene was built through that loader's real 144p Quick TV block. Each
+All 21 exact runtime profiles built the server scene through that loader's real
+144p Quick TV block. Each
 server logged and persisted the same acceptance contract: a 16x9 physical
-screen, 256x144 rendition, and owner `CinemarrVideoA`. Each row below also had
+screen, 256x144 rendition, and owner `CinemarrVideoA`. Each modern row below also had
 two saved screenshots with the numbered color test card visibly identifiable,
 the complete fake-Plex master/media/MPEG-TS route, a passing audible-envelope
 comparison, and clean teardown.
 
 | Runtime profile | Audio correlation | Measured lag |
 | --- | ---: | ---: |
-| Forge 1.7.10 | 0.657605 | 120 ms |
 | Fabric 1.20.1 | 0.994679 | -50 ms |
 | Quilt 1.20.1 | 0.993132 | 50 ms |
 | Forge 1.20.1 | 0.989935 | -40 ms |
@@ -58,9 +63,11 @@ comparison, and clean teardown.
 | Forge 26.2 | 0.996621 | 80 ms |
 | NeoForge 26.2 | 0.990375 | 40 ms |
 
-The Forge 1.7.10 result is above its deliberately lower legacy-runtime
-correlation threshold and within its 150 ms lag bound. The modern profiles all
-exceeded 0.98 correlation and remained within 90 ms. Visual review caught a
+A historical Forge 1.7.10 run measured 0.657605 correlation at 120 ms, but that
+result did not reproduce: two fresh runs on 2026-08-27 rendered the same program
+and emitted audible program audio yet measured approximately 680 ms and 400 ms
+sink separation. Its A/V certification is therefore withdrawn. The modern
+profiles all exceeded 0.98 correlation and remained within 90 ms. Visual review caught a
 Forge 1.21.1 event-matrix defect even though decoded-frame and audio checks had
 passed; after the adapter switched to an explicit camera-relative world
 transform, both rerun screenshots visibly showed the test card. This is why
@@ -72,6 +79,15 @@ tracking refresh now rescans the player's actual radius instead of relying on a
 possibly stale chunk cache. A follower-first 26.1.2 NeoForge run launched and
 fully joined client B before client A constructed the Quick TV; both clients
 then completed synchronized A/V playback and clean teardown.
+
+After the TV Remote, survival construction recipes, and rising-edge redstone
+receiver were added, a fresh 1.21.1 NeoForge regression gate again launched two
+real clients. Both screenshots visibly showed the same numbered color test
+card, the clients reported the common rendered-frame SHA-256
+`028918a15a341e02f28328967c02c350685ed4b88e9cae106bcea6b6268618e0`,
+and the audio envelopes measured 0.988031 correlation at 50 ms lag. Fake Plex
+served the master playlist, media playlist, and MPEG-TS segments, and the gate
+left no game process or port behind.
 
 ### Windows decoder smoke
 
@@ -170,20 +186,23 @@ the NeoForge scene was also night-darkened, but the program remained visible.
 Every client, server, fake Plex process, audio module, and target port stopped
 cleanly.
 
-Forge 1.7.10 passed its isolated Java 8 / LWJGL 2 gate on 2026-08-27. Two real
+Forge 1.7.10 historically passed its isolated Java 8 / LWJGL 2 gate on 2026-08-27. Two real
 clients visibly rendered the synthetic program and shared decoded-frame SHA-256
 `028918a15a341e02f28328967c02c350685ed4b88e9cae106bcea6b6268618e0`.
 The 997 Hz captures measured 0.983183 correlation at -110 ms lag. The gate also
 proved master-playlist, media-playlist, and MPEG-TS relay, saved both rendered-TV
 screenshots, and left no client, server, fake Plex process, audio module, or
-target port behind.
+target port behind. This historical pass is superseded by the failed fresh
+synchronization reruns documented above; it is retained as evidence that the
+rendering, HLS, and audible-output paths can run, not as current certification.
 
 All four 1.20.1 and all four 1.20.2 loader profiles have the additional
 two-client evidence above. The 1.21.1 Quilt, Fabric, and Forge profiles have the
 additional two-client evidence recorded above.
-Forge 1.7.10 and NeoForge, Fabric, Quilt, and Forge on every modern target from
-1.20.1 through 26.2 have passed the deterministic two-client A/V gate. All
-remain unreleased pending live Plex validation.
+NeoForge, Fabric, Quilt, and Forge on every modern target from 1.20.1 through
+26.2 have passed the deterministic two-client A/V gate. Forge 1.7.10 remains
+uncertified for synchronized audio. All remain unreleased pending live Plex
+validation.
 
 Keep logs, JAR listings, checksums, and process/port evidence for each release.
 Credentials are process-environment-only and must never appear in retained

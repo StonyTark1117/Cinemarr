@@ -6,6 +6,7 @@ import net.minecraft.block.material.Material;
 import net.minecraft.creativetab.CreativeTabs;
 import net.minecraft.init.Blocks;
 import net.minecraft.init.Items;
+import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import stonytark.cinemarr.core.screen.QuickTvPreset;
 
@@ -15,6 +16,9 @@ public final class LegacyBlocks {
     public static final Block TV_CONTROLLER = new LegacyTvControllerBlock();
     public static final Block TV_CASING = decorative("tv_casing", "minecraft:obsidian");
     public static final Block TV_SPEAKER = decorative("tv_speaker", "minecraft:noteblock");
+    public static final Block REDSTONE_RECEIVER = decorative("redstone_receiver", "minecraft:redstone_block");
+    public static final Item TV_REMOTE = new Item().setUnlocalizedName("cinemarr.tv_remote")
+            .setTextureName("minecraft:repeater").setMaxStackSize(1).setCreativeTab(CreativeTabs.tabRedstone);
     public static final Block QUICK_TV_144P = quick(QuickTvPreset.P144, "minecraft:coal_block");
     public static final Block QUICK_TV_240P = quick(QuickTvPreset.P240, "minecraft:stone");
     public static final Block QUICK_TV_480P = quick(QuickTvPreset.P480, "minecraft:iron_block");
@@ -29,6 +33,8 @@ public final class LegacyBlocks {
         GameRegistry.registerBlock(TV_CONTROLLER, "tv_controller");
         GameRegistry.registerBlock(TV_CASING, "tv_casing");
         GameRegistry.registerBlock(TV_SPEAKER, "tv_speaker");
+        GameRegistry.registerBlock(REDSTONE_RECEIVER, "redstone_receiver");
+        GameRegistry.registerItem(TV_REMOTE, "tv_remote");
         GameRegistry.registerBlock(QUICK_TV_144P, "quick_tv_144p");
         GameRegistry.registerBlock(QUICK_TV_240P, "quick_tv_240p");
         GameRegistry.registerBlock(QUICK_TV_480P, "quick_tv_480p");
@@ -47,6 +53,10 @@ public final class LegacyBlocks {
         GameRegistry.addRecipe(new ItemStack(TV_CASING, 8), "iii", "i i", "iii", 'i', Items.iron_ingot);
         GameRegistry.addRecipe(new ItemStack(TV_SPEAKER, 2), "ini", "nrn", "ini",
                 'i', Items.iron_ingot, 'n', Blocks.noteblock, 'r', Items.redstone);
+        GameRegistry.addRecipe(new ItemStack(REDSTONE_RECEIVER), "iri", "rcr", "iri",
+                'i', Items.iron_ingot, 'r', Items.redstone, 'c', Items.comparator);
+        GameRegistry.addRecipe(new ItemStack(TV_REMOTE), " r ", "igi", " r ",
+                'i', Items.iron_ingot, 'g', Items.gold_nugget, 'r', Items.redstone);
         GameRegistry.addRecipe(new ItemStack(QUICK_TV_144P), "sgs", "gcg", "srs",
                 's', SCREEN_PIXEL, 'g', Blocks.glass, 'c', TV_CONTROLLER, 'r', Blocks.redstone_block);
         upgrade(QUICK_TV_240P, QUICK_TV_144P, Blocks.iron_block);

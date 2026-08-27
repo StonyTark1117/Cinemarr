@@ -1,0 +1,1 @@
+{"type":"minecraft:crafting_shaped","category":"redstone","pattern":["IRI","RCR","IRI"],"key":{"I":{"item":"minecraft:iron_ingot"},"R":{"item":"minecraft:redstone"},"C":{"item":"minecraft:comparator"}},"result":{"id":"cinemarr:redstone_receiver","count":1}}

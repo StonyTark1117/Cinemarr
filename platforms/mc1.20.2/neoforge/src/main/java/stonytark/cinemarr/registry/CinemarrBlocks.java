@@ -23,6 +23,7 @@ public final class CinemarrBlocks {
             "tv_controller", () -> new TvControllerBlock(electronic()));
     public static final DeferredBlock<Block> TV_CASING = REGISTER.register("tv_casing", () -> new Block(electronic()));
     public static final DeferredBlock<Block> TV_SPEAKER = REGISTER.register("tv_speaker", () -> new Block(electronic()));
+    public static final DeferredBlock<Block> REDSTONE_RECEIVER = REGISTER.register("redstone_receiver", () -> new Block(electronic()));
     public static final DeferredBlock<QuickTvBlock> QUICK_TV_144P = quick("quick_tv_144p", QuickTvPreset.P144);
     public static final DeferredBlock<QuickTvBlock> QUICK_TV_240P = quick("quick_tv_240p", QuickTvPreset.P240);
     public static final DeferredBlock<QuickTvBlock> QUICK_TV_480P = quick("quick_tv_480p", QuickTvPreset.P480);
@@ -33,5 +34,6 @@ public final class CinemarrBlocks {
     public static final DeferredBlock<QuickTvBlock> QUICK_TV_8K = quick("quick_tv_8k", QuickTvPreset.P8K);
     private static DeferredBlock<QuickTvBlock> quick(String id, QuickTvPreset preset) { return REGISTER.register(id, () -> new QuickTvBlock(electronic(), preset)); }
     public static ScreenPixelBlock screenPixel() { return SCREEN_PIXEL.get(); }
+    public static Block redstoneReceiver() { return REDSTONE_RECEIVER.get(); }
     private CinemarrBlocks() {}
 }

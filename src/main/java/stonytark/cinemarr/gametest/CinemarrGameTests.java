@@ -16,7 +16,10 @@ import net.minecraft.core.Direction;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.core.registries.BuiltInRegistries;
 import stonytark.cinemarr.registry.CinemarrBlocks;
+import stonytark.cinemarr.registry.CinemarrItems;
 import stonytark.cinemarr.screen.CinemarrWorldScreens;
 import stonytark.cinemarr.screen.QuickTvBlock;
 import net.neoforged.neoforge.gametest.GameTestHolder;
@@ -139,6 +142,18 @@ public final class CinemarrGameTests {
             helper.getLevel().destroyBlock(BlockPos.of(packed), false);
         }
         helper.getLevel().destroyBlock(controller, false);
+        helper.succeed();
+    }
+
+    @GameTest(template = "empty", timeoutTicks = 20)
+    public static void optionalTvControlsRegisterAndReceiveRedstone(GameTestHelper helper) {
+        BlockPos receiver = new BlockPos(2, 1, 2);
+        helper.setBlock(receiver, CinemarrBlocks.REDSTONE_RECEIVER.get().defaultBlockState());
+        helper.setBlock(receiver.offset(1, 0, 0), Blocks.REDSTONE_BLOCK.defaultBlockState());
+        helper.assertTrue(helper.getLevel().hasNeighborSignal(helper.absolutePos(receiver)),
+                "TV Redstone Receiver did not observe adjacent power");
+        helper.assertTrue("cinemarr:tv_remote".equals(BuiltInRegistries.ITEM.getKey(CinemarrItems.TV_REMOTE.get()).toString()),
+                "TV Remote was not registered under the expected item ID");
         helper.succeed();
     }
     private CinemarrGameTests() {}

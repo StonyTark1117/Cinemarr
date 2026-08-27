@@ -1,6 +1,7 @@
 package stonytark.cinemarr.server;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -14,6 +15,7 @@ import stonytark.cinemarr.core.platform.CinemarrSettings;
 import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.core.protocol.VideoPackets;
 import stonytark.cinemarr.core.server.PlexVideoService;
+import stonytark.cinemarr.core.server.RedstoneControlPolicy;
 import stonytark.cinemarr.core.server.SecretRedactor;
 import stonytark.cinemarr.core.server.SlidingWindowRateLimiter;
 import stonytark.cinemarr.core.server.VideoSessionCoordinator;
@@ -23,6 +25,7 @@ import stonytark.cinemarr.network.CinemarrNetwork;
 import stonytark.cinemarr.network.CinemarrPayloads;
 import stonytark.cinemarr.network.VideoPayloads;
 import stonytark.cinemarr.screen.CinemarrWorldScreens;
+import stonytark.cinemarr.registry.CinemarrBlocks;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -66,6 +69,7 @@ public final class ServerVideoManager implements AutoCloseable {
     private final Map<UUID, Set<TrackedChunk>> trackedChunks = new HashMap<>();
     private final Map<UUID, Set<String>> viewingSessions = new HashMap<>();
     private final Map<UUID, Map<UUID, Long>> visibleTelevisions = new HashMap<>();
+    private final Map<UUID, Boolean> receiverPower = new HashMap<>();
     private final VideoSessionCoordinator sessions;
     private long lastCheckpointMs;
 
@@ -75,7 +79,7 @@ public final class ServerVideoManager implements AutoCloseable {
         this.saved=saved;
         this.sessions = new VideoSessionCoordinator(CinemarrSettings.maximumActiveTelevisions(),
                 CinemarrSettings.inactiveSessionGraceSeconds() * 1000L, this::startMedia);
-        restoreSessions();
+        restoreSessions(); initializeReceiverPower();
     }
 
     private void restoreSessions(){
@@ -326,7 +330,11 @@ public final class ServerVideoManager implements AutoCloseable {
     }
     public String status(){return "Cinemarr video: "+sessions.sessionCount()+" session(s), "+active.size()+" active transcode(s), "+libraries.size()+" allowed librar"+(libraries.size()==1?"y":"ies");}
     public String diagnostics(){long now=System.currentTimeMillis();int cached=0;for(ActiveMedia media:active.values())cached+=media.cachedSegments();int reports=0,recoveries=0,drops=0,underruns=0;long maximumDrift=0;for(HealthRecord record:clientHealth.values())if(now-record.receivedAt<=30_000){reports++;recoveries+=record.value.decoderRecoveries();drops+=record.value.videoDrops();underruns+=record.value.audioUnderruns();maximumDrift=Math.max(maximumDrift,Math.abs(record.value.driftMs()));}int queued=0;for(List<QueuedVideo> queue:queues.values())queued+=queue.size();return "Plex=ready; libraries="+libraries.size()+"; sessions="+sessions.sessionCount()+"; transcodes="+active.size()+"; cachedSegments="+cached+"; queued="+queued+"; trackingClients="+visibleTelevisions.size()+"; healthReports="+reports+"; decoderRecoveries="+recoveries+"; videoDrops="+drops+"; audioUnderruns="+underruns+"; maxDriftMs="+maximumDrift;}
-    public void tick(){long now=System.currentTimeMillis();try{sessions.tick(now);Set<String> names=sessions.sessionNames();for(String name:names){VideoSessionCoordinator.Snapshot state=sessions.snapshotIfPresent(name,now);if(state!=null&&state.transcoding()&&!state.paused()&&state.item()!=null&&state.item().durationMs()>0&&state.positionMs()>=state.item().durationMs())advance(state,null);}if(now-lastCheckpointMs>=5_000){lastCheckpointMs=now;saved.retain(names);for(String name:names){VideoSessionCoordinator.Snapshot state=sessions.snapshotIfPresent(name,now);if(state!=null)persist(state);}}}catch(IOException failure){Cinemarr.LOGGER.warn("Unable to stop inactive Plex video session: {}", SecretRedactor.message(failure,CinemarrSettings.plexToken()));}}
+    public void tick(){long now=System.currentTimeMillis();try{sessions.tick(now);tickRedstoneReceivers(now);Set<String> names=sessions.sessionNames();for(String name:names){VideoSessionCoordinator.Snapshot state=sessions.snapshotIfPresent(name,now);if(state!=null&&state.transcoding()&&!state.paused()&&state.item()!=null&&state.item().durationMs()>0&&state.positionMs()>=state.item().durationMs())advance(state,null);}if(now-lastCheckpointMs>=5_000){lastCheckpointMs=now;saved.retain(names);for(String name:names){VideoSessionCoordinator.Snapshot state=sessions.snapshotIfPresent(name,now);if(state!=null)persist(state);}}}catch(IOException failure){Cinemarr.LOGGER.warn("Unable to stop inactive Plex video session: {}", SecretRedactor.message(failure,CinemarrSettings.plexToken()));}}
+
+    private void initializeReceiverPower(){for(ServerLevel level:server.getAllLevels())for(CinemarrWorldScreens.Television tv:CinemarrWorldScreens.get(level).televisions())receiverPower.put(tv.id(),receiverPowered(level,tv));}
+    private boolean receiverPowered(ServerLevel level,CinemarrWorldScreens.Television tv){BlockPos controller=BlockPos.of(tv.controllerPos());for(Direction direction:Direction.values()){BlockPos receiver=controller.relative(direction);if(level.getBlockState(receiver).is(CinemarrBlocks.redstoneReceiver())&&level.hasNeighborSignal(receiver))return true;}return false;}
+    private void tickRedstoneReceivers(long now){Set<UUID> present=new HashSet<>();Set<String> risingSessions=new LinkedHashSet<>();for(ServerLevel level:server.getAllLevels())for(CinemarrWorldScreens.Television tv:CinemarrWorldScreens.get(level).televisions()){present.add(tv.id());boolean powered=receiverPowered(level,tv);Boolean previous=receiverPower.put(tv.id(),powered);if(tv.sessionName().isBlank())continue;VideoSessionCoordinator.Snapshot state=sessions.snapshotIfPresent(tv.sessionName(),now);if(state!=null&&RedstoneControlPolicy.action(previous!=null&&previous,powered,state.item()!=null,state.paused())!=RedstoneControlPolicy.Action.NONE)risingSessions.add(tv.sessionName());}receiverPower.keySet().retainAll(present);for(String name:risingSessions){VideoSessionCoordinator.Snapshot state=sessions.snapshotIfPresent(name,now);if(state==null||state.item()==null)continue;if(state.paused())sessions.resume(name,now);else sessions.pause(name,now);VideoSessionCoordinator.Snapshot changed=sessions.snapshot(name,now);persist(changed);publishSession(changed,changed.paused()?"Paused by redstone receiver":"Resumed by redstone receiver",false,null);}}
 
     private void restartIfNeeded(String name,VideoSessionCoordinator.Snapshot expected){
         if(!restartingSessions.add(expected.id()))return;CinemarrVideoSavedData.Record record=saved.record(name);if(record==null){restartingSessions.remove(expected.id());return;}

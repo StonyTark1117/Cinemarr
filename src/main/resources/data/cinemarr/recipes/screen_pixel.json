@@ -1,0 +1,1 @@
+{"type":"minecraft:crafting_shaped","category":"building","pattern":["IGI","GRG","IGI"],"key":{"I":{"item":"minecraft:iron_ingot"},"G":{"item":"minecraft:glass"},"R":{"item":"minecraft:redstone"}},"result":{"item":"cinemarr:screen_pixel","count":4}}

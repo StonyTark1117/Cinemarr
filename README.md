@@ -8,7 +8,7 @@ The complete product requirements and acceptance criteria live in [Proposal](Pro
 
 ## Current implementation
 
-Cinemarr now has video-runtime adapters for Forge 1.7.10 and Fabric, Quilt-compatible Fabric, Forge, and NeoForge targets spanning Minecraft 1.20.1, 1.20.2, 1.21.1, 26.1.2, and 26.2. These targets are build- and dedicated-launch-tested to the levels recorded in [the compatibility matrix](docs/COMPATIBILITY.md). Every listed runtime additionally has real two-client deterministic-HLS visual/audio evidence; no artifact is release-certified until its remaining gates, including live Plex validation, pass.
+Cinemarr now has video-runtime adapters for Forge 1.7.10 and Fabric, Quilt-compatible Fabric, Forge, and NeoForge targets spanning Minecraft 1.20.1, 1.20.2, 1.21.1, 26.1.2, and 26.2. These targets are build- and dedicated-launch-tested to the levels recorded in [the compatibility matrix](docs/COMPATIBILITY.md). All 20 modern profiles additionally have repeatable real two-client deterministic-HLS visual/audio evidence. Forge 1.7.10 remains packaged and launch-tested, but its latest two-client audio captures did not meet the synchronization bound. No artifact is release-certified until its remaining gates, including live Plex validation, pass.
 
 Implemented foundations include:
 
@@ -17,13 +17,15 @@ Implemented foundations include:
 - Exact fit, fill, and stretch transforms plus bounded, even H.264 rendition selection.
 - Server-only Plex video-library resolution, movie/show browsing, rating and permission filtering, HLS transcode start/fetch/stop, same-origin segment confinement, bounded responses, and token-safe client models.
 - 16 KiB hash-addressed media payloads, keyframe seek policy, generation-safe asynchronous work, clock/drift policy inherited from the shared transport core, and authoritative watch-party/session lifecycle.
-- Screen Pixel, TV Controller, casing, and speaker blocks on every target. Pixels remain ordinary blocks; placement/removal updates world saved data, while controller activation reconstructs and persists a screen without force-loading its chunks.
+- Screen Pixel, TV Controller, casing, speaker, and TV Redstone Receiver blocks plus a craftable TV Remote on every target, with survival recipes for the full construction set. Pixels remain ordinary blocks; placement/removal updates world saved data, while controller activation reconstructs and persists a screen without force-loading its chunks. Using the Remote on a controller follows that same authoritative activation/UI path. A powered receiver directly adjacent to a controller toggles its active named session on each low-to-high redstone edge; steady power does not repeatedly toggle playback.
 - Eight progressively crafted Quick TV Kit blocks: 144p, 240p, 480p, 720p, 1080p, 1440p, 4K, and 8K. Placing one preflights a loaded, unobstructed 16:9 footprint, builds a bounded dense screen, activates it, and persists the exact named rendition target. A literal 8K one-block-per-pixel wall would contain 33,177,600 blocks, so quick kits are deliberately bounded prefabs; hand-built Screen Pixels retain exact one-block/one-logical-pixel behavior.
 - Global `quickTvKitsEnabled` and per-resolution `quickTv...Enabled` server settings. A disabled kit stays registered for world/save compatibility but cannot construct or activate its prefab.
 
-The in-world decoder/renderer, control UI, subtitle/audio-track selection, positional sound, persistence/reconnect behavior, server-owned HLS relay, and clean protocol rejection paths are implemented. On 2026-08-27, every one of the 21 listed runtime profiles built the gate screen through its real 144p Quick TV block and proved the persisted 16x9 geometry, 256x144 rendition, and owner. Every two-client pair visibly rendered the identifiable synthetic H.264/AAC program, produced synchronized audible output, exercised the full HLS path, and stopped cleanly. The matrix includes a follower-first run that proves an already-watching client receives a television constructed later. Exact results are recorded in [release acceptance](docs/RELEASE_ACCEPTANCE.md).
+The in-world decoder/renderer, control UI, subtitle/audio-track selection, positional sound, persistence/reconnect behavior, server-owned HLS relay, and clean protocol rejection paths are implemented. On 2026-08-27, every one of the 21 listed runtime profiles built the gate screen through its real 144p Quick TV block and proved the persisted 16x9 geometry, 256x144 rendition, and owner. All 20 modern two-client pairs visibly rendered the identifiable synthetic H.264/AAC program, produced synchronized audible output, exercised the full HLS path, and stopped cleanly. Forge 1.7.10 also rendered the shared program and emitted audible program audio, but repeated fresh captures measured 400–680 ms separation, so its A/V certification is withdrawn pending a reliable LWJGL 2 synchronization fix. The matrix includes a follower-first run that proves an already-watching client receives a television constructed later. Exact results are recorded in [release acceptance](docs/RELEASE_ACCEPTANCE.md).
 
 The same decoder facade also loaded its Windows-x64 JavaCV/FFmpeg natives and decoded both video and audio under a Windows Temurin 21 JVM smoke. That is native-decoder evidence, not a full Windows Minecraft-client certification. The deterministic results do not substitute for live Plex validation.
+
+The checked-in proposal is mapped requirement-by-requirement in [proposal implementation status](docs/PROPOSAL_STATUS.md).
 
 ## Server files
 
@@ -72,7 +74,7 @@ CINEMARR_LIVE_VIDEO_LIBRARY='Movies' \
 
 Credentialed smoke results are deliberately non-cacheable. Credentials are not packaged into artifacts.
 
-The opt-in real two-client gate creates a deterministic fake-Plex HLS program, launches two independent GUI clients and audio sinks, requires a common rendered frame plus visible screenshots, checks audible PCM synchronization, and verifies clean shutdown. It is recorded green for every listed runtime, including Forge 1.7.10; for example:
+The opt-in real two-client gate creates a deterministic fake-Plex HLS program, launches two independent GUI clients and audio sinks, requires a common rendered frame plus visible screenshots, checks audible PCM synchronization, and verifies clean shutdown. It is recorded green for every modern runtime. The Forge 1.7.10 command below remains a useful diagnostic, but currently fails the synchronization bound:
 
 ```bash
 CINEMARR_VIDEO_CLIENT_GATE=true \

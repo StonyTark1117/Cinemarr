@@ -43,6 +43,8 @@ COMMON_ENTRIES = {
     "stonytark/cinemarr/Cinemarr.class",
 }
 QUICK_TV_IDS = ("144p", "240p", "480p", "720p", "1080p", "1440p", "4k", "8k")
+TV_BLOCK_IDS = ("screen_pixel", "tv_controller", "tv_casing", "tv_speaker", "redstone_receiver")
+TV_COMPONENT_IDS = TV_BLOCK_IDS + ("tv_remote",)
 PRIVATE_ADDRESS = re.compile(rb"(?<![0-9])(?:10\.(?:[0-9]{1,3}\.){2}[0-9]{1,3}|192\.168\.(?:[0-9]{1,3}\.)[0-9]{1,3}|172\.(?:1[6-9]|2[0-9]|3[01])\.(?:[0-9]{1,3}\.)[0-9]{1,3})(?![0-9])")
 TEXT_SUFFIXES = (".json", ".toml", ".info", ".lang", ".md", ".txt", ".properties", ".mf")
 
@@ -367,6 +369,7 @@ def verify_jar(path: Path, minecraft: str, loader: str, java: int, expected_majo
         json.loads(archive.read("assets/cinemarr/lang/en_us.json"))
         verify_remappable_keybinding(archive, minecraft, loader, filename)
         verify_png(archive.read("cinemarr.png"), filename)
+        verify_tv_components(archive, names, minecraft, filename)
         quick_assets = {
             entry
             for quick_id in QUICK_TV_IDS
@@ -487,6 +490,73 @@ def verify_quick_tv_recipes(archive: zipfile.ZipFile, names: set[str], minecraft
         result_key = "item" if minecraft in ("1.20.1", "1.20.2") else "id"
         if not isinstance(result.get(result_key), str):
             fail(f"{filename}:{entry} does not use result.{result_key}")
+
+
+def verify_tv_components(archive: zipfile.ZipFile, names: set[str], minecraft: str,
+                         filename: str) -> None:
+    assets = {
+        *(f"assets/cinemarr/blockstates/{component}.json" for component in TV_BLOCK_IDS),
+        *(f"assets/cinemarr/models/block/{component}.json" for component in TV_BLOCK_IDS),
+        *(f"assets/cinemarr/models/item/{component}.json" for component in TV_COMPONENT_IDS),
+    }
+    if assets - names:
+        fail(f"{filename} is missing TV component assets: {sorted(assets - names)}")
+
+    translations = json.loads(archive.read("assets/cinemarr/lang/en_us.json"))
+    translation_keys = {*(f"block.cinemarr.{component}" for component in TV_BLOCK_IDS),
+                        "item.cinemarr.tv_remote"}
+    missing_translations = {key for key in translation_keys
+                            if not isinstance(translations.get(key), str) or not translations[key].strip()}
+    if missing_translations:
+        fail(f"{filename} is missing TV component translations: {sorted(missing_translations)}")
+
+    registry_entries = (["stonytark/cinemarr/screen/LegacyBlocks.class"] if minecraft == "1.7.10" else [
+        "stonytark/cinemarr/registry/CinemarrBlocks.class",
+        "stonytark/cinemarr/registry/CinemarrItems.class",
+    ])
+    registry = b"".join(archive.read(entry) for entry in registry_entries)
+    missing_ids = {component for component in TV_COMPONENT_IDS if component.encode() not in registry}
+    if missing_ids:
+        fail(f"{filename}:{registry_entries} is missing TV component registrations: {sorted(missing_ids)}")
+
+    manager_entry = ("stonytark/cinemarr/server/LegacyVideoManager.class" if minecraft == "1.7.10"
+                     else "stonytark/cinemarr/server/ServerVideoManager.class")
+    manager = archive.read(manager_entry)
+    if b"Paused by redstone receiver" not in manager or b"RedstoneControlPolicy" not in manager:
+        fail(f"{filename}:{manager_entry} is missing rising-edge receiver control")
+
+    if minecraft == "1.7.10":
+        legacy_lang = archive.read("assets/cinemarr/lang/en_US.lang")
+        if b"tile.cinemarr.redstone_receiver.name=" not in legacy_lang \
+                or b"item.cinemarr.tv_remote.name=" not in legacy_lang:
+            fail(f"{filename} is missing legacy receiver/remote translations")
+        return
+
+    if minecraft not in ("1.20.1", "1.20.2"):
+        controller = archive.read("stonytark/cinemarr/screen/TvControllerBlock.class")
+        if b"tvRemote" not in controller:
+            fail(f"{filename} does not route TV Remote use through the controller")
+
+    directory = "recipes" if minecraft in ("1.20.1", "1.20.2") else "recipe"
+    expected = {f"data/cinemarr/{directory}/{component}.json" for component in TV_COMPONENT_IDS}
+    if expected - names:
+        fail(f"{filename} is missing TV component recipes: {sorted(expected - names)}")
+    for entry in sorted(expected):
+        recipe = json.loads(archive.read(entry))
+        ingredients = recipe.get("key")
+        result = recipe.get("result")
+        if not isinstance(ingredients, dict) or not ingredients or not isinstance(result, dict):
+            fail(f"{filename}:{entry} has an invalid shaped-recipe structure")
+        if minecraft in ("26.1.2", "26.2"):
+            if not all(isinstance(ingredient, str) for ingredient in ingredients.values()):
+                fail(f"{filename}:{entry} does not use Minecraft 26.x string ingredients")
+        elif not all(isinstance(ingredient, dict) and "item" in ingredient
+                     for ingredient in ingredients.values()):
+            fail(f"{filename}:{entry} does not use object-form ingredients")
+        result_key = "item" if minecraft in ("1.20.1", "1.20.2") else "id"
+        expected_result = "cinemarr:" + PurePosixPath(entry).stem
+        if result.get(result_key) != expected_result:
+            fail(f"{filename}:{entry} has result.{result_key}={result.get(result_key)!r}, expected {expected_result!r}")
 
 
 def main() -> int:

@@ -21,6 +21,7 @@ public final class CinemarrBlocks {
     public static final TvControllerBlock TV_CONTROLLER = new TvControllerBlock(electronic());
     public static final Block TV_CASING = new Block(electronic());
     public static final Block TV_SPEAKER = new Block(electronic());
+    public static final Block REDSTONE_RECEIVER = new Block(electronic());
     public static final QuickTvBlock QUICK_TV_144P = quick(QuickTvPreset.P144);
     public static final QuickTvBlock QUICK_TV_240P = quick(QuickTvPreset.P240);
     public static final QuickTvBlock QUICK_TV_480P = quick(QuickTvPreset.P480);
@@ -35,6 +36,7 @@ public final class CinemarrBlocks {
         net.minecraft.core.Registry.register(BuiltInRegistries.BLOCK, id("tv_controller"), TV_CONTROLLER);
         net.minecraft.core.Registry.register(BuiltInRegistries.BLOCK, id("tv_casing"), TV_CASING);
         net.minecraft.core.Registry.register(BuiltInRegistries.BLOCK, id("tv_speaker"), TV_SPEAKER);
+        net.minecraft.core.Registry.register(BuiltInRegistries.BLOCK, id("redstone_receiver"), REDSTONE_RECEIVER);
         registerQuick("144p", QUICK_TV_144P); registerQuick("240p", QUICK_TV_240P);
         registerQuick("480p", QUICK_TV_480P); registerQuick("720p", QUICK_TV_720P);
         registerQuick("1080p", QUICK_TV_1080P); registerQuick("1440p", QUICK_TV_1440P);
@@ -46,6 +48,7 @@ public final class CinemarrBlocks {
         net.minecraft.core.Registry.register(BuiltInRegistries.BLOCK, id("quick_tv_" + id), block);
     }
     public static ScreenPixelBlock screenPixel() { return SCREEN_PIXEL; }
+    public static Block redstoneReceiver() { return REDSTONE_RECEIVER; }
 
     private static ResourceLocation id(String path) { return ResourceLocation.fromNamespaceAndPath(Cinemarr.MODID, path); }
     private CinemarrBlocks() {}

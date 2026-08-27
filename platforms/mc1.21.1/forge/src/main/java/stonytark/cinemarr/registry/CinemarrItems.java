@@ -13,6 +13,9 @@ public final class CinemarrItems {
     public static final RegistryObject<BlockItem> TV_CONTROLLER = REGISTER.register("tv_controller", () -> new BlockItem(CinemarrBlocks.TV_CONTROLLER.get(), new Item.Properties()));
     public static final RegistryObject<BlockItem> TV_CASING = REGISTER.register("tv_casing", () -> new BlockItem(CinemarrBlocks.TV_CASING.get(), new Item.Properties()));
     public static final RegistryObject<BlockItem> TV_SPEAKER = REGISTER.register("tv_speaker", () -> new BlockItem(CinemarrBlocks.TV_SPEAKER.get(), new Item.Properties()));
+    public static final RegistryObject<BlockItem> REDSTONE_RECEIVER = REGISTER.register("redstone_receiver", () -> new BlockItem(CinemarrBlocks.REDSTONE_RECEIVER.get(), new Item.Properties()));
+    public static final RegistryObject<Item> TV_REMOTE = REGISTER.register("tv_remote", () -> new Item(new Item.Properties().stacksTo(1)));
+    public static Item tvRemote() { return TV_REMOTE.get(); }
     public static final RegistryObject<BlockItem> QUICK_TV_144P = quick("quick_tv_144p", CinemarrBlocks.QUICK_TV_144P);
     public static final RegistryObject<BlockItem> QUICK_TV_240P = quick("quick_tv_240p", CinemarrBlocks.QUICK_TV_240P);
     public static final RegistryObject<BlockItem> QUICK_TV_480P = quick("quick_tv_480p", CinemarrBlocks.QUICK_TV_480P);

@@ -51,6 +51,8 @@
   "block.cinemarr.tv_controller": "TV Controller",
   "block.cinemarr.tv_casing": "TV Casing",
   "block.cinemarr.tv_speaker": "TV Speaker",
+  "block.cinemarr.redstone_receiver": "TV Redstone Receiver",
+  "item.cinemarr.tv_remote": "TV Remote",
   "block.cinemarr.quick_tv_144p": "144p Quick TV Kit",
   "block.cinemarr.quick_tv_240p": "240p Quick TV Kit",
   "block.cinemarr.quick_tv_480p": "480p Quick TV Kit",

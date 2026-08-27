@@ -14,6 +14,9 @@ public final class CinemarrItems {
     public static final BlockItem TV_CONTROLLER=register("tv_controller",CinemarrBlocks.TV_CONTROLLER);
     public static final BlockItem TV_CASING=register("tv_casing",CinemarrBlocks.TV_CASING);
     public static final BlockItem TV_SPEAKER=register("tv_speaker",CinemarrBlocks.TV_SPEAKER);
+    public static final BlockItem REDSTONE_RECEIVER=register("redstone_receiver",CinemarrBlocks.REDSTONE_RECEIVER);
+    public static final Item TV_REMOTE=registerItem("tv_remote");
+    public static Item tvRemote(){return TV_REMOTE;}
     public static final BlockItem QUICK_TV_144P=register("quick_tv_144p",CinemarrBlocks.QUICK_TV_144P);
     public static final BlockItem QUICK_TV_240P=register("quick_tv_240p",CinemarrBlocks.QUICK_TV_240P);
     public static final BlockItem QUICK_TV_480P=register("quick_tv_480p",CinemarrBlocks.QUICK_TV_480P);
@@ -26,6 +29,11 @@ public final class CinemarrItems {
         Identifier id=Identifier.fromNamespaceAndPath(Cinemarr.MODID,name);
         ResourceKey<Item> key=ResourceKey.create(Registries.ITEM,id);
         return Registry.register(BuiltInRegistries.ITEM,id,new BlockItem(block,new Item.Properties().useBlockDescriptionPrefix().setId(key)));
+    }
+    private static Item registerItem(String name){
+        Identifier id=Identifier.fromNamespaceAndPath(Cinemarr.MODID,name);
+        ResourceKey<Item> key=ResourceKey.create(Registries.ITEM,id);
+        return Registry.register(BuiltInRegistries.ITEM,id,new Item(new Item.Properties().stacksTo(1).setId(key)));
     }
     public static void register(){}
     private CinemarrItems(){}
