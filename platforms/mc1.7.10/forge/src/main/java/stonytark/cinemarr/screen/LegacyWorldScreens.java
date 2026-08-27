@@ -88,7 +88,7 @@ public final class LegacyWorldScreens extends WorldSavedData {
                     existing == null ? owner : existing.owner, connected, geometry.width(), geometry.height(),
                     geometry.visibilityMask().toByteArray(), geometry.facing(), geometry.minimumU(), geometry.minimumV(),
                     existing == null ? PresentationMode.FIT : existing.presentationMode,
-                    existing == null ? "" : existing.sessionName);
+                    existing == null ? "" : existing.sessionName, geometry.width(), geometry.height());
             televisions.put(controller, television);
             markDirty();
             return new Activation(true, "Activated " + geometry.width() + "x" + geometry.height()
@@ -116,6 +116,10 @@ public final class LegacyWorldScreens extends WorldSavedData {
     public void updateSession(long controller, String name) {
         Television value = televisions.get(controller);
         if (value != null) { value.sessionName = name == null ? "" : name.trim(); markDirty(); }
+    }
+    public void updateRendition(long controller, int width, int height) {
+        Television value = televisions.get(controller);
+        if (value != null && width > 0 && height > 0) { value.renditionWidth = width; value.renditionHeight = height; markDirty(); }
     }
 
     private int ownedBy(UUID owner) {
@@ -201,13 +205,17 @@ public final class LegacyWorldScreens extends WorldSavedData {
         private final int minimumU, minimumV;
         private PresentationMode presentationMode;
         private String sessionName;
+        private int renditionWidth, renditionHeight;
 
         Television(long controllerPos, UUID id, UUID owner, Set<Long> pixels, int width, int height, byte[] mask,
-                   ScreenFacing facing, int minimumU, int minimumV, PresentationMode mode, String sessionName) {
+                   ScreenFacing facing, int minimumU, int minimumV, PresentationMode mode, String sessionName,
+                   int renditionWidth, int renditionHeight) {
             this.controllerPos = controllerPos; this.id = id; this.owner = owner; this.pixels = new HashSet<Long>(pixels);
             this.width = width; this.height = height; this.mask = mask == null ? new byte[0] : mask.clone();
             this.facing = facing; this.minimumU = minimumU; this.minimumV = minimumV;
             this.presentationMode = mode; this.sessionName = sessionName == null ? "" : sessionName;
+            this.renditionWidth = renditionWidth > 0 ? renditionWidth : width;
+            this.renditionHeight = renditionHeight > 0 ? renditionHeight : height;
         }
 
         public long controllerPos() { return controllerPos; }
@@ -216,6 +224,8 @@ public final class LegacyWorldScreens extends WorldSavedData {
         public Set<Long> pixels() { return Collections.unmodifiableSet(pixels); }
         public int width() { return width; }
         public int height() { return height; }
+        public int renditionWidth() { return renditionWidth; }
+        public int renditionHeight() { return renditionHeight; }
         public byte[] mask() { return mask.clone(); }
         public ScreenFacing facing() { return facing; }
         public int minimumU() { return minimumU; }
@@ -228,6 +238,7 @@ public final class LegacyWorldScreens extends WorldSavedData {
             tag.setLong("controller", controllerPos); tag.setLong("idMost", id.getMostSignificantBits());
             tag.setLong("idLeast", id.getLeastSignificantBits()); tag.setLong("ownerMost", owner.getMostSignificantBits());
             tag.setLong("ownerLeast", owner.getLeastSignificantBits()); tag.setInteger("width", width); tag.setInteger("height", height);
+            tag.setInteger("renditionWidth", renditionWidth); tag.setInteger("renditionHeight", renditionHeight);
             tag.setByteArray("mask", mask); tag.setString("facing", facing.name()); tag.setInteger("minimumU", minimumU);
             tag.setInteger("minimumV", minimumV); tag.setString("presentationMode", presentationMode.name());
             tag.setString("sessionName", sessionName); NBTTagList positions = new NBTTagList();
@@ -244,7 +255,9 @@ public final class LegacyWorldScreens extends WorldSavedData {
                         new UUID(tag.getLong("ownerMost"), tag.getLong("ownerLeast")), pixels, tag.getInteger("width"),
                         tag.getInteger("height"), tag.getByteArray("mask"), ScreenFacing.valueOf(tag.getString("facing")),
                         tag.getInteger("minimumU"), tag.getInteger("minimumV"),
-                        PresentationMode.valueOf(tag.getString("presentationMode")), tag.getString("sessionName"));
+                        PresentationMode.valueOf(tag.getString("presentationMode")), tag.getString("sessionName"),
+                        tag.hasKey("renditionWidth") ? tag.getInteger("renditionWidth") : tag.getInteger("width"),
+                        tag.hasKey("renditionHeight") ? tag.getInteger("renditionHeight") : tag.getInteger("height"));
             } catch (IllegalArgumentException invalid) { return null; }
         }
     }

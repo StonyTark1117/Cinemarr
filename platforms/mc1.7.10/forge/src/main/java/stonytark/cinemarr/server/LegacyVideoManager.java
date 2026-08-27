@@ -260,7 +260,7 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
         String libraryId = command.action() == VideoPackets.SessionAction.SET_STREAMS ? playbackLibraries.get(tuned.id()) : command.libraryId();
         final PlexVideoService.ResolvedLibrary library = library(libraryId, player); if (library == null) return;
         final int playerPermission = permission(player);
-        final RenditionPolicy.Dimensions rendition = RenditionPolicy.choose(television.width(), television.height(), 1920, 1080, 1920, 1080);
+        final RenditionPolicy.Dimensions rendition = RenditionPolicy.choose(television.renditionWidth(), television.renditionHeight(), 1920, 1080, 1920, 1080);
         CompletableFuture.supplyAsync(() -> {
             try {
                 String itemKey = command.itemKey().trim().isEmpty() && tuned.item() != null ? tuned.item().key() : command.itemKey();
@@ -282,7 +282,7 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
     private void asyncSeek(final EntityPlayerMP player, final LegacyWorldScreens.Television television,
                            final VideoSessionCoordinator.Snapshot tuned, final VideoPackets.SessionCommand command,
                            final PresentationMode presentation) {
-        final RenditionPolicy.Dimensions rendition = RenditionPolicy.choose(television.width(), television.height(), 1920, 1080, 1920, 1080);
+        final RenditionPolicy.Dimensions rendition = RenditionPolicy.choose(television.renditionWidth(), television.renditionHeight(), 1920, 1080, 1920, 1080);
         CompletableFuture.runAsync(() -> {
             try {
                 StartOptions previous = playbackOptions.get(tuned.id());
@@ -470,7 +470,7 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
     private RenditionPolicy.Dimensions renditionForSession(String name) {
         int width = 0, height = 0;
         for (WorldServer world : server.worldServers) if (world != null) for (LegacyWorldScreens.Television television : LegacyWorldScreens.get(world).televisions()) {
-            if (name.equals(television.sessionName())) { width = Math.max(width, television.width()); height = Math.max(height, television.height()); }
+            if (name.equals(television.sessionName())) { width = Math.max(width, television.renditionWidth()); height = Math.max(height, television.renditionHeight()); }
         }
         return RenditionPolicy.choose(width == 0 ? 1280 : width, height == 0 ? 720 : height, 1920, 1080, 1920, 1080);
     }

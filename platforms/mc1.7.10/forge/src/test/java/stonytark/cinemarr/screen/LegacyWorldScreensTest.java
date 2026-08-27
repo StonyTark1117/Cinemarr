@@ -29,6 +29,7 @@ class LegacyWorldScreensTest {
         assertEquals(ScreenFacing.NORTH, activation.television().facing());
         assertEquals(0, activation.television().plane());
         assertEquals(4, activation.television().pixels().size());
+        screens.updateRendition(controller, 7680, 4320);
 
         NBTTagCompound tag = new NBTTagCompound();
         screens.writeToNBT(tag);
@@ -38,6 +39,8 @@ class LegacyWorldScreensTest {
         assertNotNull(television);
         assertEquals(activation.television().id(), television.id());
         assertArrayEquals(activation.television().mask(), television.mask());
+        assertEquals(7680, television.renditionWidth());
+        assertEquals(4320, television.renditionHeight());
 
         restored.removePixel(1, 1, 0);
         assertFalse(restored.televisions().iterator().hasNext());
