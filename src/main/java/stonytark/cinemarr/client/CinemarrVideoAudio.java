@@ -24,7 +24,7 @@ public final class CinemarrVideoAudio {
     private static final long SCHEDULE_LEAD_US = 2_000_000;
     private static final long SCHEDULE_QUANTUM_US = 1_000_000;
     private static final int STREAM_BUFFER_MS = 250;
-    private static final int INITIAL_STREAM_BUFFERS = 4;
+    private static final int INITIAL_STREAM_BUFFERS = 12;
     private static final int MAX_PENDING_FRAMES = 256;
     private final Queue<DecodedAudioFrame> pending = new ArrayDeque<>();
     private UUID sessionId;
