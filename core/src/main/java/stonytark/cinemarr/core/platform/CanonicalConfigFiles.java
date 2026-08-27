@@ -1,6 +1,7 @@
 package stonytark.cinemarr.core.platform;
 
 import stonytark.cinemarr.core.model.RestartMode;
+import stonytark.cinemarr.core.screen.QuickTvPreset;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -65,6 +66,8 @@ public final class CanonicalConfigFiles {
                 integer(values, "maximumActiveTelevisions", 2, 1, 64),
                 integer(values, "maximumScreensPerOwner", 4, 1, 64),
                 integer(values, "inactiveSessionGraceSeconds", 30, 0, 600),
+                bool(values, "quickTvKitsEnabled", true),
+                quickTvPresets(values),
                 source != null && !source.equals(canonical) ? source : null);
         config.save();
         secure(canonical);
@@ -98,6 +101,8 @@ public final class CanonicalConfigFiles {
         private final int maximumActiveTelevisions;
         private final int maximumScreensPerOwner;
         private final int inactiveSessionGraceSeconds;
+        private final boolean quickTvKitsEnabled;
+        private final Set<QuickTvPreset> quickTvPresets;
         private final Path importedFrom;
 
         private ServerConfig(Path path, String plexUrl, String plexToken, String musicLibrary,
@@ -105,7 +110,8 @@ public final class CanonicalConfigFiles {
                              int queueLimit, int audioBitrateKbps, long cacheSizeMiB,
                              boolean stationMetadataFallbackEnabled, int minimumScreenPixels, int maximumScreenPixels,
                              int maximumScreenDimension, int maximumActiveTelevisions, int maximumScreensPerOwner,
-                             int inactiveSessionGraceSeconds, Path importedFrom) {
+                             int inactiveSessionGraceSeconds, boolean quickTvKitsEnabled,
+                             Set<QuickTvPreset> quickTvPresets, Path importedFrom) {
             this.path = path;
             this.plexUrl = plexUrl;
             this.plexToken = plexToken;
@@ -124,6 +130,8 @@ public final class CanonicalConfigFiles {
             this.maximumActiveTelevisions = maximumActiveTelevisions;
             this.maximumScreensPerOwner = maximumScreensPerOwner;
             this.inactiveSessionGraceSeconds = inactiveSessionGraceSeconds;
+            this.quickTvKitsEnabled = quickTvKitsEnabled;
+            this.quickTvPresets = Collections.unmodifiableSet(EnumSet.copyOf(quickTvPresets));
             this.importedFrom = importedFrom;
         }
 
@@ -145,6 +153,8 @@ public final class CanonicalConfigFiles {
         @Override public int maximumActiveTelevisions() { return maximumActiveTelevisions; }
         @Override public int maximumScreensPerOwner() { return maximumScreensPerOwner; }
         @Override public int inactiveSessionGraceSeconds() { return inactiveSessionGraceSeconds; }
+        @Override public boolean quickTvKitsEnabled() { return quickTvKitsEnabled; }
+        @Override public boolean quickTvPresetEnabled(QuickTvPreset preset) { return quickTvPresets.contains(preset); }
 
         public void save() throws IOException {
             List<String> lines = new ArrayList<String>();
@@ -162,6 +172,12 @@ public final class CanonicalConfigFiles {
             lines.add("maximumActiveTelevisions = " + maximumActiveTelevisions);
             lines.add("maximumScreensPerOwner = " + maximumScreensPerOwner);
             lines.add("inactiveSessionGraceSeconds = " + inactiveSessionGraceSeconds);
+            lines.add("");
+            lines.add("# Compact 16:9 prefab builders with exact named video rendition targets.");
+            lines.add("quickTvKitsEnabled = " + quickTvKitsEnabled);
+            for (QuickTvPreset preset : QuickTvPreset.values()) {
+                lines.add(preset.configKey() + " = " + quickTvPresets.contains(preset));
+            }
             write(path, lines);
         }
     }
@@ -330,6 +346,12 @@ public final class CanonicalConfigFiles {
         catch (IllegalArgumentException ignored) { throw invalid(key); }
     }
 
+    private static Set<QuickTvPreset> quickTvPresets(Map<String, String> values) throws ConfigValidationException {
+        Set<QuickTvPreset> enabled = EnumSet.noneOf(QuickTvPreset.class);
+        for (QuickTvPreset preset : QuickTvPreset.values()) if (bool(values, preset.configKey(), true)) enabled.add(preset);
+        return enabled;
+    }
+
     private static String validatedUrl(String value) throws ConfigValidationException {
         try {
             URI uri = new URI(value);
@@ -400,7 +422,10 @@ public final class CanonicalConfigFiles {
             normalize("operatorPermissionLevel"), normalize("queueLimit"), normalize("audioBitrateKbps"),
             normalize("cacheSizeMiB"), normalize("stationMetadataFallbackEnabled"),
             normalize("minimumScreenPixels"), normalize("maximumScreenPixels"), normalize("maximumScreenDimension"),
-            normalize("maximumActiveTelevisions"), normalize("maximumScreensPerOwner"), normalize("inactiveSessionGraceSeconds"));
+            normalize("maximumActiveTelevisions"), normalize("maximumScreensPerOwner"), normalize("inactiveSessionGraceSeconds"),
+            normalize("quickTvKitsEnabled"), normalize("quickTv144pEnabled"), normalize("quickTv240pEnabled"),
+            normalize("quickTv480pEnabled"), normalize("quickTv720pEnabled"), normalize("quickTv1080pEnabled"),
+            normalize("quickTv1440pEnabled"), normalize("quickTv4KEnabled"), normalize("quickTv8KEnabled"));
     private static final List<String> CLIENT_KEYS = Arrays.asList(normalize("enabled"), normalize("volume"));
 
     public static final class ConfigValidationException extends IOException {

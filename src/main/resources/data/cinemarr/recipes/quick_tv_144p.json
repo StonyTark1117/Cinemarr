@@ -1,0 +1,1 @@
+{"type":"minecraft:crafting_shaped","category":"building","pattern":["SGS","GCG","SRS"],"key":{"S":{"item":"cinemarr:screen_pixel"},"G":{"item":"minecraft:glass"},"C":{"item":"cinemarr:tv_controller"},"R":{"item":"minecraft:redstone_block"}},"result":{"item":"cinemarr:quick_tv_144p","count":1}}

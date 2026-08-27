@@ -3,6 +3,7 @@ package stonytark.cinemarr.core.platform;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import stonytark.cinemarr.core.model.RestartMode;
+import stonytark.cinemarr.core.screen.QuickTvPreset;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -99,6 +100,19 @@ class CanonicalConfigFilesTest {
         assertTrue(restored.enabled());
         assertEquals(0.25, restored.volume());
         assertNull(restored.importedFrom());
+    }
+
+    @Test void quickTvKitsCanBeDisabledGloballyOrByResolution() throws Exception {
+        Path canonical = temporary.resolve("quick-tv.toml");
+        Files.write(canonical, ("quickTvKitsEnabled = false\nquickTv1080pEnabled = false\n"
+                + "quickTv4KEnabled = false\n").getBytes(StandardCharsets.UTF_8));
+        CanonicalConfigFiles.ServerConfig config = CanonicalConfigFiles.loadServer(canonical);
+        assertFalse(config.quickTvKitsEnabled());
+        assertFalse(config.quickTvPresetEnabled(QuickTvPreset.P1080));
+        assertFalse(config.quickTvPresetEnabled(QuickTvPreset.P4K));
+        assertTrue(config.quickTvPresetEnabled(QuickTvPreset.P720));
+        String saved = new String(Files.readAllBytes(canonical), StandardCharsets.UTF_8);
+        assertTrue(saved.contains("quickTv8KEnabled = true"));
     }
 
     @Test void rejectsInvalidClientSettingsWithoutRewritingThem() throws Exception {

@@ -233,7 +233,7 @@ public final class ServerVideoManager implements AutoCloseable {
                 ? playbackLibraries.get(tuned.id()) : command.libraryId();
         PlexVideoService.ResolvedLibrary library = library(libraryId, player); if (library == null) return;
         int playerPermission=permission(player);
-        RenditionPolicy.Dimensions rendition=RenditionPolicy.choose(television.width(),television.height(),1920,1080,1920,1080);
+        RenditionPolicy.Dimensions rendition=RenditionPolicy.choose(television.renditionWidth(),television.renditionHeight(),1920,1080,1920,1080);
         CompletableFuture.supplyAsync(() -> {
             try {
                 String itemKey=command.itemKey().isBlank()&&tuned.item()!=null?tuned.item().key():command.itemKey();
@@ -256,7 +256,7 @@ public final class ServerVideoManager implements AutoCloseable {
     private void asyncSeek(ServerPlayer player, CinemarrWorldScreens.Television television,
                            VideoSessionCoordinator.Snapshot tuned, VideoPackets.SessionCommand command,
                            PresentationMode presentation) {
-        RenditionPolicy.Dimensions rendition=RenditionPolicy.choose(television.width(),television.height(),1920,1080,1920,1080);
+        RenditionPolicy.Dimensions rendition=RenditionPolicy.choose(television.renditionWidth(),television.renditionHeight(),1920,1080,1920,1080);
         CompletableFuture.runAsync(() -> { try {StartOptions previous=playbackOptions.get(tuned.id());StartOptions options=new StartOptions(rendition,previous==null?new StreamSelection(Collections.emptyList(),-1,-1):previous.streams);startingOptions.set(options);try{sessions.seek(tuned.name(),command.seekPositionMs(),System.currentTimeMillis(),tuned.generation());playbackOptions.put(tuned.id(),options);}finally{startingOptions.remove();} }
             catch (IOException failure) { throw new WrappedFailure(failure); } }, workers).whenComplete((unused, failure) -> server.execute(() -> {
             if (failure != null) { failure(player, failure); return; }
@@ -343,7 +343,7 @@ public final class ServerVideoManager implements AutoCloseable {
         saved.put(new CinemarrVideoSavedData.Record(state.name(),library,state.item(),state.positionMs(),state.paused(),options.streams.audioId,options.streams.subtitleId,queues.getOrDefault(state.id(),Collections.emptyList())));
     }
 
-    private RenditionPolicy.Dimensions renditionForSession(String name){int width=0,height=0;for(ServerLevel level:server.getAllLevels())for(CinemarrWorldScreens.Television tv:CinemarrWorldScreens.get(level).televisions())if(name.equals(tv.sessionName())){width=Math.max(width,tv.width());height=Math.max(height,tv.height());}return RenditionPolicy.choose(width==0?1280:width,height==0?720:height,1920,1080,1920,1080);}
+    private RenditionPolicy.Dimensions renditionForSession(String name){int width=0,height=0;for(ServerLevel level:server.getAllLevels())for(CinemarrWorldScreens.Television tv:CinemarrWorldScreens.get(level).televisions())if(name.equals(tv.sessionName())){width=Math.max(width,tv.renditionWidth());height=Math.max(height,tv.renditionHeight());}return RenditionPolicy.choose(width==0?1280:width,height==0?720:height,1920,1080,1920,1080);}
 
     private List<CinemarrWorldScreens.Television> televisionsForSession(String name){List<CinemarrWorldScreens.Television> values=new ArrayList<>();for(ServerLevel level:server.getAllLevels())for(CinemarrWorldScreens.Television tv:CinemarrWorldScreens.get(level).televisions())if(name.equals(tv.sessionName()))values.add(tv);return values;}
 

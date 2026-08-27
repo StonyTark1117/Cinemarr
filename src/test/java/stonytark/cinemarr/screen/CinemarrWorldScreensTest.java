@@ -21,11 +21,12 @@ class CinemarrWorldScreensTest {
         BlockPos controller=new BlockPos(0,0,1);assertTrue(data.activate(controller,owner).success());
         CinemarrWorldScreens.Television tv=data.television(controller);assertEquals(2,tv.width());assertEquals(2,tv.height());
         assertEquals(owner,tv.owner());assertArrayEquals(new byte[]{15},tv.mask());
-        data.updatePresentation(controller,PresentationMode.STRETCH);data.updateSession(controller,"family");
+        data.updatePresentation(controller,PresentationMode.STRETCH);data.updateSession(controller,"family");data.updateRendition(controller,3840,2160);
         CinemarrWorldScreens restored=CinemarrWorldScreens.load(data.save(new CompoundTag(),null),null);
         CinemarrWorldScreens.Television roundTrip=restored.television(controller);
         assertEquals(PresentationMode.STRETCH,roundTrip.presentationMode());assertEquals("family",roundTrip.sessionName());
         assertArrayEquals(new byte[]{15},roundTrip.mask());assertEquals(Direction.NORTH.name(),roundTrip.facing().name());
+        assertEquals(3840,roundTrip.renditionWidth());assertEquals(2160,roundTrip.renditionHeight());
     }
 
     @Test void onePersistedTelevisionIsDiscoverableFromEveryScreenChunk() {

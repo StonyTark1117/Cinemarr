@@ -1,6 +1,7 @@
 package stonytark.cinemarr.core.platform;
 
 import stonytark.cinemarr.core.model.RestartMode;
+import stonytark.cinemarr.core.screen.QuickTvPreset;
 
 /** Loader-neutral validated configuration access installed by each platform adapter. */
 public final class CinemarrSettings {
@@ -21,6 +22,8 @@ public final class CinemarrSettings {
         default int maximumActiveTelevisions() { return 2; }
         default int maximumScreensPerOwner() { return 4; }
         default int inactiveSessionGraceSeconds() { return 30; }
+        default boolean quickTvKitsEnabled() { return true; }
+        default boolean quickTvPresetEnabled(QuickTvPreset preset) { return true; }
     }
 
     public interface ClientValues {
@@ -67,6 +70,10 @@ public final class CinemarrSettings {
     public static int maximumActiveTelevisions() { return clamp(server.maximumActiveTelevisions(), 1, 64); }
     public static int maximumScreensPerOwner() { return clamp(server.maximumScreensPerOwner(), 1, 64); }
     public static int inactiveSessionGraceSeconds() { return clamp(server.inactiveSessionGraceSeconds(), 0, 600); }
+    public static boolean quickTvKitsEnabled() { return server.quickTvKitsEnabled(); }
+    public static boolean quickTvPresetEnabled(QuickTvPreset preset) {
+        return preset != null && quickTvKitsEnabled() && server.quickTvPresetEnabled(preset);
+    }
     public static boolean enabled() { return client.enabled(); }
     public static void enabled(boolean value) { client.enabled(value); }
     public static void saveEnabled() { client.saveEnabled(); }
