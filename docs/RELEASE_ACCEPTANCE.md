@@ -24,6 +24,64 @@ Required checks:
 
 ## Recorded two-client evidence
 
+### 2026-08-27 Quick TV placement matrix
+
+All 21 exact runtime profiles passed a fresh deterministic two-client gate whose
+server scene was built through that loader's real 144p Quick TV block. Each
+server logged and persisted the same acceptance contract: a 16x9 physical
+screen, 256x144 rendition, and owner `CinemarrVideoA`. Each row below also had
+two saved screenshots with the numbered color test card visibly identifiable,
+the complete fake-Plex master/media/MPEG-TS route, a passing audible-envelope
+comparison, and clean teardown.
+
+| Runtime profile | Audio correlation | Measured lag |
+| --- | ---: | ---: |
+| Forge 1.7.10 | 0.657605 | 120 ms |
+| Fabric 1.20.1 | 0.994679 | -50 ms |
+| Quilt 1.20.1 | 0.993132 | 50 ms |
+| Forge 1.20.1 | 0.989935 | -40 ms |
+| NeoForge 1.20.1 | 0.991707 | 20 ms |
+| Fabric 1.20.2 | 0.993858 | 70 ms |
+| Quilt 1.20.2 | 0.993567 | -10 ms |
+| Forge 1.20.2 | 0.994218 | -20 ms |
+| NeoForge 1.20.2 | 0.995144 | -10 ms |
+| Fabric 1.21.1 | 0.990926 | 90 ms |
+| Quilt 1.21.1 | 0.991250 | 50 ms |
+| Forge 1.21.1 | 0.980633 | 40 ms |
+| NeoForge 1.21.1 | 0.994063 | -20 ms |
+| Fabric 26.1.2 | 0.990218 | 10 ms |
+| Quilt 26.1.2 | 0.997147 | -10 ms |
+| Forge 26.1.2 | 0.987922 | 70 ms |
+| NeoForge 26.1.2 | 0.988920 | -40 ms |
+| Fabric 26.2 | 0.999427 | 20 ms |
+| Quilt 26.2 | 0.996959 | -20 ms |
+| Forge 26.2 | 0.996621 | 80 ms |
+| NeoForge 26.2 | 0.990375 | 40 ms |
+
+The Forge 1.7.10 result is above its deliberately lower legacy-runtime
+correlation threshold and within its 150 ms lag bound. The modern profiles all
+exceeded 0.98 correlation and remained within 90 ms. Visual review caught a
+Forge 1.21.1 event-matrix defect even though decoded-frame and audio checks had
+passed; after the adapter switched to an explicit camera-relative world
+transform, both rerun screenshots visibly showed the test card. This is why
+saved image inspection remains part of the gate.
+
+The matrix also found two lifecycle races. A delayed viewer-leave notification
+is now harmless after the last television detaches from its session, and the
+tracking refresh now rescans the player's actual radius instead of relying on a
+possibly stale chunk cache. A follower-first 26.1.2 NeoForge run launched and
+fully joined client B before client A constructed the Quick TV; both clients
+then completed synchronized A/V playback and clean teardown.
+
+### Windows decoder smoke
+
+The repository's `FfmpegVideoDecoder` was run under Wine 11.15 with an x64
+Windows Eclipse Temurin 21.0.12.1 JVM and the release JavaCV 1.5.14 / FFmpeg
+8.1.2 Windows classifiers. It loaded the Windows native libraries and decoded
+three video frames plus 30 audio frames from the deterministic fixture. This is
+a native decoder loading/decoding smoke only; it does not certify a complete
+Windows Minecraft client or its OpenGL/audio integration.
+
 On 2026-08-26, two consecutive fresh invocations of
 `CINEMARR_VIDEO_CLIENT_GATE=true ./scripts/run-dedicated-server-gate.sh
 1.21.1-neoforge` each launched two independent GUI clients and PipeWire sinks

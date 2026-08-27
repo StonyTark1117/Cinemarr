@@ -132,7 +132,10 @@ public final class ServerVideoManager implements AutoCloseable {
 
     private void refreshAllTracking() {
         for (UUID id : new ArrayList<>(trackedChunks.keySet())) {
-            ServerPlayer player = server.getPlayerList().getPlayer(id); if (player != null) refreshTracking(player);
+            // A television may be built inside chunks the player was already
+            // watching, so no new chunk-watch event will populate the cached
+            // set. Re-scan the radius before broadcasting the new state.
+            ServerPlayer player = server.getPlayerList().getPlayer(id); if (player != null) synchronizeTrackingRadius(player);
         }
     }
 

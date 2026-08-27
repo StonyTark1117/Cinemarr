@@ -74,6 +74,7 @@ command_client_gate=${CINEMARR_COMMAND_CLIENT_GATE:-false}
 audio_client_gate=${CINEMARR_AUDIO_CLIENT_GATE:-false}
 audio_scenario_gate=${CINEMARR_AUDIO_SCENARIO_GATE:-false}
 video_client_gate=${CINEMARR_VIDEO_CLIENT_GATE:-false}
+video_follower_first_gate=${CINEMARR_VIDEO_FOLLOWER_FIRST_GATE:-false}
 fabric_loader_version=${CINEMARR_FABRIC_LOADER_VERSION:-}
 quilt_modmenu_gate=${CINEMARR_QUILT_MODMENU_GATE:-false}
 
@@ -1187,6 +1188,7 @@ run_two_client_video() {
   local follower_log="$output_root/$label.audio-follower.console.log"
   local leader_shot="$output_root/$label.audio-leader/screenshots/cinemarr-video-acceptance.png"
   local follower_shot="$output_root/$label.audio-follower/screenshots/cinemarr-video-acceptance.png"
+  local server_log="$output_root/$label.console.log"
   local module leader_pid follower_pid recorder_leader recorder_follower common_frame result=0
 
   module=$(pactl load-module module-null-sink sink_name="$sink_leader" rate=48000 channels=2) || return 1
@@ -1194,13 +1196,29 @@ run_two_client_video() {
   module=$(pactl load-module module-null-sink sink_name="$sink_follower" rate=48000 channels=2) || return 1
   active_audio_modules+=("$module")
 
-  # Start both GUI clients before waiting for either one. This makes the probe
-  # exercise actual simultaneous co-viewing instead of serial client startup.
-  start_audio_client "$label" "$target_dir" "$java_home" "$port" leader CinemarrVideoA "$sink_leader"
-  leader_pid=$started_audio_client_pid
-  start_audio_client "$label" "$target_dir" "$java_home" "$port" follower CinemarrVideoB "$sink_follower"
-  follower_pid=$started_audio_client_pid
-  wait_for_audio_playing "$label" leader "$leader_pid" || result=1
+  if [[ "$video_follower_first_gate" == "true" ]]; then
+    # Deterministically cover construction inside chunks an existing viewer is
+    # already tracking. The non-owner cannot create the acceptance TV, so its
+    # completed login proves the owner builds it afterward.
+    start_audio_client "$label" "$target_dir" "$java_home" "$port" follower CinemarrVideoB "$sink_follower"
+    follower_pid=$started_audio_client_pid
+    if ! wait_for_marker_after "$server_log" 0 'CinemarrVideoB joined the game' 180; then
+      echo "$label: follower-first client did not join before owner construction" >&2
+      result=1
+    fi
+    if (( result == 0 )); then
+      start_audio_client "$label" "$target_dir" "$java_home" "$port" leader CinemarrVideoA "$sink_leader"
+      leader_pid=$started_audio_client_pid
+    fi
+  else
+    # Start both GUI clients before waiting for either one. This makes the probe
+    # exercise actual simultaneous co-viewing instead of serial client startup.
+    start_audio_client "$label" "$target_dir" "$java_home" "$port" leader CinemarrVideoA "$sink_leader"
+    leader_pid=$started_audio_client_pid
+    start_audio_client "$label" "$target_dir" "$java_home" "$port" follower CinemarrVideoB "$sink_follower"
+    follower_pid=$started_audio_client_pid
+  fi
+  if (( result == 0 )); then wait_for_audio_playing "$label" leader "$leader_pid" || result=1; fi
   if (( result == 0 )); then wait_for_audio_playing "$label" follower "$follower_pid" || result=1; fi
 
   if (( result == 0 )); then
@@ -1697,6 +1715,10 @@ run_target() {
 
   if (( result == 0 )) && [[ "$video_client_gate" == "true" ]]; then
     if ! run_two_client_video "$label" "$target_dir" "$java_home" "$port"; then
+      result=1
+    elif ! grep -Fq 'Acceptance Quick TV: controller=-3996 preset=144p dimensions=16x9 rendition=256x144 owner=CinemarrVideoA' \
+        "$console_log"; then
+      echo "$label: two-client scene did not prove actual 144p Quick TV construction and persistence" >&2
       result=1
     fi
   elif (( result == 0 )) && [[ "$audio_client_gate" == "true" ]]; then

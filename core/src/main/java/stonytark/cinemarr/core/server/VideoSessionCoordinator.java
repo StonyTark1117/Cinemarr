@@ -81,7 +81,11 @@ public final class VideoSessionCoordinator implements AutoCloseable {
     }
 
     public synchronized void viewerLeft(String name, UUID playerId, long nowMs) {
-        Session session = required(name);
+        // Tracking snapshots can briefly retain a session name after its last
+        // television has been removed.  The session is already fully detached
+        // in that case, so the delayed viewer-leave notification is a no-op.
+        Session session = sessions.get(name);
+        if (session == null) return;
         session.viewers.remove(playerId);
         if (session.viewers.isEmpty() && session.media != null && session.noViewersSinceMs < 0) session.noViewersSinceMs = nowMs;
     }

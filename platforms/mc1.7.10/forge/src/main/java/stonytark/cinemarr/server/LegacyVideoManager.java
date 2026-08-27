@@ -147,24 +147,29 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
 
     private void prepareAcceptanceVideo(EntityPlayerMP player) {
         if (!ProtocolLimits.videoProbeEnabled() || !(player.worldObj instanceof WorldServer)) return;
-        WorldServer world = (WorldServer) player.worldObj; int controllerX = -5, controllerY = 100, controllerZ = 0;
+        WorldServer world = (WorldServer) player.worldObj; int controllerX = -1, controllerY = 100, controllerZ = -1;
         long controller = LegacyBlockPos.pack(controllerX, controllerY, controllerZ);
         LegacyWorldScreens screens = LegacyWorldScreens.get(world);
-        if (screens.television(controller) == null) {
-            for (int x = -4; x <= 3; x++) for (int y = 100; y <= 103; y++) {
-                world.setBlock(x, y, 0, LegacyBlocks.SCREEN_PIXEL, 3, 3);
+        if (screens.television(controller) == null && "CinemarrVideoA".equals(player.getCommandSenderName())) {
+            for (int x = -8; x <= 7; x++) for (int y = 100; y <= 108; y++) {
+                world.setBlockToAir(x, y, 0);
             }
-            world.setBlock(controllerX, controllerY, controllerZ, LegacyBlocks.TV_CONTROLLER, 0, 3);
-            UUID acceptanceOwner = UUID.nameUUIDFromBytes("OfflinePlayer:CinemarrVideoA".getBytes(StandardCharsets.UTF_8));
-            LegacyWorldScreens.Activation activation = screens.activate(controllerX, controllerY, controllerZ, acceptanceOwner);
-            if (!activation.success()) throw new IllegalStateException("Unable to create acceptance television: " + activation.message());
-            screens.updateRendition(controller, 320, 180);
-            Cinemarr.LOGGER.info("Acceptance video television: controller={} dimensions=8x4 rendition=320x180 owner={}",
-                    controller, "CinemarrVideoA");
+            player.rotationYaw = 0.0F;
+            world.setBlock(controllerX, controllerY, controllerZ, LegacyBlocks.QUICK_TV_144P, 3, 3);
+            ((stonytark.cinemarr.screen.LegacyQuickTvBlock) LegacyBlocks.QUICK_TV_144P).onBlockPlacedBy(
+                    world, controllerX, controllerY, controllerZ, player,
+                    new net.minecraft.item.ItemStack(LegacyBlocks.QUICK_TV_144P));
+            LegacyWorldScreens.Television television = screens.television(controller);
+            if (television == null || television.width() != 16 || television.height() != 9
+                    || television.renditionWidth() != 256 || television.renditionHeight() != 144) {
+                throw new IllegalStateException("Quick TV acceptance construction did not persist its geometry and rendition");
+            }
+            Cinemarr.LOGGER.info("Acceptance Quick TV: controller={} preset=144p dimensions=16x9 rendition=256x144 owner={}",
+                    controller, player.getCommandSenderName());
         }
-        for (int x = -4; x <= 4; x++) for (int z = 1; z <= 8; z++) {
+        for (int x = -9; x <= 9; x++) for (int z = 1; z <= 8; z++) {
             world.setBlock(x, 99, z, net.minecraft.init.Blocks.stone, 0, 3);
-            for (int y = 100; y <= 103; y++) world.setBlockToAir(x, y, z);
+            for (int y = 100; y <= 109; y++) world.setBlockToAir(x, y, z);
         }
         world.setWorldTime(6000L);
         int playerIndex = Math.max(0, server.getConfigurationManager().playerEntityList.indexOf(player));

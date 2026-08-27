@@ -1,6 +1,7 @@
 package stonytark.cinemarr.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
+import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
@@ -61,7 +62,11 @@ public final class CinemarrClient {
     }
     @SubscribeEvent public void renderLevel(RenderLevelStageEvent event) {
         if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) {
-            VIDEO_RENDERER.render(event.getPoseStack(), event.getCamera().getPosition(), VIDEO, CinemarrVideoClientState.INSTANCE);
+            // Forge 1.21 exposes a deprecated raw event matrix instead of the
+            // world PoseStack used by the other loaders. Build the ordinary
+            // camera-relative world transform explicitly for custom geometry.
+            VIDEO_RENDERER.render(new PoseStack(), event.getCamera().getPosition(),
+                    VIDEO, CinemarrVideoClientState.INSTANCE);
         }
     }
     @SubscribeEvent public void login(ClientPlayerNetworkEvent.LoggingIn event) { CinemarrClientState.INSTANCE.hello(); }

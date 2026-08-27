@@ -107,27 +107,25 @@ public final class CinemarrServer {
     private void prepareAcceptanceVideo(ServerPlayer player) {
         if (!ProtocolLimits.videoProbeEnabled() || videoManager == null) return;
         ServerLevel level = player.level();
-        BlockPos controller = new BlockPos(-5, 100, 0);
+        BlockPos controller = new BlockPos(-1, 100, -1);
         CinemarrWorldScreens screens = CinemarrWorldScreens.get(level);
-        if (screens.television(controller) == null) {
-            for (int x = -4; x <= 3; x++) for (int y = 100; y <= 103; y++) {
-                level.setBlockAndUpdate(new BlockPos(x, y, 0), CinemarrBlocks.SCREEN_PIXEL.get().defaultBlockState()
-                        .setValue(DirectionalBlock.FACING, Direction.SOUTH));
-            }
-            level.setBlockAndUpdate(controller, CinemarrBlocks.TV_CONTROLLER.get().defaultBlockState());
-            UUID acceptanceOwner = UUID.nameUUIDFromBytes("OfflinePlayer:CinemarrVideoA".getBytes(StandardCharsets.UTF_8));
-            CinemarrWorldScreens.Activation activation = screens.activate(controller, acceptanceOwner);
-            if (!activation.success()) throw new IllegalStateException("Unable to create acceptance television: " + activation.message());
-            screens.updateRendition(controller, 320, 180);
-            Cinemarr.LOGGER.info("Acceptance video television: controller={} dimensions=8x4 rendition=320x180 owner={}", controller.asLong(), "CinemarrVideoA");
+        if (screens.television(controller) == null && "CinemarrVideoA".equals(player.getGameProfile().name())) {
+            for (int x = -8; x <= 7; x++) for (int y = 100; y <= 108; y++) level.setBlockAndUpdate(new BlockPos(x, y, 0), Blocks.AIR.defaultBlockState());
+            var quick = CinemarrBlocks.QUICK_TV_144P.get();
+            var state = quick.defaultBlockState().setValue(stonytark.cinemarr.screen.QuickTvBlock.FACING, Direction.SOUTH);
+            level.setBlockAndUpdate(controller, state); quick.setPlacedBy(level, controller, state, player, net.minecraft.world.item.ItemStack.EMPTY);
+            CinemarrWorldScreens.Television television = screens.television(controller);
+            if (television == null || television.width() != 16 || television.height() != 9
+                    || television.renditionWidth() != 256 || television.renditionHeight() != 144) throw new IllegalStateException("Quick TV acceptance construction did not persist its geometry and rendition");
+            Cinemarr.LOGGER.info("Acceptance Quick TV: controller={} preset=144p dimensions=16x9 rendition=256x144 owner={}", controller.asLong(), player.getGameProfile().name());
         }
-        for (int x = -4; x <= 4; x++) for (int z = 1; z <= 8; z++) {
+        for (int x = -9; x <= 9; x++) for (int z = 1; z <= 8; z++) {
             level.setBlockAndUpdate(new BlockPos(x, 99, z), Blocks.SMOOTH_STONE.defaultBlockState());
-            for (int y = 100; y <= 103; y++) level.setBlockAndUpdate(new BlockPos(x, y, z), Blocks.AIR.defaultBlockState());
+            for (int y = 100; y <= 109; y++) level.setBlockAndUpdate(new BlockPos(x, y, z), Blocks.AIR.defaultBlockState());
         }
         int playerIndex = Math.max(0, level.getServer().getPlayerList().getPlayers().indexOf(player));
         double cameraX = (playerIndex & 1) == 0 ? -1.5 : 1.5;
         player.teleportTo(level, cameraX, 100.0, 7.5, java.util.Set.of(), 180.0F, 0.0F, false);
-        player.lookAt(EntityAnchorArgument.Anchor.EYES, Vec3.atCenterOf(new BlockPos(0, 102, 0)));
+        player.lookAt(EntityAnchorArgument.Anchor.EYES, Vec3.atCenterOf(new BlockPos(0, 104, 0)));
     }
 }

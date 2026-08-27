@@ -35,6 +35,20 @@ class VideoSessionCoordinatorTest {
         assertEquals(1, stops.get());
     }
 
+    @Test void delayedViewerLeaveAfterLastTelevisionIsHarmless() throws Exception {
+        VideoSessionCoordinator coordinator = new VideoSessionCoordinator(2, 30_000,
+                (session, generation, item, offset) -> () -> {});
+        UUID television = UUID.randomUUID();
+        UUID viewer = UUID.randomUUID();
+        coordinator.tune(television, "party");
+        coordinator.viewerEntered("party", viewer);
+
+        coordinator.untune(television);
+        coordinator.viewerLeft("party", viewer, 2_000);
+
+        assertFalse(coordinator.sessionNames().contains("party"));
+    }
+
     @Test void pauseResumeSeekAndGenerationRejectStaleStartsByIdentity() throws Exception {
         AtomicInteger starts = new AtomicInteger();
         VideoSessionCoordinator coordinator = new VideoSessionCoordinator(2, 0,
