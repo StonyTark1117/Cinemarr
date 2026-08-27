@@ -19,6 +19,17 @@ java {
 
 repositories { mavenCentral() }
 
+configurations { javacvFacade }
+def extractJavaCvFacade = tasks.register('extractJavaCvFacade', Sync) {
+    from { configurations.javacvFacade.collect { zipTree(it) } }
+    include 'org/bytedeco/javacv/Frame.class', 'org/bytedeco/javacv/Frame$*.class',
+            'org/bytedeco/javacv/FrameGrabber.class', 'org/bytedeco/javacv/FrameGrabber$*.class',
+            'org/bytedeco/javacv/FFmpegFrameGrabber.class', 'org/bytedeco/javacv/FFmpegFrameGrabber$*.class',
+            'org/bytedeco/javacv/FFmpegLogCallback.class'
+    into(layout.buildDirectory.dir('generated/javacvFacade'))
+}
+sourceSets.main.output.dir(extractJavaCvFacade)
+
 neoForge {
     version = libs.versions.neoforge.loader.get()
     runs {
@@ -43,10 +54,21 @@ neoForge {
 }
 
 dependencies {
+    def javaCppVersion = '1.5.14'
+    def ffmpegVersion = '8.1.2-1.5.14'
+    def javaCvVersion = '1.5.14'
     implementation project(':core')
     jarJar project(':core')
     jarJar(implementation('javazoom:jlayer:1.0.1'))
     jarJar(implementation('de.sciss:jump3r:1.0.5'))
+    javacvFacade("org.bytedeco:javacv:${javaCvVersion}") { transitive = false }
+    compileOnly("org.bytedeco:javacv:${javaCvVersion}") { transitive = false }
+    jarJar(implementation("org.bytedeco:javacpp:${javaCppVersion}") { transitive = false })
+    jarJar(implementation("org.bytedeco:ffmpeg:${ffmpegVersion}") { transitive = false })
+    ['linux-x86_64', 'linux-arm64', 'windows-x86_64'].each { platform ->
+        jarJar(implementation("org.bytedeco:javacpp:${javaCppVersion}:${platform}") { transitive = false })
+        jarJar(implementation("org.bytedeco:ffmpeg:${ffmpegVersion}:${platform}") { transitive = false })
+    }
     testImplementation platform(libs.junit.bom)
     testImplementation libs.junit.jupiter
     testRuntimeOnly libs.junit.launcher
@@ -63,16 +85,30 @@ sourceSets {
             exclude 'stonytark/cinemarr/client/CinemarrClientConfigScreen.java'
             exclude 'stonytark/cinemarr/client/CinemarrClientState.java'
             exclude 'stonytark/cinemarr/client/CinemarrScreen.java'
+            exclude 'stonytark/cinemarr/client/CinemarrVideoScreen.java'
+            exclude 'stonytark/cinemarr/client/CinemarrVideoAudio.java'
+            exclude 'stonytark/cinemarr/client/CinemarrVideoAudioManager.java'
+            exclude 'stonytark/cinemarr/client/CinemarrVideoTexture.java'
+            exclude 'stonytark/cinemarr/client/CinemarrVideoRenderer.java'
+            exclude 'stonytark/cinemarr/client/VideoResourceLocations.java'
             exclude 'stonytark/cinemarr/config/CinemarrConfig.java'
             exclude 'stonytark/cinemarr/gametest/**'
             exclude 'stonytark/cinemarr/network/CinemarrNetwork.java'
             exclude 'stonytark/cinemarr/network/CinemarrPayloads.java'
+            exclude 'stonytark/cinemarr/network/VideoPayloads.java'
             exclude 'stonytark/cinemarr/server/CinemarrCommands.java'
             exclude 'stonytark/cinemarr/server/CinemarrPermissions.java'
             exclude 'stonytark/cinemarr/server/CinemarrServer.java'
             exclude 'stonytark/cinemarr/server/CinemarrSavedData.java'
             exclude 'stonytark/cinemarr/server/QueueTrackCodec.java'
             exclude 'stonytark/cinemarr/server/StationDefinition.java'
+            exclude 'stonytark/cinemarr/server/CinemarrVideoSavedData.java'
+            exclude 'stonytark/cinemarr/server/ServerVideoManager.java'
+            exclude 'stonytark/cinemarr/screen/CinemarrWorldScreens.java'
+            exclude 'stonytark/cinemarr/screen/ScreenPixelBlock.java'
+            exclude 'stonytark/cinemarr/screen/TvControllerBlock.java'
+            exclude 'stonytark/cinemarr/registry/CinemarrBlocks.java'
+            exclude 'stonytark/cinemarr/registry/CinemarrItems.java'
         }
         resources {
             srcDir file('../../../src/main/resources')
@@ -88,10 +124,12 @@ sourceSets.test.resources { srcDir file('../../../test-fixtures'); exclude 'java
 tasks.withType(Test).configureEach { useJUnitPlatform() }
 
 tasks.named('processResources') {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     inputs.property 'version', artifactVersion
     filesMatching('META-INF/neoforge.mods.toml') { expand version: artifactVersion }
     filesMatching('cinemarr.mixins.json') { filter { it.replace('"JAVA_21"', '"JAVA_25"') } }
 }
+tasks.named('sourcesJar') { duplicatesStrategy = DuplicatesStrategy.EXCLUDE }
 
 tasks.named('jar', Jar) {
     archiveFileName = expectedReleaseName
@@ -103,10 +141,17 @@ tasks.named('jar', Jar) {
 def releaseArchive = tasks.named('jar', Jar).flatMap { it.archiveFile }
 def coreJarEntry = "META-INF/jarjar/stonytark.core-${artifactVersion}.jar".toString()
 def releaseEntries = [coreJarEntry, 'META-INF/jarjar/jlayer-1.0.1.jar', 'META-INF/jarjar/jump3r-1.0.5.jar', 'META-INF/jarjar/metadata.json',
+                      'META-INF/jarjar/javacpp-1.5.14.jar', 'META-INF/jarjar/ffmpeg-8.1.2-1.5.14.jar',
+                      'META-INF/jarjar/javacpp-1.5.14-linux-x86_64.jar', 'META-INF/jarjar/javacpp-1.5.14-linux-arm64.jar',
+                      'META-INF/jarjar/javacpp-1.5.14-windows-x86_64.jar', 'META-INF/jarjar/ffmpeg-8.1.2-1.5.14-linux-x86_64.jar',
+                      'META-INF/jarjar/ffmpeg-8.1.2-1.5.14-linux-arm64.jar', 'META-INF/jarjar/ffmpeg-8.1.2-1.5.14-windows-x86_64.jar',
+                      'org/bytedeco/javacv/FFmpegFrameGrabber.class', 'org/bytedeco/javacv/Frame.class',
                       'META-INF/LICENSE-Cinemarr-CC0-1.0.txt', 'META-INF/LICENSE-LGPL-2.1-or-later.txt',
                       'META-INF/THIRD_PARTY_NOTICES.md', 'META-INF/neoforge.mods.toml', 'cinemarr.mixins.json',
                       'cinemarr.png', 'pack.mcmeta', 'assets/cinemarr/lang/en_us.json', 'stonytark/cinemarr/Cinemarr.class',
-                      'stonytark/cinemarr/client/CinemarrClient.class', 'stonytark/cinemarr/network/CinemarrNetwork.class']
+                      'stonytark/cinemarr/client/CinemarrClient.class', 'stonytark/cinemarr/network/CinemarrNetwork.class',
+                      'stonytark/cinemarr/network/VideoPayloads.class', 'stonytark/cinemarr/client/FfmpegVideoDecoder.class',
+                      'stonytark/cinemarr/registry/CinemarrBlocks.class']
 
 tasks.register('verifyRelease') {
     group = 'verification'

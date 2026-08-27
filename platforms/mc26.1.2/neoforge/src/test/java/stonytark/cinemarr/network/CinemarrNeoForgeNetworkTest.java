@@ -16,11 +16,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CinemarrNeoForgeNetworkTest {
-    @Test void acceptsOnlyProtocolFive() {
-        assertEquals(5, CinemarrNetwork.PROTOCOL);
-        assertTrue(CinemarrNetwork.protocolMatches(5));
-        assertFalse(CinemarrNetwork.protocolMatches(4));
-        assertFalse(CinemarrNetwork.protocolMatches(6));
+    @Test void acceptsOnlyTheCurrentProtocol() {
+        assertEquals(stonytark.cinemarr.core.protocol.ProtocolLimits.VERSION, CinemarrNetwork.PROTOCOL);
+        assertTrue(CinemarrNetwork.protocolMatches(CinemarrNetwork.PROTOCOL));
+        assertFalse(CinemarrNetwork.protocolMatches(CinemarrNetwork.PROTOCOL - 1));
+        assertFalse(CinemarrNetwork.protocolMatches(CinemarrNetwork.PROTOCOL + 1));
     }
 
     @Test void nativeCodecsConsumeTheSharedProtocolFiveVectors() {

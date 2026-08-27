@@ -13,6 +13,8 @@ import stonytark.cinemarr.config.CinemarrConfig;
 import stonytark.cinemarr.core.platform.CanonicalConfigFiles;
 import stonytark.cinemarr.core.platform.CinemarrSettings;
 import stonytark.cinemarr.network.CinemarrNetwork;
+import stonytark.cinemarr.registry.CinemarrBlocks;
+import stonytark.cinemarr.registry.CinemarrItems;
 import stonytark.cinemarr.server.CinemarrCommands;
 import stonytark.cinemarr.server.CinemarrServer;
 import org.slf4j.Logger;
@@ -23,6 +25,8 @@ public final class Cinemarr {
     public static final Logger LOGGER = LogUtils.getLogger();
 
     public Cinemarr(IEventBus modBus, ModContainer container) {
+        CinemarrBlocks.REGISTER.register(modBus);
+        CinemarrItems.REGISTER.register(modBus);
         migrateClientConfig("neoforge");
         CinemarrSettings.installClient(CinemarrConfig.clientValues());
         container.registerConfig(ModConfig.Type.CLIENT, CinemarrConfig.CLIENT_SPEC);
