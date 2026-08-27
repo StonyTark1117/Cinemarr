@@ -14,7 +14,9 @@ specific.
 | 1.20.1 | Forge / NeoForge | video port build-verified, dedicated-launch-tested, and protocol-client-tested; two-client A/V untested |
 | 1.20.2 | Fabric / Quilt | video port build-verified, dedicated-launch-tested, and protocol-client-tested; two-client A/V untested |
 | 1.20.2 | Forge / NeoForge | video port build-verified, dedicated-launch-tested, and protocol-client-tested; two-client A/V untested |
-| 1.7.10, 26.1.2, 26.2 | Fabric/Quilt/Forge/NeoForge as present | adapter scaffolding; video unsupported |
+| 26.1.2 | Fabric / Quilt | video port build-verified, dedicated-launch-tested, and protocol-client-tested; two-client A/V untested |
+| 26.1.2 | Forge / NeoForge | video port build-verified, dedicated-launch-tested, and protocol-client-tested; two-client A/V untested |
+| 1.7.10, 26.2 | Fabric/Quilt/Forge/NeoForge as present | adapter scaffolding; video unsupported |
 
 The unported `platforms/` directories are retained Jammarr-derived scaffolding.
 No target may be advertised as release-certified until it

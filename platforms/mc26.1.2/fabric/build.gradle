@@ -178,7 +178,7 @@ tasks.named('processResources') {
     filesMatching('cinemarr.mixins.json') {
         filter {
             it.replace('"JAVA_21"', '"JAVA_25"')
-                    .replace('"mixins": [', '"mixins": [\n    "QuiltServerBootstrapMixin"')
+                    .replace('"mixins": [', '"mixins": [\n    "QuiltEarlyBootstrapMixin",\n    "QuiltServerBootstrapMixin"')
                     .replace('"client": [', '"client": [\n    "client.QuiltClientBootstrapMixin",')
         }
     }

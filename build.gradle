@@ -309,6 +309,16 @@ def verifyFabric2612 = tasks.register('verifyFabric2612', Exec) {
     commandLine('./gradlew', 'verifyRelease', ':core:test', '--no-daemon', '--max-workers=1')
 }
 
+def verifyQuilt2612 = tasks.register('verifyQuilt2612', Exec) {
+    group = 'verification'
+    description = 'Runs the Minecraft 26.1.2 Fabric artifact under the Quilt dependency profile.'
+    workingDir(layout.projectDirectory.dir('platforms/mc26.1.2/fabric'))
+    environment 'JAVA_HOME', java26Home
+    environment 'PATH', java26Path
+    commandLine('./gradlew', '-PcinemarrRuntimeLoader=quilt', 'verifyRelease', ':core:test', '--no-daemon', '--max-workers=1', '--no-configuration-cache')
+    mustRunAfter(verifyFabric2612)
+}
+
 def verifyForge2612 = tasks.register('verifyForge2612', Exec) {
     group = 'verification'
     description = 'Runs the isolated Java 25 Minecraft 26.1.2 Forge release gate.'
@@ -316,7 +326,7 @@ def verifyForge2612 = tasks.register('verifyForge2612', Exec) {
     environment 'JAVA_HOME', java26Home
     environment 'PATH', java26Path
     commandLine('./gradlew', 'verifyRelease', ':core:test', '--no-daemon', '--max-workers=1')
-    mustRunAfter(verifyFabric2612)
+    mustRunAfter(verifyQuilt2612)
 }
 
 def verifyNeoForge2612 = tasks.register('verifyNeoForge2612', Exec) {
@@ -394,8 +404,8 @@ tasks.register('verify1202Family') {
 
 tasks.register('verify2612Family') {
     group = 'verification'
-    description = 'Builds and verifies the Java 25 Fabric, Forge, and NeoForge Minecraft 26.1.2 artifacts.'
-    dependsOn(verifyFabric2612, verifyForge2612, verifyNeoForge2612)
+    description = 'Builds and verifies the Java 25 Fabric/Quilt, Forge, and NeoForge Minecraft 26.1.2 artifacts.'
+    dependsOn(verifyFabric2612, verifyQuilt2612, verifyForge2612, verifyNeoForge2612)
 }
 
 tasks.register('verify262Family') {
@@ -497,7 +507,7 @@ def indexRelease = tasks.register('indexReleaseArtifacts') {
         }
         if (manifestArtifacts.size() != 16) throw new GradleException("Expected 16 release artifacts, found ${manifestArtifacts.size()}")
         Map<String, Object> manifest = [schemaVersion: 2, product: 'Cinemarr', modId: mod_id,
-                                        productVersion: mod_version, protocolVersion: 5,
+                                        productVersion: mod_version, protocolVersion: 8,
                                         artifacts: manifestArtifacts]
         new File(releaseDirectory, 'manifest.json').setText(JsonOutput.prettyPrint(JsonOutput.toJson(manifest)) + '\n', 'UTF-8')
         new File(releaseDirectory, 'SHA256SUMS').setText(manifestArtifacts.collect {
