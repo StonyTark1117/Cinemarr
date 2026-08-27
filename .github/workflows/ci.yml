@@ -147,6 +147,31 @@ jobs:
             echo "Artifact build failed once; retrying with the populated dependency cache."
             sleep 15
           done
+      - name: Warm Fabric client assets
+        if: ${{ matrix.quilt != '' }}
+        env:
+          CINEMARR_ARTIFACT_PATH: ${{ matrix.artifact }}
+          CINEMARR_MATRIX_NAME: ${{ matrix.name }}
+        run: |
+          target_dir="${CINEMARR_ARTIFACT_PATH%/build/libs/*}"
+          java_home="$CINEMARR_JAVA21_HOME"
+          if [[ "$CINEMARR_MATRIX_NAME" == 26.* ]]; then
+            java_home="$CINEMARR_JAVA26_HOME"
+          fi
+          for attempt in 1 2; do
+            if (
+              cd "$target_dir"
+              JAVA_HOME="$java_home" PATH="$java_home/bin:$PATH" \
+                ./gradlew downloadAssets --no-daemon --max-workers=1
+            ); then
+              exit 0
+            fi
+            if [[ "$attempt" == 2 ]]; then
+              exit 1
+            fi
+            echo "Fabric client asset download failed once; retrying with the populated cache."
+            sleep 15
+          done
       - name: Upload verified artifact
         uses: actions/upload-artifact@v4
         with:

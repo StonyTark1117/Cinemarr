@@ -41,8 +41,8 @@ public final class CinemarrVideoAudio {
     private int caughtUpTicks;
     private int driftTicks;
     private int stableTicks;
-    private long audioTimelineUs;
-    private long audioTimelineNanos = Long.MIN_VALUE;
+    private volatile long audioTimelineUs;
+    private volatile long audioTimelineNanos = Long.MIN_VALUE;
     private long lastAcceptanceLogMs;
 
     public void tick(CinemarrVideoPlayback playback, VideoPackets.SessionState session) {
@@ -151,8 +151,8 @@ public final class CinemarrVideoAudio {
             pending.poll(); firstFrame = false;
         }
         stream = startingStream; channel = handle; observedStarvations = startingStream.starvations(); underruns += observedStarvations;
-        audioTimelineUs = scheduledStartUs;
-        audioTimelineNanos = System.nanoTime() + silenceUs * 1_000L;
+        audioTimelineUs = 0;
+        audioTimelineNanos = Long.MIN_VALUE;
         driftTicks = 0;
         stableTicks = 0;
         if (ProtocolLimits.videoProbeEnabled()) {
@@ -162,12 +162,20 @@ public final class CinemarrVideoAudio {
         }
         Vec3 origin = nearestScreenPoint(session, Minecraft.getInstance().gameRenderer.mainCamera().position());
         handle.execute(value -> {
+            if (expectedAttempt != channelAttempt) { value.stop(); return; }
             value.setRelative(false); value.setSelfPosition(origin); value.linearAttenuation(64); value.setVolume(0);
             ChannelAccessor accessor = (ChannelAccessor) value;
             accessor.cinemarr$stream(startingStream);
             accessor.cinemarr$streamingBufferSize(streamBufferBytes(startingStream));
             accessor.cinemarr$pumpBuffers(INITIAL_STREAM_BUFFERS);
             value.play();
+            // ChannelHandle work runs on Minecraft's audio executor and can be
+            // delayed substantially on loaded clients. Anchor the logical
+            // media clock to the actual OpenAL play call, not to the render
+            // thread that merely queued it, so that a delayed start is
+            // detected and rebuffered before the client reports ready.
+            audioTimelineUs = scheduledStartUs;
+            audioTimelineNanos = System.nanoTime() + silenceUs * 1_000L;
         });
     }
 

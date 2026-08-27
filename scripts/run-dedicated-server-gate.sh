@@ -318,10 +318,19 @@ run_wrong_protocol_client() {
   local java_home=$3
   local port=$4
   local server_console=$5
-  run_acceptance_client "$label" "$target_dir" "$java_home" "$port" "$server_console" \
-    wrong-protocol-client CinemarrMismatch \
-    '-Dcinemarr.acceptance.enabled=true -Dcinemarr.acceptance.clientProtocol=4 -Dorg.lwjgl.opengl.Display.allowSoftwareOpenGL=true' \
-    'Cinemarr protocol mismatch: server requires' true
+  local attempt
+  for attempt in 1 2; do
+    if run_acceptance_client "$label" "$target_dir" "$java_home" "$port" "$server_console" \
+        wrong-protocol-client CinemarrMismatch \
+        '-Dcinemarr.acceptance.enabled=true -Dcinemarr.acceptance.clientProtocol=4 -Dorg.lwjgl.opengl.Display.allowSoftwareOpenGL=true' \
+        'Cinemarr protocol mismatch: server requires' true; then
+      return 0
+    fi
+    if (( attempt == 1 )); then
+      echo "$label: retrying the wrong-protocol client once after a failed headless launch" >&2
+    fi
+  done
+  return 1
 }
 
 run_missing_hello_client() {
@@ -718,6 +727,44 @@ wait_for_audio_playing() {
     fi
     sleep 1
   done
+}
+
+wait_for_video_audio_pair_stable() {
+  local label=$1
+  local leader_pid=$2
+  local follower_pid=$3
+  local leader_log="$output_root/$label.audio-leader.console.log"
+  local follower_log="$output_root/$label.audio-follower.console.log"
+  local deadline=$((SECONDS + 180))
+  local stable_since=$SECONDS
+  local signature="" previous_signature=""
+  local leader_event follower_event leader_timeline follower_timeline
+
+  while (( SECONDS < deadline )); do
+    if ! group_alive "$leader_pid" || ! group_alive "$follower_pid"; then
+      echo "$label: a video client exited while its audio backend was stabilizing" >&2
+      return 1
+    fi
+    leader_event=$(grep -nE 'Acceptance video audio (scheduled|rebuffer):' "$leader_log" 2>/dev/null | tail -n 1)
+    follower_event=$(grep -nE 'Acceptance video audio (scheduled|rebuffer):' "$follower_log" 2>/dev/null | tail -n 1)
+    signature="$leader_event|$follower_event"
+    if [[ "$signature" != "$previous_signature" ]]; then
+      previous_signature=$signature
+      stable_since=$SECONDS
+    fi
+    leader_timeline=$(grep -F 'Acceptance video audio timeline:' "$leader_log" 2>/dev/null | tail -n 1)
+    follower_timeline=$(grep -F 'Acceptance video audio timeline:' "$follower_log" 2>/dev/null | tail -n 1)
+    if [[ "$leader_event" == *'audio scheduled:'* && "$follower_event" == *'audio scheduled:'* \
+        && "$leader_timeline" == *'underruns=0'* && "$follower_timeline" == *'underruns=0'* \
+        && "$leader_timeline" =~ javaBufferMs=[1-9][0-9]* \
+        && "$follower_timeline" =~ javaBufferMs=[1-9][0-9]* \
+        && $((SECONDS - stable_since)) -ge 8 ]]; then
+      return 0
+    fi
+    sleep 1
+  done
+  echo "$label: video audio did not remain rebuffer-free on both real clients for 8 seconds" >&2
+  return 1
 }
 
 launch_audio_client() {
@@ -1251,9 +1298,12 @@ run_two_client_video() {
   fi
   if (( result == 0 )); then wait_for_audio_playing "$label" leader "$leader_pid" || result=1; fi
   if (( result == 0 )); then wait_for_audio_playing "$label" follower "$follower_pid" || result=1; fi
+  if (( result == 0 )); then
+    wait_for_video_audio_pair_stable "$label" "$leader_pid" "$follower_pid" || result=1
+  fi
 
   if (( result == 0 )); then
-    sleep 3
+    sleep 1
     : > "$raw_leader"
     : > "$raw_follower"
     parec --raw --latency-msec=50 --device="${sink_leader}.monitor" --format=s16le --rate=48000 --channels=2 > "$raw_leader" &
