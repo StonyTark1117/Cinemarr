@@ -10,6 +10,8 @@ import stonytark.cinemarr.core.protocol.AcceptanceControlFile;
 import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.core.protocol.StatePackets;
 import stonytark.cinemarr.core.protocol.TransportPackets;
+import stonytark.cinemarr.core.protocol.VideoPackets;
+import stonytark.cinemarr.core.video.PresentationMode;
 import stonytark.cinemarr.network.LegacyNetwork;
 import stonytark.cinemarr.network.LegacyPacketTypes;
 import stonytark.cinemarr.core.platform.CinemarrSettings;
@@ -40,9 +42,17 @@ final class LegacyClientState implements LegacyNetwork.ClientListener {
     private String lastAcceptanceAudioState = "";
     private long lastTimeSync;
     private String notice = "";
+    private long acceptanceVideoController;
+    private boolean acceptanceVideoTuneSent;
+    private boolean acceptanceVideoLibrariesRequested;
+    private boolean acceptanceVideoBrowseRequested;
+    private boolean acceptanceVideoPlaySent;
 
     @Override public void accept(LegacyPacketTypes.Type<?> type, Object message) {
-        if (LegacyVideoClientState.INSTANCE.accept(type, message)) return;
+        if (LegacyVideoClientState.INSTANCE.accept(type, message)) {
+            acceptVideoProbe(type, message);
+            return;
+        }
         Minecraft minecraft = Minecraft.getMinecraft();
         if (type == LegacyPacketTypes.OPEN_SCREEN) {
             minecraft.displayGuiScreen(new LegacyScreen(this));
@@ -58,7 +68,10 @@ final class LegacyClientState implements LegacyNetwork.ClientListener {
             }
         } else if (type == LegacyPacketTypes.TIME_SYNC_RESPONSE) {
             ControlPackets.TimeSyncResponse response = (ControlPackets.TimeSyncResponse) message;
-            clock.accept(response.clientSentEpochMs(), response.serverEpochMs(), System.currentTimeMillis());
+            ClockSynchronizer.Sample sample = clock.accept(response.clientSentEpochMs(), response.serverEpochMs(), System.currentTimeMillis());
+            if (ProtocolLimits.videoProbeEnabled()) Cinemarr.LOGGER.info(
+                    "Acceptance video clock: samples={} roundTripMs={} rawOffsetMs={} filteredOffsetMs={}",
+                    clock.sampleCount(), sample.roundTripMs(), sample.rawOffsetMs(), sample.filteredOffsetMs());
         } else if (type == LegacyPacketTypes.BROWSE_RESULTS) {
             browse = (ControlPackets.BrowseResults) message;
             screenResultsChanged();
@@ -110,7 +123,8 @@ final class LegacyClientState implements LegacyNetwork.ClientListener {
         runAcceptanceControl();
         logAcceptanceAudioState();
         long now = System.currentTimeMillis();
-        if (now - lastTimeSync >= 10_000L) requestTimeSync();
+        long timeSyncInterval = ProtocolLimits.videoProbeEnabled() && clock.sampleCount() < 4 ? 250L : 10_000L;
+        if (now - lastTimeSync >= timeSyncInterval) requestTimeSync();
         audio.tick();
         LegacyVideoRuntime.INSTANCE.tick();
     }
@@ -125,6 +139,9 @@ final class LegacyClientState implements LegacyNetwork.ClientListener {
         audio.stop(); clock.reset(); notice = ""; helloSent = false; commandProbeSent = false;
         operatorProbeSent = false; lastTimeSync = 0L;
         acceptanceAudioQueued = false; lastAcceptanceAudioState = "";
+        acceptanceVideoController = 0L; acceptanceVideoTuneSent = false;
+        acceptanceVideoLibrariesRequested = false; acceptanceVideoBrowseRequested = false;
+        acceptanceVideoPlaySent = false;
         acceptanceControl.reset();
         playback = emptyPlayback(); station = emptyStation();
         browse = new ControlPackets.BrowseResults(ControlPackets.BrowseKind.SEARCH, "", 0,
@@ -132,6 +149,55 @@ final class LegacyClientState implements LegacyNetwork.ClientListener {
         adventure = new StatePackets.AdventurePreview(0L, "", Collections.<StatePackets.QueueEntry>emptyList());
         LegacyVideoClientState.INSTANCE.reset();
         LegacyVideoRuntime.INSTANCE.reset();
+    }
+
+    private void acceptVideoProbe(LegacyPacketTypes.Type<?> type, Object payload) {
+        if (!ProtocolLimits.videoProbeEnabled()) return;
+        if (type == LegacyPacketTypes.VIDEO_SESSION_STATE) {
+            VideoPackets.SessionState state = (VideoPackets.SessionState) payload;
+            Cinemarr.LOGGER.info("Acceptance video session: controller={} session={} generation={} status={} item={} positionMs={} canControl={}",
+                    state.controllerPos(), state.sessionId(), state.generation(), state.status(),
+                    state.item() == null ? "" : state.item().key(), state.positionMs(), state.canControl());
+            if (!ProtocolLimits.videoProbeLeader() || !state.canControl()) return;
+            acceptanceVideoController = state.controllerPos();
+            if (!acceptanceVideoTuneSent) {
+                acceptanceVideoTuneSent = true;
+                LegacyVideoClientState.INSTANCE.command(new VideoPackets.SessionCommand(VideoPackets.SessionAction.TUNE,
+                        state.controllerPos(), "", "", "cinemarr-acceptance", PresentationMode.FIT,
+                        state.generation(), 0L, -1, -1));
+                Cinemarr.LOGGER.info("Acceptance video leader tuned the test television");
+            } else if (state.item() == null && !acceptanceVideoLibrariesRequested) {
+                acceptanceVideoLibrariesRequested = true;
+                LegacyVideoClientState.INSTANCE.requestLibraries();
+                Cinemarr.LOGGER.info("Acceptance video leader requested allowed libraries");
+            }
+        } else if (type == LegacyPacketTypes.VIDEO_LIBRARY_LIST) {
+            VideoPackets.LibraryList value = (VideoPackets.LibraryList) payload;
+            Cinemarr.LOGGER.info("Acceptance video libraries: count={}", value.libraries().size());
+            if (ProtocolLimits.videoProbeLeader() && acceptanceVideoController != 0L
+                    && !acceptanceVideoBrowseRequested && !value.libraries().isEmpty()) {
+                acceptanceVideoBrowseRequested = true;
+                LegacyVideoClientState.INSTANCE.browse(value.libraries().get(0).id(), "", "", 0);
+                Cinemarr.LOGGER.info("Acceptance video leader browsed library {}", value.libraries().get(0).id());
+            }
+        } else if (type == LegacyPacketTypes.VIDEO_BROWSE_RESULTS) {
+            VideoPackets.BrowseResults value = (VideoPackets.BrowseResults) payload;
+            Cinemarr.LOGGER.info("Acceptance video browse: library={} items={}", value.libraryId(), value.items().size());
+            if (ProtocolLimits.videoProbeLeader() && !acceptanceVideoPlaySent
+                    && acceptanceVideoController != 0L && !value.items().isEmpty()) {
+                VideoPackets.SessionState state = LegacyVideoClientState.INSTANCE.session(acceptanceVideoController);
+                if (state == null) return;
+                acceptanceVideoPlaySent = true;
+                LegacyVideoClientState.INSTANCE.command(new VideoPackets.SessionCommand(VideoPackets.SessionAction.PLAY,
+                        acceptanceVideoController, value.libraryId(), value.items().get(0).key(), "",
+                        PresentationMode.FIT, state.generation(), 0L, -1, -1));
+                Cinemarr.LOGGER.info("Acceptance video leader requested playback of item {}", value.items().get(0).key());
+            }
+        } else if (type == LegacyPacketTypes.VIDEO_MANIFEST) {
+            VideoPackets.SegmentManifest value = (VideoPackets.SegmentManifest) payload;
+            Cinemarr.LOGGER.info("Acceptance video manifest: session={} generation={} dimensions={}x{} segments={}",
+                    value.sessionId(), value.generation(), value.width(), value.height(), value.segments().size());
+        }
     }
 
     void operatorCommandProbe() {
@@ -264,6 +330,7 @@ final class LegacyClientState implements LegacyNetwork.ClientListener {
     }
 
     long serverEpoch(long localEpochMs) { return clock.initialized() ? clock.toServerTime(localEpochMs) : localEpochMs; }
+    boolean mediaClockReady() { return clock.initialized() && (!ProtocolLimits.videoProbeEnabled() || clock.sampleCount() >= 3); }
 
     private LegacyScreen screen() {
         return Minecraft.getMinecraft().currentScreen instanceof LegacyScreen

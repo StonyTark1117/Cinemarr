@@ -1,7 +1,7 @@
 # Release acceptance
 
-No artifact is currently release-certified. NeoForge, Fabric, Quilt, and Forge
-on 1.20.1, 1.20.2, 1.21.1, 26.1.2, and 26.2 have passed the deterministic real
+No artifact is currently release-certified. Every listed runtime, including the
+isolated Forge 1.7.10 implementation, has passed the deterministic real
 two-client A/V gate, but live Plex validation is still outstanding. A successful
 Gradle build alone is insufficient.
 
@@ -112,15 +112,20 @@ the NeoForge scene was also night-darkened, but the program remained visible.
 Every client, server, fake Plex process, audio module, and target port stopped
 cleanly.
 
+Forge 1.7.10 passed its isolated Java 8 / LWJGL 2 gate on 2026-08-27. Two real
+clients visibly rendered the synthetic program and shared decoded-frame SHA-256
+`028918a15a341e02f28328967c02c350685ed4b88e9cae106bcea6b6268618e0`.
+The 997 Hz captures measured 0.983183 correlation at -110 ms lag. The gate also
+proved master-playlist, media-playlist, and MPEG-TS relay, saved both rendered-TV
+screenshots, and left no client, server, fake Plex process, audio module, or
+target port behind.
+
 All four 1.20.1 and all four 1.20.2 loader profiles have the additional
 two-client evidence above. The 1.21.1 Quilt, Fabric, and Forge profiles have the
 additional two-client evidence recorded above.
-Forge 1.7.10 is build-verified and has dedicated/protocol-rejection launch
-evidence, but no matching-client renderer/audio evidence. NeoForge, Fabric,
-Quilt, and Forge on every modern target from 1.20.1 through 26.2 have passed the
-deterministic two-client A/V gate; all remain unreleased pending live Plex
-validation. Forge 1.7.10 remains unreleased pending its matching-client A/V and
-live Plex gates.
+Forge 1.7.10 and NeoForge, Fabric, Quilt, and Forge on every modern target from
+1.20.1 through 26.2 have passed the deterministic two-client A/V gate. All
+remain unreleased pending live Plex validation.
 
 Keep logs, JAR listings, checksums, and process/port evidence for each release.
 Credentials are process-environment-only and must never appear in retained

@@ -2,7 +2,9 @@ package stonytark.cinemarr.client;
 
 import net.minecraft.client.renderer.entity.RenderManager;
 import org.lwjgl.opengl.GL11;
+import stonytark.cinemarr.Cinemarr;
 import stonytark.cinemarr.core.platform.CinemarrSettings;
+import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.core.protocol.VideoPackets;
 import stonytark.cinemarr.core.screen.ScreenFacing;
 import stonytark.cinemarr.core.screen.ScreenMaskMesher;
@@ -17,6 +19,7 @@ import java.util.UUID;
 /** Batches each masked legacy TV into textured world-space rectangles. */
 final class LegacyVideoRenderer {
     private final Map<UUID, MeshCache> meshes = new HashMap<UUID, MeshCache>();
+    private final Map<UUID, String> acceptanceFrames = new HashMap<UUID, String>();
     void render(LegacyVideoPlaybackManager playback, LegacyVideoClientState state) {
         if (!CinemarrSettings.enabled()) return;
         GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS); GL11.glPushMatrix();
@@ -34,6 +37,11 @@ final class LegacyVideoRenderer {
             for (ScreenMaskMesher.Rectangle rectangle : mesh.rectangles) draw(television, rectangle, transform,
                     pipeline.texture().width(), pipeline.texture().height());
             GL11.glEnd();
+            if (ProtocolLimits.videoProbeEnabled() && !pipeline.lastFrameSha256().equals(
+                    acceptanceFrames.put(television.televisionId(), pipeline.lastFrameSha256()))) {
+                Cinemarr.LOGGER.info("Acceptance video rendered: television={} frameSha256={} ptsUs={} rectangles={}",
+                        television.televisionId(), pipeline.lastFrameSha256(), pipeline.lastPresentedUs(), mesh.rectangles.size());
+            }
         }
         GL11.glPopMatrix(); GL11.glPopAttrib();
     }

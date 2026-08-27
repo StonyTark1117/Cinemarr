@@ -23,6 +23,7 @@ import stonytark.cinemarr.core.video.RenditionPolicy;
 import stonytark.cinemarr.network.LegacyNetwork;
 import stonytark.cinemarr.network.LegacyPacketTypes;
 import stonytark.cinemarr.screen.LegacyBlockPos;
+import stonytark.cinemarr.screen.LegacyBlocks;
 import stonytark.cinemarr.screen.LegacyWorldScreens;
 
 import java.io.IOException;
@@ -107,7 +108,7 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
     }
 
     @Override public void accept(EntityPlayerMP player, LegacyPacketTypes.Type<?> type, Object message) {
-        if (type == LegacyPacketTypes.CLIENT_HELLO) { synchronizeTracking(player); sendLibraries(player); }
+        if (type == LegacyPacketTypes.CLIENT_HELLO) { prepareAcceptanceVideo(player); synchronizeTracking(player); sendLibraries(player); }
         else if (type == LegacyPacketTypes.VIDEO_LIBRARY_LIST_REQUEST) sendLibraries(player);
         else if (type == LegacyPacketTypes.VIDEO_BROWSE_REQUEST) browse(player, (VideoPackets.BrowseRequest) message);
         else if (type == LegacyPacketTypes.VIDEO_SESSION_COMMAND) command(player, (VideoPackets.SessionCommand) message);
@@ -142,6 +143,33 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
         } catch (IOException failure) {
             Cinemarr.LOGGER.warn("Unable to stop inactive Plex video session: {}", SecretRedactor.message(failure, CinemarrSettings.plexToken()));
         }
+    }
+
+    private void prepareAcceptanceVideo(EntityPlayerMP player) {
+        if (!ProtocolLimits.videoProbeEnabled() || !(player.worldObj instanceof WorldServer)) return;
+        WorldServer world = (WorldServer) player.worldObj; int controllerX = -5, controllerY = 100, controllerZ = 0;
+        long controller = LegacyBlockPos.pack(controllerX, controllerY, controllerZ);
+        LegacyWorldScreens screens = LegacyWorldScreens.get(world);
+        if (screens.television(controller) == null) {
+            for (int x = -4; x <= 3; x++) for (int y = 100; y <= 103; y++) {
+                world.setBlock(x, y, 0, LegacyBlocks.SCREEN_PIXEL, 3, 3);
+            }
+            world.setBlock(controllerX, controllerY, controllerZ, LegacyBlocks.TV_CONTROLLER, 0, 3);
+            UUID acceptanceOwner = UUID.nameUUIDFromBytes("OfflinePlayer:CinemarrVideoA".getBytes(StandardCharsets.UTF_8));
+            LegacyWorldScreens.Activation activation = screens.activate(controllerX, controllerY, controllerZ, acceptanceOwner);
+            if (!activation.success()) throw new IllegalStateException("Unable to create acceptance television: " + activation.message());
+            screens.updateRendition(controller, 320, 180);
+            Cinemarr.LOGGER.info("Acceptance video television: controller={} dimensions=8x4 rendition=320x180 owner={}",
+                    controller, "CinemarrVideoA");
+        }
+        for (int x = -4; x <= 4; x++) for (int z = 1; z <= 8; z++) {
+            world.setBlock(x, 99, z, net.minecraft.init.Blocks.stone, 0, 3);
+            for (int y = 100; y <= 103; y++) world.setBlockToAir(x, y, z);
+        }
+        world.setWorldTime(6000L);
+        int playerIndex = Math.max(0, server.getConfigurationManager().playerEntityList.indexOf(player));
+        double cameraX = (playerIndex & 1) == 0 ? -1.5D : 1.5D;
+        player.playerNetServerHandler.setPlayerLocation(cameraX, 100.0D, 7.5D, 180.0F, 0.0F);
     }
 
     private void synchronizeTracking(EntityPlayerMP player) {

@@ -19,6 +19,14 @@ final class LegacyVideoPlaybackManager implements AutoCloseable {
     }
     LegacyVideoPlayback pipeline(LegacyVideoClientState.StreamKey key) { return pipelines.get(key); }
     Map<LegacyVideoClientState.StreamKey, LegacyVideoPlayback> pipelines() { return java.util.Collections.unmodifiableMap(pipelines); }
+    boolean hasPresentedFrame() { return evidencePipeline() != null; }
+    boolean presentedFrameCaughtUp() { LegacyVideoPlayback value = evidencePipeline(); return value != null && value.caughtUp(); }
+    String presentedFrameSha256() { LegacyVideoPlayback value = evidencePipeline(); return value == null ? "" : value.lastFrameSha256(); }
+    long presentedFrameTimeUs() { LegacyVideoPlayback value = evidencePipeline(); return value == null ? 0L : value.lastPresentedUs(); }
+    private LegacyVideoPlayback evidencePipeline() {
+        for (LegacyVideoPlayback value : pipelines.values()) if (value.texture().ready() && value.lastFrameSha256().length() != 0) return value;
+        return null;
+    }
     void reset() { for (LegacyVideoPlayback value : pipelines.values()) value.close(); pipelines.clear(); }
     @Override public void close() { reset(); }
 }

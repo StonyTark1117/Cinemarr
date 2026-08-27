@@ -19,7 +19,7 @@ packaging, and Quick TV Kit registration are platform-specific.
 | 26.1.2 | Forge / NeoForge | video port build-verified, dedicated-launch-tested, protocol-client-tested, and real two-client deterministic-HLS A/V-certified (Forge: 0.998905 correlation at 0 ms; NeoForge: 0.997870 at 10 ms); live Plex untested |
 | 26.2 | Fabric / Quilt | video port build-verified, dedicated-launch-tested, protocol-client-tested, and real two-client deterministic-HLS A/V-certified (Fabric: 0.991396 correlation at 20 ms; Quilt: 0.992901 at -10 ms); live Plex untested |
 | 26.2 | Forge / NeoForge | video port build-verified, dedicated-launch-tested, protocol-client-tested, and real two-client deterministic-HLS A/V-certified (Forge: 0.997424 correlation at -10 ms; NeoForge: 0.992739 at 10 ms); live Plex untested |
-| 1.7.10 | Forge | video runtime build-verified, dedicated-launch-tested, and protocol rejection tested; matching-client A/V and two-client A/V untested |
+| 1.7.10 | Forge | isolated video runtime build-verified, dedicated-launch-tested, protocol-client-tested, and real two-client deterministic-HLS A/V-certified (0.983183 correlation at -110 ms); live Plex untested |
 
 Every listed target contains the eight configurable Quick TV Kit registrations;
 the quick-build behavior has shared unit coverage and a passing NeoForge 1.21.1
@@ -45,6 +45,10 @@ The four 26.1.2 profiles passed the same complete gate with correlations of
 0.994030, 0.991515, 0.998905, and 0.997870 at -20 ms, 30 ms, 0 ms, and 10 ms.
 The four 26.2 profiles also passed the complete gate with correlations of
 0.991396, 0.992901, 0.997424, and 0.992739 at 20 ms, -10 ms, -10 ms, and 10 ms.
+Forge 1.7.10 passed its matching-client gate with visible screenshots, common
+decoded-frame SHA-256
+`028918a15a341e02f28328967c02c350685ed4b88e9cae106bcea6b6268618e0`,
+0.983183 correlation at -110 ms, the complete HLS route, and clean teardown.
 No target may be advertised as release-certified until it passes compile,
 launch, runtime, clean-shutdown, two-client A/V, and live Plex acceptance.
 No cross-loader or cross-version compatibility is implied by the protocol

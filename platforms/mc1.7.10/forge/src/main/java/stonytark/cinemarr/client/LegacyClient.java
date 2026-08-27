@@ -39,7 +39,7 @@ public final class LegacyClient {
     }
 
     private static void awaitAcceptanceSoundStartup() {
-        if (!ProtocolLimits.audioProbeEnabled()) return;
+        if (!ProtocolLimits.audioProbeEnabled() && !ProtocolLimits.videoProbeEnabled()) return;
         long deadline = System.currentTimeMillis() + 10_000L;
         while (LegacySoundAccess.soundSystem(Minecraft.getMinecraft()) == null
                 && System.currentTimeMillis() < deadline) {

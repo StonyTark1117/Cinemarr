@@ -2,6 +2,8 @@ package stonytark.cinemarr.client;
 
 import stonytark.cinemarr.Cinemarr;
 import stonytark.cinemarr.core.client.VideoSegmentAssembler;
+import stonytark.cinemarr.core.network.Hashing;
+import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.core.protocol.VideoPackets;
 import stonytark.cinemarr.network.LegacyNetwork;
 import stonytark.cinemarr.network.LegacyPacketTypes;
@@ -24,6 +26,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 final class LegacyVideoPlayback implements AutoCloseable {
     private static final int MAX_DECODE_JOBS = 2;
     private static final int MAX_VIDEO_FRAMES = 180;
+    private static final int MAX_AUDIO_FRAMES = 128;
     private final ExecutorService executor = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "Cinemarr legacy FFmpeg decoder"); thread.setDaemon(true); return thread;
     });
@@ -41,7 +44,9 @@ final class LegacyVideoPlayback implements AutoCloseable {
     private int decoderRecoveries;
     private int videoDrops;
     private long lastPresentedUs;
+    private String lastFrameSha256 = "";
     private long lastHealthMs;
+    private boolean caughtUp;
 
     void tick(LegacyVideoClientState.StreamState stream) {
         VideoPackets.SessionState session = stream.session();
@@ -50,16 +55,24 @@ final class LegacyVideoPlayback implements AutoCloseable {
             resetQueues(); sessionId = session.sessionId(); generation = session.generation();
         }
         VideoSegmentAssembler.CompletedSegment segment;
-        while (pending.get() < MAX_DECODE_JOBS && (segment = stream.pollSegment()) != null) submit(segment);
+        while (pending.get() < MAX_DECODE_JOBS && decoded.size() < MAX_DECODE_JOBS
+                && audio.size() < MAX_AUDIO_FRAMES && (segment = stream.pollSegment()) != null) submit(segment);
         DecodedBatch batch;
-        while ((batch = decoded.poll()) != null) if (batch.sessionId.equals(sessionId) && batch.generation == generation) {
+        while (audio.size() < MAX_AUDIO_FRAMES && (batch = decoded.poll()) != null) if (batch.sessionId.equals(sessionId) && batch.generation == generation) {
             for (LegacyDecodedVideoFrame frame : batch.video) { if (video.size() >= MAX_VIDEO_FRAMES) { video.poll(); videoDrops++; } video.add(frame); }
             audio.addAll(batch.audio);
         }
         long targetUs = authoritativePositionMs(session, LegacyClientState.INSTANCE.serverEpoch(System.currentTimeMillis())) * 1_000L;
         LegacyDecodedVideoFrame current = null;
         while (!video.isEmpty() && video.peek().presentationTimeUs() <= targetUs + 40_000L) current = video.poll();
-        if (current != null) { texture.upload(current); lastPresentedUs = current.presentationTimeUs(); }
+        if (current != null) {
+            texture.upload(current); lastPresentedUs = current.presentationTimeUs();
+            lastFrameSha256 = Hashing.sha256(current.rgbaView());
+            if (ProtocolLimits.videoProbeEnabled()) Cinemarr.LOGGER.info(
+                    "Acceptance video frame: session={} generation={} ptsUs={} sha256={} dimensions={}x{}",
+                    sessionId, generation, lastPresentedUs, lastFrameSha256, current.width(), current.height());
+        }
+        caughtUp = lastPresentedUs > 0L && Math.abs(lastPresentedUs - targetUs) <= 250_000L;
     }
 
     private void submit(final VideoSegmentAssembler.CompletedSegment segment) {
@@ -96,6 +109,8 @@ final class LegacyVideoPlayback implements AutoCloseable {
     int decoderRecoveries() { return decoderRecoveries; }
     int videoDrops() { return videoDrops; }
     long lastPresentedUs() { return lastPresentedUs; }
+    String lastFrameSha256() { return lastFrameSha256; }
+    boolean caughtUp() { return caughtUp; }
 
     void sendHealth(LegacyVideoClientState.StreamState stream, int underruns) {
         VideoPackets.SessionState session = stream.session(); long now = System.currentTimeMillis();
@@ -107,7 +122,7 @@ final class LegacyVideoPlayback implements AutoCloseable {
                 session.generation(), texture.ready() ? "PLAYING" : "BUFFERING", decoderRecoveries, videoDrops, underruns,
                 Math.min(60_000, buffered), drift)); lastHealthMs = now;
     }
-    void reset() { sessionId = null; generation = -1; lastPresentedUs = lastHealthMs = 0; resetQueues(); texture.close(); }
+    void reset() { sessionId = null; generation = -1; lastPresentedUs = lastHealthMs = 0; lastFrameSha256 = ""; caughtUp = false; resetQueues(); texture.close(); }
     private void resetQueues() { decoded.clear(); video.clear(); audio.clear(); }
     @Override public void close() { reset(); executor.shutdownNow(); }
 

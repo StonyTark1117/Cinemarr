@@ -1,12 +1,14 @@
 # Cinemarr
 
+<img src="artwork/cinemarr-icon.png" alt="Cinemarr logo" width="160">
+
 Cinemarr is a required client-and-server Minecraft mod for server-authoritative Plex movie and TV playback on player-built screens. The Minecraft server owns Plex credentials, library policy, transcodes, timelines, and media relay; tracking clients decode each compressed stream once and render it across the visible parts of a shared dynamic texture.
 
 The complete product requirements and acceptance criteria live in [Proposal](Proposal). Cinemarr is a standalone sibling project and does not require Jammarr at runtime.
 
 ## Current implementation
 
-Cinemarr now has video-runtime adapters for Forge 1.7.10 and Fabric, Quilt-compatible Fabric, Forge, and NeoForge targets spanning Minecraft 1.20.1, 1.20.2, 1.21.1, 26.1.2, and 26.2. These targets are build- and dedicated-launch-tested to the levels recorded in [the compatibility matrix](docs/COMPATIBILITY.md). All four loader profiles on every modern target from 1.20.1 through 26.2 additionally have real two-client deterministic-HLS visual/audio evidence; no artifact is release-certified until its remaining gates, including live Plex validation, pass.
+Cinemarr now has video-runtime adapters for Forge 1.7.10 and Fabric, Quilt-compatible Fabric, Forge, and NeoForge targets spanning Minecraft 1.20.1, 1.20.2, 1.21.1, 26.1.2, and 26.2. These targets are build- and dedicated-launch-tested to the levels recorded in [the compatibility matrix](docs/COMPATIBILITY.md). Every listed runtime additionally has real two-client deterministic-HLS visual/audio evidence; no artifact is release-certified until its remaining gates, including live Plex validation, pass.
 
 Implemented foundations include:
 
@@ -19,7 +21,7 @@ Implemented foundations include:
 - Eight progressively crafted Quick TV Kit blocks: 144p, 240p, 480p, 720p, 1080p, 1440p, 4K, and 8K. Placing one preflights a loaded, unobstructed 16:9 footprint, builds a bounded dense screen, activates it, and persists the exact named rendition target. A literal 8K one-block-per-pixel wall would contain 33,177,600 blocks, so quick kits are deliberately bounded prefabs; hand-built Screen Pixels retain exact one-block/one-logical-pixel behavior.
 - Global `quickTvKitsEnabled` and per-resolution `quickTv...Enabled` server settings. A disabled kit stays registered for world/save compatibility but cannot construct or activate its prefab.
 
-The in-world decoder/renderer, control UI, subtitle/audio-track selection, positional sound, persistence/reconnect behavior, server-owned HLS relay, and clean protocol rejection paths are implemented. On NeoForge 1.21.1, two consecutive fresh gates made two real clients visibly render the same identifiable synthetic H.264/AAC program and produce synchronized audible output. The captures measured 0.993263 correlation at 70 ms lag and 0.993801 at 90 ms lag. Fabric 1.21.1 independently passed with 0.986383 correlation at -10 ms lag, Quilt with 0.999974 at 0 ms, and Forge with 0.992552 at 30 ms. Fabric, Quilt, Forge, and NeoForge 1.20.2 subsequently passed with correlations of 0.993816, 0.986201, 0.991231, and 0.991795 at -10 ms, 70 ms, 20 ms, and 0 ms, respectively. The four 1.20.1 profiles then passed at 0.995863, 0.995783, 0.994928, and 0.986825 correlation with -50 ms, 30 ms, -40 ms, and -30 ms measured lag. Fabric, Quilt, Forge, and NeoForge 26.1.2 passed at 0.994030, 0.991515, 0.998905, and 0.997870 correlation with -20 ms, 30 ms, 0 ms, and 10 ms lag. The four 26.2 profiles passed at 0.991396, 0.992901, 0.997424, and 0.992739 correlation with 20 ms, -10 ms, -10 ms, and 10 ms lag. Every passing gate produced a common decoded frame, two visible screenshots, the full HLS path, and clean teardown. Forge 1.7.10 still requires equivalent matching-client evidence, and the recorded synthetic results do not substitute for live Plex validation.
+The in-world decoder/renderer, control UI, subtitle/audio-track selection, positional sound, persistence/reconnect behavior, server-owned HLS relay, and clean protocol rejection paths are implemented. On NeoForge 1.21.1, two consecutive fresh gates made two real clients visibly render the same identifiable synthetic H.264/AAC program and produce synchronized audible output. The captures measured 0.993263 correlation at 70 ms lag and 0.993801 at 90 ms lag. Fabric 1.21.1 independently passed with 0.986383 correlation at -10 ms lag, Quilt with 0.999974 at 0 ms, and Forge with 0.992552 at 30 ms. Fabric, Quilt, Forge, and NeoForge 1.20.2 subsequently passed with correlations of 0.993816, 0.986201, 0.991231, and 0.991795 at -10 ms, 70 ms, 20 ms, and 0 ms, respectively. The four 1.20.1 profiles then passed at 0.995863, 0.995783, 0.994928, and 0.986825 correlation with -50 ms, 30 ms, -40 ms, and -30 ms measured lag. Fabric, Quilt, Forge, and NeoForge 26.1.2 passed at 0.994030, 0.991515, 0.998905, and 0.997870 correlation with -20 ms, 30 ms, 0 ms, and 10 ms lag. The four 26.2 profiles passed at 0.991396, 0.992901, 0.997424, and 0.992739 correlation with 20 ms, -10 ms, -10 ms, and 10 ms lag. Forge 1.7.10 passed at 0.983183 correlation and -110 ms lag. Every passing gate produced a common decoded frame, two visible screenshots, the full HLS path, and clean teardown. The recorded synthetic results do not substitute for live Plex validation.
 
 ## Server files
 
@@ -68,7 +70,7 @@ CINEMARR_LIVE_VIDEO_LIBRARY='Movies' \
 
 Credentialed smoke results are deliberately non-cacheable. Credentials are not packaged into artifacts.
 
-The opt-in real two-client gate creates a deterministic fake-Plex HLS program, launches two independent GUI clients and audio sinks, requires a common rendered frame plus visible screenshots, checks audible PCM synchronization, and verifies clean shutdown. It is recorded green for every Fabric, Quilt, Forge, and NeoForge profile on 1.20.1, 1.20.2, 1.21.1, 26.1.2, and 26.2; for example:
+The opt-in real two-client gate creates a deterministic fake-Plex HLS program, launches two independent GUI clients and audio sinks, requires a common rendered frame plus visible screenshots, checks audible PCM synchronization, and verifies clean shutdown. It is recorded green for every listed runtime, including Forge 1.7.10; for example:
 
 ```bash
 CINEMARR_VIDEO_CLIENT_GATE=true \
@@ -85,4 +87,8 @@ CINEMARR_VIDEO_CLIENT_GATE=true \
 # Or use the Forge adapter:
 CINEMARR_VIDEO_CLIENT_GATE=true \
 ./scripts/run-dedicated-server-gate.sh 1.21.1-forge
+
+# Or exercise the isolated Java 8 / LWJGL 2 implementation:
+CINEMARR_VIDEO_CLIENT_GATE=true \
+./scripts/run-dedicated-server-gate.sh 1.7.10-forge
 ```
