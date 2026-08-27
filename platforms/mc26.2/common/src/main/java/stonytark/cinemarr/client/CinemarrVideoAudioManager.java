@@ -19,5 +19,6 @@ public final class CinemarrVideoAudioManager {
         for(CinemarrVideoClientState.StreamKey key:new ArrayList<>(players.keySet()))if(!current.contains(key)){players.remove(key).reset();}
     }
     public void audioEngineReloaded(){for(CinemarrVideoAudio value:players.values())value.audioEngineReloaded();}
+    public boolean anyReady(){for(CinemarrVideoAudio value:players.values())if(value.ready())return true;return false;}
     public void reset(){for(CinemarrVideoAudio value:players.values())value.reset();players.clear();}
 }

@@ -17,8 +17,8 @@ packaging, and Quick TV Kit registration are platform-specific.
 | 1.20.2 | Forge / NeoForge | video port build-verified, dedicated-launch-tested, protocol-client-tested, and real two-client deterministic-HLS A/V-certified (Forge: 0.991231 correlation at 20 ms; NeoForge: 0.991795 at 0 ms); live Plex untested |
 | 26.1.2 | Fabric / Quilt | video port build-verified, dedicated-launch-tested, protocol-client-tested, and real two-client deterministic-HLS A/V-certified (Fabric: 0.994030 correlation at -20 ms; Quilt: 0.991515 at 30 ms); live Plex untested |
 | 26.1.2 | Forge / NeoForge | video port build-verified, dedicated-launch-tested, protocol-client-tested, and real two-client deterministic-HLS A/V-certified (Forge: 0.998905 correlation at 0 ms; NeoForge: 0.997870 at 10 ms); live Plex untested |
-| 26.2 | Fabric / Quilt | video port build-verified, dedicated-launch-tested, and protocol-client-tested; two-client A/V untested |
-| 26.2 | Forge / NeoForge | video port build-verified, dedicated-launch-tested, and protocol-client-tested; two-client A/V untested |
+| 26.2 | Fabric / Quilt | video port build-verified, dedicated-launch-tested, protocol-client-tested, and real two-client deterministic-HLS A/V-certified (Fabric: 0.991396 correlation at 20 ms; Quilt: 0.992901 at -10 ms); live Plex untested |
+| 26.2 | Forge / NeoForge | video port build-verified, dedicated-launch-tested, protocol-client-tested, and real two-client deterministic-HLS A/V-certified (Forge: 0.997424 correlation at -10 ms; NeoForge: 0.992739 at 10 ms); live Plex untested |
 | 1.7.10 | Forge | video runtime build-verified, dedicated-launch-tested, and protocol rejection tested; matching-client A/V and two-client A/V untested |
 
 Every listed target contains the eight configurable Quick TV Kit registrations;
@@ -43,6 +43,8 @@ fake-Plex HLS route, clean teardown, and correlations of 0.995863, 0.995783,
 0.994928, and 0.986825 at -50 ms, 30 ms, -40 ms, and -30 ms, respectively.
 The four 26.1.2 profiles passed the same complete gate with correlations of
 0.994030, 0.991515, 0.998905, and 0.997870 at -20 ms, 30 ms, 0 ms, and 10 ms.
+The four 26.2 profiles also passed the complete gate with correlations of
+0.991396, 0.992901, 0.997424, and 0.992739 at 20 ms, -10 ms, -10 ms, and 10 ms.
 No target may be advertised as release-certified until it passes compile,
 launch, runtime, clean-shutdown, two-client A/V, and live Plex acceptance.
 No cross-loader or cross-version compatibility is implied by the protocol

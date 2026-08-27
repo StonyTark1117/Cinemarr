@@ -3,6 +3,7 @@ package stonytark.cinemarr.client;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.Screenshot;
 import net.minecraft.resources.Identifier;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -18,6 +19,7 @@ import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 import net.neoforged.neoforge.common.NeoForge;
 import org.lwjgl.glfw.GLFW;
 import stonytark.cinemarr.Cinemarr;
+import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.network.ClientPayloadBridge;
 
 @Mod(value = Cinemarr.MODID, dist = net.neoforged.api.distmarker.Dist.CLIENT)
@@ -30,6 +32,8 @@ public final class CinemarrClient {
     private static final CinemarrVideoRenderer VIDEO_RENDERER = new CinemarrVideoRenderer();
     private static final CinemarrVideoAudioManager VIDEO_AUDIO = new CinemarrVideoAudioManager();
     private boolean openOnNextTick;
+    private int acceptanceVideoReadyTicks;
+    private boolean acceptanceVideoScreenshotSaved;
 
     public CinemarrClient(IEventBus modBus, ModContainer container) {
         modBus.addListener(this::keys);
@@ -60,6 +64,7 @@ public final class CinemarrClient {
         CinemarrClientState.INSTANCE.tick();
         VIDEO.tick(CinemarrVideoClientState.INSTANCE);
         VIDEO_AUDIO.tick(VIDEO, CinemarrVideoClientState.INSTANCE);
+        captureAcceptanceVideo(minecraft);
     }
     @SubscribeEvent public void submitGeometry(SubmitCustomGeometryEvent event) {
         VIDEO_RENDERER.submit(event.getPoseStack(), event.getLevelRenderState().cameraRenderState.pos,
@@ -69,10 +74,28 @@ public final class CinemarrClient {
         VIDEO_AUDIO.reset();
         VIDEO.reset();
         CinemarrClientState.INSTANCE.stop();
+        acceptanceVideoReadyTicks = 0;
+        acceptanceVideoScreenshotSaved = false;
     }
     @SubscribeEvent public void login(ClientPlayerNetworkEvent.LoggingIn event) { CinemarrClientState.INSTANCE.hello(); }
     private void soundEngineLoaded(SoundEngineLoadEvent event) {
         VIDEO_AUDIO.audioEngineReloaded();
         CinemarrClientState.INSTANCE.audioEngineReloaded();
+    }
+    private void captureAcceptanceVideo(Minecraft minecraft) {
+        if (!ProtocolLimits.videoProbeEnabled() || acceptanceVideoScreenshotSaved
+                || !VIDEO.hasPresentedFrame() || !VIDEO.presentedFrameCaughtUp() || !VIDEO_AUDIO.anyReady()) {
+            acceptanceVideoReadyTicks = 0;
+            return;
+        }
+        if (++acceptanceVideoReadyTicks < 40) return;
+        acceptanceVideoScreenshotSaved = true;
+        String frame = VIDEO.presentedFrameSha256();
+        long pts = VIDEO.presentedFrameTimeUs();
+        Cinemarr.LOGGER.info("Acceptance video ready: frameSha256={} ptsUs={} audio=true", frame, pts);
+        Screenshot.grab(minecraft.gameDirectory, "cinemarr-video-acceptance.png",
+                minecraft.gameRenderer.mainRenderTarget(), 1,
+                message -> Cinemarr.LOGGER.info("Acceptance video screenshot: frameSha256={} ptsUs={} result={}",
+                        frame, pts, message.getString()));
     }
 }

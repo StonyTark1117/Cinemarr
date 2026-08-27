@@ -1,7 +1,7 @@
 # Release acceptance
 
 No artifact is currently release-certified. NeoForge, Fabric, Quilt, and Forge
-on 1.20.1, 1.20.2, 1.21.1, and 26.1.2 have passed the deterministic real
+on 1.20.1, 1.20.2, 1.21.1, 26.1.2, and 26.2 have passed the deterministic real
 two-client A/V gate, but live Plex validation is still outstanding. A successful
 Gradle build alone is insufficient.
 
@@ -100,17 +100,27 @@ pause-overlay capture, and the NeoForge scene was night-darkened, but the test
 program remained clearly identifiable in every image. All processes, audio
 modules, and target ports stopped cleanly.
 
+On 2026-08-27, Fabric, Quilt, Forge, and NeoForge 26.2 passed their separate
+full-gate runs. Every client pair shared decoded-frame SHA-256
+`028918a15a341e02f28328967c02c350685ed4b88e9cae106bcea6b6268618e0`,
+saved two screenshots with the numbered color-bar program visibly identifiable,
+and completed the fake-Plex master-playlist, media-playlist, and MPEG-TS path.
+Their audio captures measured 0.991396, 0.992901, 0.997424, and 0.992739
+correlation at 20 ms, -10 ms, -10 ms, and 10 ms lag, respectively. Fabric's
+follower, Quilt's leader, and NeoForge's leader captures retained pause overlays;
+the NeoForge scene was also night-darkened, but the program remained visible.
+Every client, server, fake Plex process, audio module, and target port stopped
+cleanly.
+
 All four 1.20.1 and all four 1.20.2 loader profiles have the additional
 two-client evidence above. The 1.21.1 Quilt, Fabric, and Forge profiles have the
 additional two-client evidence recorded above.
-The 26.2 Fabric/Quilt, Forge, and NeoForge adapters are build-verified,
-dedicated-launch-tested, and protocol-client-tested. Forge 1.7.10 is build-
-verified and has dedicated/protocol-rejection launch evidence, but no matching-
-client renderer/audio evidence. NeoForge, Fabric, Quilt, and Forge on 1.21.1 have
-passed the deterministic two-client A/V gate; all four remain unreleased pending
-live Plex validation. All four 1.20.1 and all four 1.20.2 profiles also remain
-unreleased pending live Plex validation, as do all four 26.1.2 profiles. All other targets remain unreleased
-pending their own two-client A/V and live Plex gates.
+Forge 1.7.10 is build-verified and has dedicated/protocol-rejection launch
+evidence, but no matching-client renderer/audio evidence. NeoForge, Fabric,
+Quilt, and Forge on every modern target from 1.20.1 through 26.2 have passed the
+deterministic two-client A/V gate; all remain unreleased pending live Plex
+validation. Forge 1.7.10 remains unreleased pending its matching-client A/V and
+live Plex gates.
 
 Keep logs, JAR listings, checksums, and process/port evidence for each release.
 Credentials are process-environment-only and must never appear in retained
