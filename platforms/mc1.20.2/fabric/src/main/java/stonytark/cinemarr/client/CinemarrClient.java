@@ -112,6 +112,7 @@ public final class CinemarrClient implements ClientModInitializer {
     private static void registerReceivers() {
         receive(CinemarrPayloads.ServerHello.ID, CinemarrPayloads.ServerHello::read);
         receive(CinemarrPayloads.TimeSyncResponse.ID, CinemarrPayloads.TimeSyncResponse::read);
+        receive(CinemarrPayloads.ErrorMessage.ID, CinemarrPayloads.ErrorMessage::read);
         receive(VideoPayloads.LibraryList.ID,VideoPayloads.LibraryList::read);receive(VideoPayloads.OpenVideoScreen.ID,VideoPayloads.OpenVideoScreen::read);
         receive(VideoPayloads.BrowseResults.ID,VideoPayloads.BrowseResults::read);receive(VideoPayloads.SessionState.ID,VideoPayloads.SessionState::read);
         receive(VideoPayloads.TelevisionRemoved.ID,VideoPayloads.TelevisionRemoved::read);receive(VideoPayloads.SessionQueue.ID,VideoPayloads.SessionQueue::read);

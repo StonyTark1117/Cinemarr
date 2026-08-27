@@ -123,6 +123,7 @@ public final class CinemarrClient implements ClientModInitializer {
     private static void registerReceivers() {
         receive(CinemarrPayloads.ServerHello.TYPE,CinemarrPayloads.ServerHello.CODEC);
         receive(CinemarrPayloads.TimeSyncResponse.TYPE,CinemarrPayloads.TimeSyncResponse.CODEC);
+        receive(CinemarrPayloads.ErrorMessage.TYPE,CinemarrPayloads.ErrorMessage.CODEC);
         receive(VideoPayloads.LibraryList.TYPE,VideoPayloads.LibraryList.CODEC);
         receive(VideoPayloads.OpenVideoScreen.TYPE,VideoPayloads.OpenVideoScreen.CODEC);
         receive(VideoPayloads.BrowseResults.TYPE,VideoPayloads.BrowseResults.CODEC);

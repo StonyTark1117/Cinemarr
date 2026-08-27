@@ -35,6 +35,7 @@ public final class CinemarrNetwork {
     public static void register() {
         registerS2C(CinemarrPayloads.ServerHello.TYPE, CinemarrPayloads.ServerHello.CODEC);
         registerS2C(CinemarrPayloads.TimeSyncResponse.TYPE, CinemarrPayloads.TimeSyncResponse.CODEC);
+        registerS2C(CinemarrPayloads.ErrorMessage.TYPE, CinemarrPayloads.ErrorMessage.CODEC);
         registerS2C(VideoPayloads.LibraryList.TYPE, VideoPayloads.LibraryList.CODEC);
         registerS2C(VideoPayloads.OpenVideoScreen.TYPE, VideoPayloads.OpenVideoScreen.CODEC);
         registerS2C(VideoPayloads.BrowseResults.TYPE, VideoPayloads.BrowseResults.CODEC);

@@ -46,6 +46,10 @@ correlation / 30 ms lag.
 The final boundary calculation is server-epoch-based rather than join-time-
 based; exact Fabric 26.1.2 and serial late-join NeoForge 1.21.1 regressions
 passed at 0.986959 / 10 ms and 0.990159 / 70 ms, respectively.
+An exact Quilt 26.2 gate with Mod Menu 20.0.1 then exercised Cinemarr's
+clientbound error response, verified its Fabric codec/receiver registration,
+and passed the two-client capture at 0.980075 correlation / 0 ms lag with clean
+teardown.
 
 The repository decoder also passed a Windows-x64 native smoke under a Windows
 Temurin 21 JVM: JavaCV/FFmpeg loaded and decoded three video frames and 30 audio
