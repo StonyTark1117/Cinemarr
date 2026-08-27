@@ -26,6 +26,9 @@ public final class CinemarrVideoAudio {
     private static final int STREAM_BUFFER_MS = 250;
     private static final int INITIAL_STREAM_BUFFERS = 12;
     private static final int MAX_PENDING_FRAMES = 256;
+    private static final long REBUFFER_DRIFT_US = 150_000;
+    private static final int REBUFFER_DRIFT_TICKS = 5;
+    private static final int READY_STABLE_TICKS = 10;
     private final Queue<DecodedAudioFrame> pending = new ArrayDeque<>();
     private UUID sessionId;
     private long generation = -1;
@@ -36,6 +39,10 @@ public final class CinemarrVideoAudio {
     private int underruns;
     private int observedStarvations;
     private int caughtUpTicks;
+    private int driftTicks;
+    private int stableTicks;
+    private long audioTimelineUs;
+    private long audioTimelineNanos = Long.MIN_VALUE;
     private long lastAcceptanceLogMs;
 
     public void tick(CinemarrVideoPlayback playback, VideoPackets.SessionState session) {
@@ -63,6 +70,27 @@ public final class CinemarrVideoAudio {
         if (stream == null && !channelPending && CinemarrClientState.INSTANCE.mediaClockReady()
                 && targetUs >= 2_000_000L && caughtUpTicks >= 10) {
             prepareAndStart(session, targetUs);
+        }
+        if (channel != null) {
+            long nowNanos = System.nanoTime();
+            if (audioTimelineNanos != Long.MIN_VALUE && nowNanos >= audioTimelineNanos) {
+                if (!session.paused()) audioTimelineUs += (nowNanos - audioTimelineNanos) / 1_000L;
+                audioTimelineNanos = nowNanos;
+                long driftUs = audioTimelineUs - targetUs;
+                if (!session.paused() && Math.abs(driftUs) > REBUFFER_DRIFT_US) {
+                    stableTicks = 0;
+                    if (++driftTicks >= REBUFFER_DRIFT_TICKS) {
+                        if (ProtocolLimits.videoProbeEnabled()) Cinemarr.LOGGER.info(
+                                "Acceptance video audio rebuffer: driftMs={} targetMs={} audioMs={}",
+                                driftUs / 1_000L, targetUs / 1_000L, audioTimelineUs / 1_000L);
+                        resetChannel();
+                        caughtUpTicks = 0;
+                    }
+                } else {
+                    driftTicks = 0;
+                    stableTicks++;
+                }
+            }
         }
         if (channel != null) {
             int starvations = stream == null ? 0 : stream.starvations();
@@ -116,12 +144,17 @@ public final class CinemarrVideoAudio {
             handle.execute(com.mojang.blaze3d.audio.Channel::stop); return;
         }
         VideoPcmAudioStream startingStream = new VideoPcmAudioStream(first.sampleRate(), first.channels());
-        startingStream.scheduleSilenceFor(scheduledStartUs - targetUs);
+        long silenceUs = scheduledStartUs - targetUs;
+        startingStream.scheduleSilenceFor(silenceUs);
         boolean firstFrame = true;
         while (!pending.isEmpty() && startingStream.offer(pending.peek(), firstFrame ? scheduledStartUs : pending.peek().presentationTimeUs())) {
             pending.poll(); firstFrame = false;
         }
         stream = startingStream; channel = handle; observedStarvations = startingStream.starvations(); underruns += observedStarvations;
+        audioTimelineUs = scheduledStartUs;
+        audioTimelineNanos = System.nanoTime() + silenceUs * 1_000L;
+        driftTicks = 0;
+        stableTicks = 0;
         if (ProtocolLimits.videoProbeEnabled()) {
             Cinemarr.LOGGER.info("Acceptance video audio scheduled: targetMs={} mediaStartMs={} silenceMs={} bufferedMs={}",
                     targetUs / 1_000L, scheduledStartUs / 1_000L, (scheduledStartUs - targetUs) / 1_000L,
@@ -166,13 +199,13 @@ public final class CinemarrVideoAudio {
     }
 
     public int underruns() { return underruns; }
-    public boolean ready() { return stream != null && channel != null && !channel.isStopped(); }
+    public boolean ready() { return stream != null && channel != null && !channel.isStopped() && stableTicks >= READY_STABLE_TICKS; }
     public void audioEngineReloaded() { resetChannel(); }
     public void reset() { resetChannel(); pending.clear(); sessionId=null; generation=-1; underruns=0;caughtUpTicks=0;lastAcceptanceLogMs=0; }
     private void resetChannel() {
         channelAttempt++;
         if (channel != null) { channel.execute(com.mojang.blaze3d.audio.Channel::stop); channel=null; }
         if (stream != null) { stream.close(); stream=null; }
-        channelPending=false;observedStarvations=0;
+        channelPending=false;observedStarvations=0;driftTicks=0;stableTicks=0;audioTimelineUs=0;audioTimelineNanos=Long.MIN_VALUE;
     }
 }

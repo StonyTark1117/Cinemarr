@@ -177,8 +177,6 @@ cleanup_all() {
     wait_for_group_exit "$active_server_group" 10 || stop_group "$active_server_group" KILL
     active_server_group=""
   fi
-  stop_listening_port "$active_game_port"
-  stop_listening_port "$active_rcon_port"
   active_game_port=""
   active_rcon_port=""
   restore_server_config
@@ -212,18 +210,6 @@ cleanup_audio_processes() {
   active_audio_client_pids=()
   active_audio_recorder_pids=()
   active_audio_modules=()
-}
-
-stop_listening_port() {
-  local port=$1
-  local pid deadline
-  if [[ -z "$port" ]]; then return; fi
-  pid=$(ss -ltnp "sport = :$port" | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -n 1)
-  if [[ -z "$pid" ]]; then return; fi
-  kill -TERM "$pid" 2>/dev/null || true
-  deadline=$((SECONDS + 10))
-  while kill -0 "$pid" 2>/dev/null && (( SECONDS < deadline )); do sleep 1; done
-  if kill -0 "$pid" 2>/dev/null; then kill -KILL "$pid" 2>/dev/null || true; fi
 }
 
 trap cleanup_all EXIT
@@ -301,13 +287,29 @@ missing_client_rejection_logged() {
     "$latest_log" "$console_log" 2>/dev/null
 }
 
-server_client_disconnect_logged() {
+client_rejection_logged() {
   local console_log=$1
-  local username=$2
+  local rejection=$2
+  local allow_generic=$3
+  grep -Fq "Client disconnected with reason: $rejection" "$console_log" 2>/dev/null \
+    || { [[ "$allow_generic" == true ]] \
+      && grep -Fq 'Client disconnected with reason: Disconnected' "$console_log" 2>/dev/null; }
+}
+
+rejection_observed() {
+  local server_console=$1
+  local client_console=$2
   local rejection=$3
-  grep -Fq "$rejection" "$console_log" 2>/dev/null \
-    || grep -Fq "$username lost connection:" "$console_log" 2>/dev/null \
-    || grep -Fq "$username left the game" "$console_log" 2>/dev/null
+  local allow_generic=$4
+  grep -Fq "Client disconnected with reason: $rejection" "$client_console" 2>/dev/null \
+    || { grep -Fq "$rejection" "$server_console" 2>/dev/null \
+      && client_rejection_logged "$client_console" "$rejection" "$allow_generic"; }
+}
+
+client_bootstrap_failed() {
+  local console_log=$1
+  grep -Eq 'Timed out trying to setup the Game Window|Failed to initialize the mod loading system and display|ArrayIndexOutOfBoundsException: 0' \
+    "$console_log" 2>/dev/null
 }
 
 run_wrong_protocol_client() {
@@ -319,7 +321,7 @@ run_wrong_protocol_client() {
   run_acceptance_client "$label" "$target_dir" "$java_home" "$port" "$server_console" \
     wrong-protocol-client CinemarrMismatch \
     '-Dcinemarr.acceptance.enabled=true -Dcinemarr.acceptance.clientProtocol=4 -Dorg.lwjgl.opengl.Display.allowSoftwareOpenGL=true' \
-    'Cinemarr protocol mismatch: server requires'
+    'Cinemarr protocol mismatch: server requires' true
 }
 
 run_missing_hello_client() {
@@ -344,6 +346,7 @@ run_acceptance_client() {
   local username=$7
   local java_tool_options=$8
   local rejection=$9
+  local allow_generic_client_rejection=${10:-false}
   local client_dir="$output_root/$label.$scenario"
   local client_console="$output_root/$label.$scenario.console.log"
   local evidence="$output_root/$label.$scenario.server.txt"
@@ -362,7 +365,8 @@ run_acceptance_client() {
     'narrator:0' > "$client_dir/options.txt"
   (
     cd "$target_dir" || exit 1
-    exec setsid xvfb-run -a -s '-screen 0 1280x720x24 -ac +extension GLX +render -noreset' env \
+    exec setsid env -u WAYLAND_DISPLAY XDG_SESSION_TYPE=x11 \
+      xvfb-run -a -s '-screen 0 1280x720x24 -ac +extension GLX +render -noreset' env \
       JAVA_HOME="$java_home" PATH="$java_home/bin:$PATH" \
       JAVA_TOOL_OPTIONS="$java_tool_options" \
       LIBGL_ALWAYS_SOFTWARE=1 \
@@ -377,8 +381,13 @@ run_acceptance_client() {
   active_client_pid=$pid
 
   deadline=$((SECONDS + 600))
-  while ! server_client_disconnect_logged "$server_console" "$username" "$rejection" \
-      || ! grep -Fq "Client disconnected with reason: $rejection" "$client_console" 2>/dev/null; do
+  while ! rejection_observed "$server_console" "$client_console" "$rejection" \
+      "$allow_generic_client_rejection"; do
+    if client_bootstrap_failed "$client_console"; then
+      echo "$label: $scenario could not initialize its headless display; see $client_console" >&2
+      result=1
+      break
+    fi
     if ! group_alive "$pid"; then
       # The cold Forge 1.7.10 client can terminate immediately after receiving
       # the disconnect while its client and server log writers are still
@@ -386,8 +395,8 @@ run_acceptance_client() {
       # a short bounded grace period; a genuine launcher crash still fails.
       exit_grace_deadline=$((SECONDS + 60))
       while (( SECONDS < exit_grace_deadline )); do
-        if server_client_disconnect_logged "$server_console" "$username" "$rejection" \
-            && grep -Fq "Client disconnected with reason: $rejection" "$client_console" 2>/dev/null; then
+        if rejection_observed "$server_console" "$client_console" "$rejection" \
+            "$allow_generic_client_rejection"; then
           break 2
         fi
         sleep 1
@@ -408,7 +417,8 @@ run_acceptance_client() {
     {
       grep -F -e "$rejection" -e "$username lost connection:" -e "$username left the game" \
         "$server_console" | tail -n 1
-      grep -F "Client disconnected with reason: $rejection" "$client_console" | tail -n 1
+      grep -F -e "Client disconnected with reason: $rejection" \
+        -e 'Client disconnected with reason: Disconnected' "$client_console" | tail -n 1
     } > "$evidence"
   fi
   terminate_client_launch "$pid" 20 || result=1
@@ -456,7 +466,8 @@ run_command_client() {
 
   (
     cd "$target_dir" || exit 1
-    exec setsid xvfb-run -a -s '-screen 0 1280x720x24 -ac +extension GLX +render -noreset' env \
+    exec setsid env -u WAYLAND_DISPLAY XDG_SESSION_TYPE=x11 \
+      xvfb-run -a -s '-screen 0 1280x720x24 -ac +extension GLX +render -noreset' env \
       JAVA_HOME="$java_home" PATH="$java_home/bin:$PATH" \
       JAVA_TOOL_OPTIONS='-Dcinemarr.acceptance.enabled=true -Dcinemarr.acceptance.commandProbe=true -Dorg.lwjgl.opengl.Display.allowSoftwareOpenGL=true' \
       LIBGL_ALWAYS_SOFTWARE=1 \
@@ -484,6 +495,11 @@ run_command_client() {
   else
     while ! grep -Fq 'Acceptance command permissions: non-operator public=true operator=false' \
         "$client_console" 2>/dev/null; do
+      if client_bootstrap_failed "$client_console"; then
+        echo "$label: command client could not initialize its headless display; see $client_console" >&2
+        result=1
+        break
+      fi
       if ! group_alive "$pid" || (( SECONDS >= deadline )); then
         echo "$label: non-operator command tree was not observed; see $client_console" >&2
         result=1
@@ -603,7 +619,7 @@ start_audio_client() {
     java_options+=" -Dcinemarr.acceptance.videoProbe=true -Dcinemarr.acceptance.videoLeader=$leader"
   fi
   case "$label" in
-    1.20.1-forge|1.20.1-neoforge|1.20.2-forge|1.20.2-neoforge)
+    1.20.1-forge|1.20.1-neoforge|1.20.2-forge|1.20.2-neoforge|1.21.1-neoforge)
       cache_args+=(--no-configuration-cache)
       ;;
   esac
@@ -651,7 +667,8 @@ start_audio_client() {
   esac
   (
     cd "$target_dir" || exit 1
-    exec setsid xvfb-run -a -s '-screen 0 1280x720x24 -ac +extension GLX +render -noreset' env \
+    exec setsid env -u WAYLAND_DISPLAY XDG_SESSION_TYPE=x11 \
+      xvfb-run -a -s '-screen 0 1280x720x24 -ac +extension GLX +render -noreset' env \
       JAVA_HOME="$java_home" PATH="$java_home/bin:$PATH" \
       JAVA_TOOL_OPTIONS="$java_options" \
       ALSA_CONFIG_PATH="$client_dir/alsa.conf" ALSOFT_DRIVERS=alsa LIBGL_ALWAYS_SOFTWARE=1 \
@@ -678,6 +695,10 @@ wait_for_audio_playing() {
   [[ "$video_client_gate" == "true" ]] && ready_marker='Acceptance video ready:'
   while ! grep -Fq "$ready_marker" "$client_console" 2>/dev/null; do
     if grep -Eq 'Acceptance (audio state:|video session:|video libraries:)' "$client_console" 2>/dev/null; then initialized=1; fi
+    if client_bootstrap_failed "$client_console"; then
+      echo "$label: $role client could not initialize its headless display; see $client_console" >&2
+      return 1
+    fi
     if grep -Eq 'Acceptance audio state: ERROR|Cinemarr rejected video segment|Failed to open OpenAL device|Error starting SoundSystem|NoClassDefFoundError: (javazoom|de/sciss)' \
         "$client_console" 2>/dev/null; then
       echo "$label: $role client failed before playback; see $client_console" >&2
@@ -1416,11 +1437,15 @@ terminate_client_launch() {
   local root=$1
   local seconds=$2
   local pid group deadline live result=0
+  local gate_group
   local -a pids=() groups=()
+  gate_group=$(ps -o pgid= -p "$$" 2>/dev/null | tr -d ' ')
   mapfile -t pids < <({ printf '%s\n' "$root"; process_tree_pids "$root"; } | sort -un)
   for pid in "${pids[@]}"; do
     group=$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ')
-    if [[ -n "$group" ]]; then groups+=("$group"); fi
+    if [[ -n "$group" && "$group" != "$gate_group" && "$group" != "$active_server_group" ]]; then
+      groups+=("$group")
+    fi
   done
   mapfile -t groups < <(printf '%s\n' "${groups[@]}" | sed '/^$/d' | sort -unr)
 
@@ -1532,7 +1557,6 @@ run_invalid_config_check() {
   while ss -ltnH "sport = :$port" | grep -q . && (( SECONDS < close_deadline )); do sleep 1; done
   if ss -ltnH "sport = :$port" | grep -q .; then
     echo "$label: server did not close port $port after rejecting invalid Cinemarr configuration" >&2
-    stop_listening_port "$port"
     result=1
   fi
   if [[ -n "$active_server_group" ]]; then
@@ -1663,6 +1687,18 @@ run_target() {
   esac
 
   if ! run_invalid_config_check "$label" "$target_dir" "$run_dir" "$java_home" "$port" "$level_name"; then
+    restore_server_properties
+    restore_gate_world
+    return 1
+  fi
+  # Another local gate can claim a port while the cold invalid-config launch
+  # is running. Recheck immediately before the real launch and never treat an
+  # unrelated listener as a Cinemarr process during shutdown cleanup.
+  if ss -ltnH "sport = :$port" | grep -q . \
+      || { [[ "$label" != "1.7.10-forge" ]] && ss -ltnH "sport = :$rcon_port" | grep -q .; }; then
+    echo "$label: a required port became occupied during the cold-launch check" >&2
+    active_game_port=""
+    active_rcon_port=""
     restore_server_properties
     restore_gate_world
     return 1

@@ -5,6 +5,8 @@ import socket
 import struct
 import sys
 
+RCON_TIMEOUT_SECONDS = 15
+
 
 def receive_exact(connection, length):
     result = bytearray()
@@ -37,8 +39,8 @@ def main():
         print("usage: minecraft-rcon.py HOST PORT PASSWORD COMMAND", file=sys.stderr)
         return 2
     host, port, password, command = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4]
-    with socket.create_connection((host, port), timeout=5) as connection:
-        connection.settimeout(5)
+    with socket.create_connection((host, port), timeout=RCON_TIMEOUT_SECONDS) as connection:
+        connection.settimeout(RCON_TIMEOUT_SECONDS)
         send_packet(connection, 91, 3, password)
         request_id, _, _ = receive_packet(connection)
         if request_id != 91:
