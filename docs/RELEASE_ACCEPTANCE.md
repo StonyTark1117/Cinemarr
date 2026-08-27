@@ -94,7 +94,10 @@ adapter now converts each rounded media position back to its exact server epoch
 from the authoritative session snapshot, maps that epoch through the client
 clock filter inside the OpenAL callback, and compensates against that boundary.
 Exact local regressions then passed for Fabric 26.1.2 at 0.986959 / 10 ms and
-the serial late-join NeoForge 1.21.1 profile at 0.990159 / 70 ms.
+the serial late-join NeoForge 1.21.1 profile at 0.955958 / 70 ms. That serialized
+profile now keeps its 250 ms startup sampling cadence until at least eight
+samples include a 50 ms-or-better RTT estimate, or a bounded 16-sample fallback
+is reached; the passing clients anchored from 6 ms and 5 ms best-RTT estimates.
 The exact Quilt 26.2 + Mod Menu 20.0.1 profile subsequently exposed an omitted
 Fabric codec/receiver registration for the server's `cinemarr:error` response.
 After auditing and registering that response across every modern loader
@@ -113,8 +116,9 @@ backend progress, accounts for consumed preroll when choosing the shared future
 media boundary, keeps a four-second queue runway, and coalesces one-second raw
 buffers through Paulscode's asynchronous command thread. Two consecutive fresh
 runs then passed at 0.986105 correlation / -10 ms and 0.978383 / -30 ms, restoring
-current A/V certification. The modern profiles all exceeded 0.98 correlation and
-remained within 100 ms. Visual review caught a
+current A/V certification. The original complete modern matrix exceeded 0.98
+correlation and remained within 100 ms; the later startup-clock quality
+regression remained strongly correlated at 0.955958 and 70 ms. Visual review caught a
 Forge 1.21.1 event-matrix defect even though decoded-frame and audio checks had
 passed; after the adapter switched to an explicit camera-relative world
 transform, both rerun screenshots visibly showed the test card. This is why

@@ -28,6 +28,13 @@ public final class ClockSynchronizer {
     public synchronized long bestRoundTripMs() { return bestRoundTripMs; }
     public synchronized int sampleCount() { return sampleCount; }
     public synchronized boolean initialized() { return initialized; }
+    public synchronized boolean ready(int minimumSamples, int maximumSamples, long maximumRoundTripMs) {
+        if (minimumSamples < 1 || maximumSamples < minimumSamples || maximumRoundTripMs < 0) {
+            throw new IllegalArgumentException("Invalid clock readiness bounds");
+        }
+        return sampleCount >= minimumSamples
+                && (bestRoundTripMs <= maximumRoundTripMs || sampleCount >= maximumSamples);
+    }
     public synchronized void reset() { initialized = false; offsetMs = 0; bestRoundTripMs = Long.MAX_VALUE; sampleCount = 0; }
 
     public static final class Sample {

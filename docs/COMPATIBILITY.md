@@ -45,7 +45,9 @@ The exact Fabric 26.2 executor-delay regression also passed at 0.993323
 correlation / 30 ms lag.
 The final boundary calculation is server-epoch-based rather than join-time-
 based; exact Fabric 26.1.2 and serial late-join NeoForge 1.21.1 regressions
-passed at 0.986959 / 10 ms and 0.990159 / 70 ms, respectively.
+passed at 0.986959 / 10 ms and 0.955958 / 70 ms, respectively. The latter also
+proved that startup waits for a low-RTT clock estimate when the initial eight
+samples remain noisy, while retaining a bounded 16-sample fallback.
 An exact Quilt 26.2 gate with Mod Menu 20.0.1 then exercised Cinemarr's
 clientbound error response, verified its Fabric codec/receiver registration,
 and passed the two-client capture at 0.980075 correlation / 0 ms lag with clean

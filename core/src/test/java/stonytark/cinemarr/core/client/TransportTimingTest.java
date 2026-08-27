@@ -19,6 +19,25 @@ class TransportTimingTest {
         assertEquals(3, clock.sampleCount());
     }
 
+    @Test void mediaClockReadinessWaitsForQualityButHasABoundedFallback() {
+        ClockSynchronizer clock = new ClockSynchronizer();
+        for (int sample = 0; sample < 8; sample++) {
+            long sent = 1_000L + sample * 1_000L;
+            clock.accept(sent, sent + 75L, sent + 150L);
+        }
+        assertFalse(clock.ready(8, 16, 50));
+
+        clock.accept(20_000L, 20_010L, 20_020L);
+        assertTrue(clock.ready(8, 16, 50));
+
+        ClockSynchronizer highLatency = new ClockSynchronizer();
+        for (int sample = 0; sample < 16; sample++) {
+            long sent = 30_000L + sample * 1_000L;
+            highLatency.accept(sent, sent + 75L, sent + 150L);
+        }
+        assertTrue(highLatency.ready(8, 16, 50));
+    }
+
     @Test void retriesMissingWindowAndAcknowledgesOnlyWhenComplete() {
         ChunkWindowTracker tracker = new ChunkWindowTracker(10, 20, 4, 1_000);
         ChunkWindowTracker.Request first = tracker.request(0, 0, 12_000).get(); assertEquals(10, first.startIndex()); assertEquals(4, first.count());
