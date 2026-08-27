@@ -18,6 +18,7 @@ public final class CinemarrItems {
     public static final RegistryObject<Item> TV_CONTROLLER = register("tv_controller", CinemarrBlocks.TV_CONTROLLER);
     public static final RegistryObject<Item> TV_CASING = register("tv_casing", CinemarrBlocks.TV_CASING);
     public static final RegistryObject<Item> TV_SPEAKER = register("tv_speaker", CinemarrBlocks.TV_SPEAKER);
+    public static final RegistryObject<Item> QUICK_TV_144P=register("quick_tv_144p",CinemarrBlocks.QUICK_TV_144P),QUICK_TV_240P=register("quick_tv_240p",CinemarrBlocks.QUICK_TV_240P),QUICK_TV_480P=register("quick_tv_480p",CinemarrBlocks.QUICK_TV_480P),QUICK_TV_720P=register("quick_tv_720p",CinemarrBlocks.QUICK_TV_720P),QUICK_TV_1080P=register("quick_tv_1080p",CinemarrBlocks.QUICK_TV_1080P),QUICK_TV_1440P=register("quick_tv_1440p",CinemarrBlocks.QUICK_TV_1440P),QUICK_TV_4K=register("quick_tv_4k",CinemarrBlocks.QUICK_TV_4K),QUICK_TV_8K=register("quick_tv_8k",CinemarrBlocks.QUICK_TV_8K);
 
     private static RegistryObject<Item> register(String name, RegistryObject<Block> block) {
         ResourceKey<Item> key = ResourceKey.create(Registries.ITEM,

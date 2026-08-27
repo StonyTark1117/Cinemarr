@@ -80,7 +80,7 @@ public final class CinemarrWorldScreens extends SavedData {
             televisions.put(controller.asLong(), new Television(controller.asLong(), televisionId, televisionOwner, connected,
                     geometry.width(), geometry.height(), geometry.visibilityMask().toByteArray(), geometry.facing(),
                     geometry.minimumU(), geometry.minimumV(), existing == null ? PresentationMode.FIT : existing.presentationMode,
-                    existing == null ? "" : existing.sessionName));
+                    existing == null ? "" : existing.sessionName, geometry.width(), geometry.height()));
             setDirty();
             return new Activation(true, "Activated " + geometry.width() + "x" + geometry.height()
                     + " TV with " + geometry.pixelCount() + " visible pixels");
@@ -105,6 +105,7 @@ public final class CinemarrWorldScreens extends SavedData {
     private int ownedBy(UUID owner) { int count=0; for(Television value:televisions.values())if(value.owner.equals(owner))count++; return count; }
     public void updatePresentation(BlockPos controller, PresentationMode mode) { Television value=televisions.get(controller.asLong()); if(value!=null&&mode!=null){value.presentationMode=mode;setDirty();} }
     public void updateSession(BlockPos controller, String name) { Television value=televisions.get(controller.asLong()); if(value!=null){value.sessionName=name==null?"":name.trim();setDirty();} }
+    public void updateRendition(BlockPos controller, int width, int height) { Television value=televisions.get(controller.asLong()); if(value!=null&&width>0&&height>0){value.renditionWidth=width;value.renditionHeight=height;setDirty();} }
 
     private Set<Long> connected(BlockPos start) {
         Direction facing = pixels.get(start.asLong());
@@ -184,11 +185,14 @@ public final class CinemarrWorldScreens extends SavedData {
         private final int minimumV;
         private PresentationMode presentationMode;
         private String sessionName;
+        private int renditionWidth;
+        private int renditionHeight;
         Television(long controllerPos, UUID id, UUID owner, Set<Long> pixels, int width, int height, byte[] mask, ScreenFacing facing,
-                   int minimumU, int minimumV, PresentationMode presentationMode, String sessionName) {
+                   int minimumU, int minimumV, PresentationMode presentationMode, String sessionName, int renditionWidth, int renditionHeight) {
             this.controllerPos=controllerPos;this.id = id; this.owner = owner; this.pixels = new HashSet<>(pixels); this.width = width; this.height = height;
             this.mask=mask==null?new byte[0]:mask.clone();this.facing=facing;this.minimumU=minimumU;this.minimumV=minimumV;
             this.presentationMode=presentationMode;this.sessionName=sessionName==null?"":sessionName;
+            this.renditionWidth=renditionWidth>0?renditionWidth:width;this.renditionHeight=renditionHeight>0?renditionHeight:height;
         }
         public UUID id() { return id; }
         public long controllerPos() { return controllerPos; }
@@ -196,6 +200,8 @@ public final class CinemarrWorldScreens extends SavedData {
         public Set<Long> pixels() { return java.util.Collections.unmodifiableSet(pixels); }
         public int width() { return width; }
         public int height() { return height; }
+        public int renditionWidth() { return renditionWidth; }
+        public int renditionHeight() { return renditionHeight; }
         public byte[] mask() { return mask.clone(); }
         public ScreenFacing facing() { return facing; }
         public int minimumU() { return minimumU; }
@@ -208,6 +214,7 @@ public final class CinemarrWorldScreens extends SavedData {
         public String sessionName() { return sessionName; }
         void save(CompoundTag tag) {
             tag.putString("id", id.toString()); tag.putString("owner", owner.toString()); tag.putInt("width", width); tag.putInt("height", height);
+            tag.putInt("renditionWidth",renditionWidth);tag.putInt("renditionHeight",renditionHeight);
             tag.putByteArray("mask",mask);tag.putString("facing",facing.name());tag.putInt("minimumU",minimumU);tag.putInt("minimumV",minimumV);
             tag.putString("presentationMode",presentationMode.name());tag.putString("sessionName",sessionName);
             long[] values = new long[pixels.size()]; int index = 0; for (Long pixel : pixels) values[index++] = pixel; tag.putLongArray("pixels", values);
@@ -220,7 +227,8 @@ public final class CinemarrWorldScreens extends SavedData {
                 ScreenFacing facing=ScreenFacing.valueOf(tag.getStringOr("facing", ""));
                 PresentationMode mode=tag.contains("presentationMode")?PresentationMode.valueOf(tag.getStringOr("presentationMode", "")):PresentationMode.FIT;
                 return new Television(controllerPos, id, owner, pixels, tag.getIntOr("width",0), tag.getIntOr("height",0),
-                        tag.getByteArray("mask").orElseGet(() -> new byte[0]),facing,tag.getIntOr("minimumU",0),tag.getIntOr("minimumV",0),mode,tag.getStringOr("sessionName",""));
+                        tag.getByteArray("mask").orElseGet(() -> new byte[0]),facing,tag.getIntOr("minimumU",0),tag.getIntOr("minimumV",0),mode,tag.getStringOr("sessionName",""),
+                        tag.getIntOr("renditionWidth",tag.getIntOr("width",0)),tag.getIntOr("renditionHeight",tag.getIntOr("height",0)));
             } catch(IllegalArgumentException invalid){return null;}
         }
     }

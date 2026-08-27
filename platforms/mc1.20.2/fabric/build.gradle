@@ -134,6 +134,7 @@ sourceSets {
             exclude 'stonytark/cinemarr/client/VideoVertexEmitter.java'
             exclude 'stonytark/cinemarr/client/VideoResourceLocations.java'
             exclude 'stonytark/cinemarr/screen/ScreenPixelBlock.java'
+            exclude 'stonytark/cinemarr/screen/QuickTvBlock.java'
             exclude 'stonytark/cinemarr/screen/TvControllerBlock.java'
             exclude 'stonytark/cinemarr/screen/CinemarrWorldScreens.java'
             exclude 'stonytark/cinemarr/server/CinemarrCommands.java'
