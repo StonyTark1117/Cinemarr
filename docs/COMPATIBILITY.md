@@ -13,7 +13,7 @@ packaging, and Quick TV Kit registration are platform-specific.
 | 1.21.1 | Forge | build-verified, dedicated-launch-tested, protocol-client-tested, and real two-client deterministic-HLS A/V-certified (0.992552 correlation, 30 ms measured lag); live Plex untested |
 | 1.20.1 | Fabric / Quilt | video port build-verified, dedicated-launch-tested, and protocol-client-tested; two-client A/V untested |
 | 1.20.1 | Forge / NeoForge | video port build-verified, dedicated-launch-tested, and protocol-client-tested; two-client A/V untested |
-| 1.20.2 | Fabric / Quilt | video port build-verified, dedicated-launch-tested, and protocol-client-tested; two-client A/V untested |
+| 1.20.2 | Fabric / Quilt | video port build-verified, dedicated-launch-tested, protocol-client-tested, and real two-client deterministic-HLS A/V-certified (Fabric: 0.993816 correlation at -10 ms; Quilt: 0.986201 at 70 ms); live Plex untested |
 | 1.20.2 | Forge / NeoForge | video port build-verified, dedicated-launch-tested, and protocol-client-tested; two-client A/V untested |
 | 26.1.2 | Fabric / Quilt | video port build-verified, dedicated-launch-tested, and protocol-client-tested; two-client A/V untested |
 | 26.1.2 | Forge / NeoForge | video port build-verified, dedicated-launch-tested, and protocol-client-tested; two-client A/V untested |
@@ -32,9 +32,11 @@ visible screenshots, that exact common frame hash, and 0.986383 correlation at
 -10 ms lag. Quilt passed through its own runtime profile with visible screenshots,
 the same common frame hash, and 0.999974 correlation at 0 ms lag. Forge 1.21.1
 also passed with visible screenshots, the same common frame hash, and 0.992552
-correlation at 30 ms lag. No target may be advertised as release-
-certified until it passes compile, launch, runtime, clean-shutdown, two-client A/V,
-and live Plex acceptance.
+correlation at 30 ms lag. Fabric and Quilt 1.20.2 independently passed the real-client gate with visible
+test-card screenshots, exact common decoded frames, and audio-envelope results
+of 0.993816 correlation at -10 ms and 0.986201 at 70 ms, respectively.
+No target may be advertised as release-certified until it passes compile,
+launch, runtime, clean-shutdown, two-client A/V, and live Plex acceptance.
 No cross-loader or cross-version compatibility is implied by the protocol
 number or by a shared-core test. Forge 1.7.10 uses its own Java 8 bytecode,
 LWJGL 2 renderer/audio adapter, and embedded native-decoder implementation.

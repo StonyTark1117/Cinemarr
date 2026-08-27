@@ -13,6 +13,7 @@ import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.Screenshot;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.PackType;
@@ -22,6 +23,7 @@ import stonytark.cinemarr.Cinemarr;
 import stonytark.cinemarr.core.platform.CanonicalConfigFiles;
 import stonytark.cinemarr.core.platform.CinemarrSettings;
 import stonytark.cinemarr.core.protocol.CinemarrMessage;
+import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.network.ClientPayloadBridge;
 import stonytark.cinemarr.network.CinemarrNetwork;
 import stonytark.cinemarr.network.CinemarrPayloads;
@@ -35,6 +37,8 @@ public final class CinemarrClient implements ClientModInitializer {
     private static final CinemarrVideoPlaybackManager VIDEO=new CinemarrVideoPlaybackManager();
     private static final CinemarrVideoRenderer VIDEO_RENDERER=new CinemarrVideoRenderer();
     private static final CinemarrVideoAudioManager VIDEO_AUDIO=new CinemarrVideoAudioManager();
+    private int acceptanceVideoReadyTicks;
+    private boolean acceptanceVideoScreenshotSaved;
 
     @Override public void onInitializeClient() {
         installClientSettings();
@@ -52,6 +56,8 @@ public final class CinemarrClient implements ClientModInitializer {
             if (reason != null) Cinemarr.LOGGER.info("Client disconnected with reason: {}", reason.getString());
             CinemarrClientState.INSTANCE.stop();
             VIDEO_AUDIO.reset();VIDEO.reset();
+            acceptanceVideoReadyTicks = 0;
+            acceptanceVideoScreenshotSaved = false;
         });
         ClientTickEvents.END_CLIENT_TICK.register(this::tick);
         WorldRenderEvents.LAST.register(context->{if(context.matrixStack()!=null)VIDEO_RENDERER.render(context.matrixStack(),context.camera().getPosition(),VIDEO,CinemarrVideoClientState.INSTANCE);});
@@ -84,6 +90,23 @@ public final class CinemarrClient implements ClientModInitializer {
         }
         CinemarrClientState.INSTANCE.tick();
         VIDEO.tick(CinemarrVideoClientState.INSTANCE);VIDEO_AUDIO.tick(VIDEO,CinemarrVideoClientState.INSTANCE);
+        captureAcceptanceVideo(minecraft);
+    }
+
+    private void captureAcceptanceVideo(Minecraft minecraft) {
+        if (!ProtocolLimits.videoProbeEnabled() || acceptanceVideoScreenshotSaved
+                || !VIDEO.hasPresentedFrame() || !VIDEO.presentedFrameCaughtUp() || !VIDEO_AUDIO.anyReady()) {
+            acceptanceVideoReadyTicks = 0;
+            return;
+        }
+        if (++acceptanceVideoReadyTicks < 40) return;
+        acceptanceVideoScreenshotSaved = true;
+        String frame = VIDEO.presentedFrameSha256();
+        long pts = VIDEO.presentedFrameTimeUs();
+        Cinemarr.LOGGER.info("Acceptance video ready: frameSha256={} ptsUs={} audio=true", frame, pts);
+        Screenshot.grab(minecraft.gameDirectory, "cinemarr-video-acceptance.png", minecraft.getMainRenderTarget(),
+                message -> Cinemarr.LOGGER.info("Acceptance video screenshot: frameSha256={} ptsUs={} result={}",
+                        frame, pts, message.getString()));
     }
 
     private static void registerReceivers() {

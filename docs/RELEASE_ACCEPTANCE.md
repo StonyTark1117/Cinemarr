@@ -60,15 +60,26 @@ and produced 997 Hz captures with 0.999974 correlation at 0 ms lag. Fake Plex
 served the complete HLS path, the server saved cleanly, and no client, fake Plex
 process, audio module, or target port remained.
 
+Fabric and Quilt 1.20.2 passed separate invocations of the same full gate on
+2026-08-26. Fabric shared decoded-frame SHA-256
+`028918a15a341e02f28328967c02c350685ed4b88e9cae106bcea6b6268618e0`
+and measured 0.993816 correlation at -10 ms. Quilt shared decoded-frame SHA-256
+`02dc1a1b96d86550a8c14714789352a1c3ed28d5df6366418f4f4f6bcd97a513`
+and measured 0.986201 correlation at 70 ms. Both client pairs saved visible
+test-card screenshots, exercised the complete fake-Plex HLS route, and left no
+client, server, fake Plex process, audio module, or target port behind.
+
 The 1.20.1 Fabric/Quilt, Forge, and transitional NeoForge adapters are build-
-verified, dedicated-launch-tested, and protocol-client-tested. The 1.20.2
-Fabric/Quilt, Forge, and NeoForge adapters have the same evidence. The 1.21.1
+verified, dedicated-launch-tested, and protocol-client-tested. The 1.20.2 Forge
+and NeoForge adapters have the same compile/launch/protocol evidence; Fabric and
+Quilt additionally have the two-client evidence above. The 1.21.1
 Quilt, Fabric, and Forge have the additional two-client evidence recorded above.
 The 26.1.2 and 26.2 Fabric/Quilt, Forge, and NeoForge adapters are build-verified,
 dedicated-launch-tested, and protocol-client-tested. Forge 1.7.10 is build-
 verified and has dedicated/protocol-rejection launch evidence, but no matching-
 client renderer/audio evidence. NeoForge, Fabric, Quilt, and Forge on 1.21.1 have
 passed the deterministic two-client A/V gate; all four remain unreleased pending live Plex
+validation. Fabric and Quilt 1.20.2 also remain unreleased pending live Plex
 validation. All other targets remain unreleased pending their own two-client A/V
 and live Plex gates.
 
