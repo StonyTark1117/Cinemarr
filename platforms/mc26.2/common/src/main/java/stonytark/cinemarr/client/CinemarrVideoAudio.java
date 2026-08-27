@@ -93,7 +93,7 @@ public final class CinemarrVideoAudio {
                     resetChannel();
                     caughtUpTicks = 0;
                 } else {
-                    probeSourceStart(targetUs);
+                    probeSourceStart(session);
                 }
             }
             if (audioTimelineNanos != Long.MIN_VALUE && nowNanos >= audioTimelineNanos) {
@@ -205,7 +205,7 @@ public final class CinemarrVideoAudio {
         });
     }
 
-    private void probeSourceStart(long targetUs) {
+    private void probeSourceStart(VideoPackets.SessionState session) {
         if (!sourceStartPending || sourceStartProbeQueued || channel == null) return;
         ChannelAccess.ChannelHandle expectedChannel = channel;
         VideoPcmAudioStream expectedStream = stream;
@@ -238,6 +238,8 @@ public final class CinemarrVideoAudio {
                 outputLatencyUs = 0L;
             }
             if (playedUs > 0) {
+                // Resample here so audio-executor queueing cannot become extra silence.
+                long targetUs = CinemarrVideoPlayback.authoritativePositionMsLocal(session) * 1_000L;
                 long remainingPrerollUs = Math.max(0L, sourceStartSilenceUs - playedUs);
                 long untilMediaStartUs = Math.max(0L, sourceStartScheduledUs - targetUs);
                 if (remainingPrerollUs + outputLatencyUs > untilMediaStartUs + 50_000L) {

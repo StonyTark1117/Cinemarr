@@ -38,9 +38,11 @@ also includes a follower-first 26.1.2 NeoForge run proving that a client already
 in tracking range receives a television constructed later.
 
 Modern targets additionally share physical OpenAL output-latency compensation.
-Fresh final-implementation regression captures across Fabric 1.21.1 and
+Fresh compensation regression captures across Fabric 1.21.1 and
 NeoForge 1.21.1, 26.1.2, and 26.2 measured 10 ms, 40 ms, 20 ms, and 30 ms
 inter-client lag, respectively, with correlation from 0.968840 to 0.995487.
+The exact Fabric 26.2 executor-delay regression also passed at 0.993323
+correlation / 30 ms lag.
 
 The repository decoder also passed a Windows-x64 native smoke under a Windows
 Temurin 21 JVM: JavaCV/FFmpeg loaded and decoded three video frames and 30 audio

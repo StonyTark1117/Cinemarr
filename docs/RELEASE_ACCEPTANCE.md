@@ -80,9 +80,11 @@ The modern audio adapter now queries `AL_SOFT_source_latency` atomically with
 the source cursor during a bounded silent preroll. It subtracts the measured
 physical backend latency when choosing the remaining queued silence, then
 anchors the logical media clock to the same physical boundary. Fresh local
-regression gates on the final implementation passed for Fabric 1.21.1 at
+regression gates on the compensation implementation passed for Fabric 1.21.1 at
 0.989222 correlation / 10 ms lag, NeoForge 1.21.1 at 0.968840 / 40 ms,
 NeoForge 26.1.2 at 0.986400 / 20 ms, and NeoForge 26.2 at 0.995487 / 30 ms.
+An exact Fabric 26.2 regression after moving the authoritative-target sample
+into the same audio-executor callback passed at 0.993323 / 30 ms.
 Each run also passed protocol and command-client checks and left no client,
 server, fake-Plex process, audio module, or target port behind.
 
