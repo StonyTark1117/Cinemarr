@@ -13,6 +13,8 @@ import stonytark.cinemarr.config.CinemarrConfig;
 import stonytark.cinemarr.core.platform.CanonicalConfigFiles;
 import stonytark.cinemarr.core.platform.CinemarrSettings;
 import stonytark.cinemarr.network.CinemarrNetwork;
+import stonytark.cinemarr.registry.CinemarrBlocks;
+import stonytark.cinemarr.registry.CinemarrItems;
 import stonytark.cinemarr.server.CinemarrCommands;
 import stonytark.cinemarr.server.CinemarrServer;
 
@@ -25,6 +27,8 @@ public final class Cinemarr {
         migrateClientConfig("forge");
         CinemarrSettings.installClient(CinemarrConfig.clientValues());
         context.registerConfig(ModConfig.Type.CLIENT, CinemarrConfig.CLIENT_SPEC);
+        CinemarrBlocks.register(context.getModBusGroup());
+        CinemarrItems.register(context.getModBusGroup());
         CinemarrNetwork.register();
         CinemarrServer.register();
         CinemarrCommands.register();
