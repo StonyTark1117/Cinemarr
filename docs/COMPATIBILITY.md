@@ -11,8 +11,8 @@ packaging, and Quick TV Kit registration are platform-specific.
 | 1.21.1 | Fabric | build-verified, dedicated-launch-tested, protocol-client-tested, and real two-client deterministic-HLS A/V-certified (0.986383 correlation, -10 ms measured lag); live Plex untested |
 | 1.21.1 | Quilt | Fabric-port runtime build-verified, dedicated-launch-tested, protocol-client-tested, and real two-client deterministic-HLS A/V-certified (0.999974 correlation, 0 ms measured lag); live Plex untested |
 | 1.21.1 | Forge | build-verified, dedicated-launch-tested, protocol-client-tested, and real two-client deterministic-HLS A/V-certified (0.992552 correlation, 30 ms measured lag); live Plex untested |
-| 1.20.1 | Fabric / Quilt | video port build-verified, dedicated-launch-tested, and protocol-client-tested; two-client A/V untested |
-| 1.20.1 | Forge / NeoForge | video port build-verified, dedicated-launch-tested, and protocol-client-tested; two-client A/V untested |
+| 1.20.1 | Fabric / Quilt | video port build-verified, dedicated-launch-tested, protocol-client-tested, and real two-client deterministic-HLS A/V-certified (Fabric: 0.995863 correlation at -50 ms; Quilt: 0.995783 at 30 ms); live Plex untested |
+| 1.20.1 | Forge / NeoForge | video port build-verified, dedicated-launch-tested, protocol-client-tested, and real two-client deterministic-HLS A/V-certified (Forge: 0.994928 correlation at -40 ms; NeoForge: 0.986825 at -30 ms); live Plex untested |
 | 1.20.2 | Fabric / Quilt | video port build-verified, dedicated-launch-tested, protocol-client-tested, and real two-client deterministic-HLS A/V-certified (Fabric: 0.993816 correlation at -10 ms; Quilt: 0.986201 at 70 ms); live Plex untested |
 | 1.20.2 | Forge / NeoForge | video port build-verified, dedicated-launch-tested, protocol-client-tested, and real two-client deterministic-HLS A/V-certified (Forge: 0.991231 correlation at 20 ms; NeoForge: 0.991795 at 0 ms); live Plex untested |
 | 26.1.2 | Fabric / Quilt | video port build-verified, dedicated-launch-tested, and protocol-client-tested; two-client A/V untested |
@@ -37,6 +37,10 @@ test-card screenshots, exact common decoded frames, and audio-envelope results
 of 0.993816 correlation at -10 ms and 0.986201 at 70 ms, respectively.
 Forge and NeoForge 1.20.2 passed with the same visual/HLS evidence and
 audio-envelope results of 0.991231 correlation at 20 ms and 0.991795 at 0 ms.
+Fabric, Quilt, Forge, and NeoForge 1.20.1 also passed their own real-client
+profiles with visible screenshots, a common decoded-frame hash, the complete
+fake-Plex HLS route, clean teardown, and correlations of 0.995863, 0.995783,
+0.994928, and 0.986825 at -50 ms, 30 ms, -40 ms, and -30 ms, respectively.
 No target may be advertised as release-certified until it passes compile,
 launch, runtime, clean-shutdown, two-client A/V, and live Plex acceptance.
 No cross-loader or cross-version compatibility is implied by the protocol

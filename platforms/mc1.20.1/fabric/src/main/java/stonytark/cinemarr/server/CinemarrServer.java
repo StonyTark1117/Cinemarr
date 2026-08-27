@@ -4,9 +4,15 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.commands.arguments.EntityAnchorArgument;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.DirectionalBlock;
 import net.minecraft.world.level.storage.LevelResource;
+import net.minecraft.world.phys.Vec3;
 import stonytark.cinemarr.Cinemarr;
 import stonytark.cinemarr.core.library.LibraryAllowlistFiles;
 import stonytark.cinemarr.core.library.LibraryRule;
@@ -19,6 +25,9 @@ import stonytark.cinemarr.core.server.PlexVideoService;
 import stonytark.cinemarr.network.CinemarrNetwork;
 import stonytark.cinemarr.network.CinemarrPayloads;
 import stonytark.cinemarr.network.VideoPayloads;
+import stonytark.cinemarr.registry.CinemarrBlocks;
+import stonytark.cinemarr.screen.CinemarrWorldScreens;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.*;
 
@@ -33,8 +42,36 @@ public final class CinemarrServer {
         ServerPlayConnectionEvents.JOIN.register((handler,sender,server)->{if(!net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.canSend(handler.player,CinemarrPayloads.ServerHello.ID)){handler.disconnect(Component.literal("Cinemarr is required on the client (protocol "+CinemarrNetwork.PROTOCOL+")"));return;}INSTANCE.helloGate.require(handler.player.getUUID(),INSTANCE.ticks);});
         ServerPlayConnectionEvents.DISCONNECT.register((handler,server)->{INSTANCE.helloGate.remove(handler.player.getUUID());if(INSTANCE.manager!=null)INSTANCE.manager.playerLeft(handler.player);});
     }
-    public void hello(ServerPlayer sender){if(!helloGate.accept(sender.getUUID()))return;CinemarrNetwork.sendToPlayer(sender,new CinemarrPayloads.ServerHello(ProtocolLimits.VERSION,System.currentTimeMillis()));if(manager!=null)manager.synchronizeTrackingRadius(sender);}
+    public void hello(ServerPlayer sender){if(!helloGate.accept(sender.getUUID()))return;CinemarrNetwork.sendToPlayer(sender,new CinemarrPayloads.ServerHello(ProtocolLimits.VERSION,System.currentTimeMillis()));prepareAcceptanceVideo(sender);if(manager!=null)manager.synchronizeTrackingRadius(sender);}
     public boolean accepted(ServerPlayer sender){return helloGate.accepted(sender.getUUID());}
     public void videoLibraries(ServerPlayer player){if(accepted(player)&&manager!=null)manager.sendLibraries(player);else CinemarrNetwork.sendToPlayer(player,new VideoPayloads.LibraryList(new VideoPackets.LibraryList(List.of())));}
     public void videoBrowse(ServerPlayer player,VideoPackets.BrowseRequest value){if(accepted(player)&&manager!=null)manager.browse(player,value);}public void videoCommand(ServerPlayer player,VideoPackets.SessionCommand value){if(accepted(player)&&manager!=null)manager.command(player,value);}public void videoSegments(ServerPlayer player,VideoPackets.SegmentRequest value){if(accepted(player)&&manager!=null)manager.segments(player,value);}public void videoManifest(ServerPlayer player,VideoPackets.SegmentManifestRequest value){if(accepted(player)&&manager!=null)manager.manifest(player,value);}public void videoAcknowledge(ServerPlayer player,VideoPackets.SegmentAcknowledgement value){if(accepted(player)&&manager!=null)manager.acknowledge(player,value);}public void videoHealth(ServerPlayer player,VideoPackets.ClientHealth value){if(accepted(player)&&manager!=null)manager.health(player,value);}public String videoStatus(){return manager==null?"Cinemarr video is unavailable":manager.status();}public String videoDiagnostics(){return manager==null?"Plex=unavailable; libraries=0; sessions=0; transcodes=0":manager.diagnostics();}
+
+    private void prepareAcceptanceVideo(ServerPlayer player) {
+        if (!ProtocolLimits.videoProbeEnabled() || manager == null) return;
+        net.minecraft.server.level.ServerLevel level = player.serverLevel();
+        BlockPos controller = new BlockPos(-5, 100, 0);
+        CinemarrWorldScreens screens = CinemarrWorldScreens.get(level);
+        if (screens.television(controller) == null) {
+            for (int x = -4; x <= 3; x++) for (int y = 100; y <= 103; y++) {
+                level.setBlockAndUpdate(new BlockPos(x, y, 0), CinemarrBlocks.SCREEN_PIXEL.defaultBlockState()
+                        .setValue(DirectionalBlock.FACING, Direction.SOUTH));
+            }
+            level.setBlockAndUpdate(controller, CinemarrBlocks.TV_CONTROLLER.defaultBlockState());
+            UUID acceptanceOwner = UUID.nameUUIDFromBytes("OfflinePlayer:CinemarrVideoA".getBytes(StandardCharsets.UTF_8));
+            CinemarrWorldScreens.Activation activation = screens.activate(controller, acceptanceOwner);
+            if (!activation.success()) throw new IllegalStateException("Unable to create acceptance television: " + activation.message());
+            screens.updateRendition(controller, 320, 180);
+            Cinemarr.LOGGER.info("Acceptance video television: controller={} dimensions=8x4 rendition=320x180 owner={}", controller.asLong(), "CinemarrVideoA");
+        }
+        for (int x = -4; x <= 4; x++) for (int z = 1; z <= 8; z++) {
+            level.setBlockAndUpdate(new BlockPos(x, 99, z), Blocks.SMOOTH_STONE.defaultBlockState());
+            for (int y = 100; y <= 103; y++) level.setBlockAndUpdate(new BlockPos(x, y, z), Blocks.AIR.defaultBlockState());
+        }
+        level.setDayTime(6000);
+        int playerIndex = Math.max(0, player.server.getPlayerList().getPlayers().indexOf(player));
+        double cameraX = (playerIndex & 1) == 0 ? -1.5 : 1.5;
+        player.teleportTo(level, cameraX, 100.0, 7.5, 180.0F, 0.0F);
+        player.lookAt(EntityAnchorArgument.Anchor.EYES, Vec3.atCenterOf(new BlockPos(0, 102, 0)));
+    }
 }
