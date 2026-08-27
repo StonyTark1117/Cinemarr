@@ -69,17 +69,26 @@ and measured 0.986201 correlation at 70 ms. Both client pairs saved visible
 test-card screenshots, exercised the complete fake-Plex HLS route, and left no
 client, server, fake Plex process, audio module, or target port behind.
 
+Forge and NeoForge 1.20.2 then passed their own full gates. Forge shared
+decoded-frame SHA-256
+`028918a15a341e02f28328967c02c350685ed4b88e9cae106bcea6b6268618e0`
+and measured 0.991231 correlation at 20 ms; NeoForge shared that same frame and
+measured 0.991795 at 0 ms. Both pairs saved unobstructed test-card screenshots,
+completed the fake-Plex HLS path without decoder rejection, and stopped cleanly.
+Their Forge-family dev runs install the minimal generated JavaCV facade into the
+normal classes output so runtime testing exercises the same decoder facade that
+is packaged in each release JAR.
+
 The 1.20.1 Fabric/Quilt, Forge, and transitional NeoForge adapters are build-
-verified, dedicated-launch-tested, and protocol-client-tested. The 1.20.2 Forge
-and NeoForge adapters have the same compile/launch/protocol evidence; Fabric and
-Quilt additionally have the two-client evidence above. The 1.21.1
+verified, dedicated-launch-tested, and protocol-client-tested. All four 1.20.2
+loader profiles have the additional two-client evidence above. The 1.21.1
 Quilt, Fabric, and Forge have the additional two-client evidence recorded above.
 The 26.1.2 and 26.2 Fabric/Quilt, Forge, and NeoForge adapters are build-verified,
 dedicated-launch-tested, and protocol-client-tested. Forge 1.7.10 is build-
 verified and has dedicated/protocol-rejection launch evidence, but no matching-
 client renderer/audio evidence. NeoForge, Fabric, Quilt, and Forge on 1.21.1 have
 passed the deterministic two-client A/V gate; all four remain unreleased pending live Plex
-validation. Fabric and Quilt 1.20.2 also remain unreleased pending live Plex
+validation. All four 1.20.2 profiles also remain unreleased pending live Plex
 validation. All other targets remain unreleased pending their own two-client A/V
 and live Plex gates.
 

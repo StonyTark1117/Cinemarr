@@ -14,7 +14,7 @@ packaging, and Quick TV Kit registration are platform-specific.
 | 1.20.1 | Fabric / Quilt | video port build-verified, dedicated-launch-tested, and protocol-client-tested; two-client A/V untested |
 | 1.20.1 | Forge / NeoForge | video port build-verified, dedicated-launch-tested, and protocol-client-tested; two-client A/V untested |
 | 1.20.2 | Fabric / Quilt | video port build-verified, dedicated-launch-tested, protocol-client-tested, and real two-client deterministic-HLS A/V-certified (Fabric: 0.993816 correlation at -10 ms; Quilt: 0.986201 at 70 ms); live Plex untested |
-| 1.20.2 | Forge / NeoForge | video port build-verified, dedicated-launch-tested, and protocol-client-tested; two-client A/V untested |
+| 1.20.2 | Forge / NeoForge | video port build-verified, dedicated-launch-tested, protocol-client-tested, and real two-client deterministic-HLS A/V-certified (Forge: 0.991231 correlation at 20 ms; NeoForge: 0.991795 at 0 ms); live Plex untested |
 | 26.1.2 | Fabric / Quilt | video port build-verified, dedicated-launch-tested, and protocol-client-tested; two-client A/V untested |
 | 26.1.2 | Forge / NeoForge | video port build-verified, dedicated-launch-tested, and protocol-client-tested; two-client A/V untested |
 | 26.2 | Fabric / Quilt | video port build-verified, dedicated-launch-tested, and protocol-client-tested; two-client A/V untested |
@@ -35,6 +35,8 @@ also passed with visible screenshots, the same common frame hash, and 0.992552
 correlation at 30 ms lag. Fabric and Quilt 1.20.2 independently passed the real-client gate with visible
 test-card screenshots, exact common decoded frames, and audio-envelope results
 of 0.993816 correlation at -10 ms and 0.986201 at 70 ms, respectively.
+Forge and NeoForge 1.20.2 passed with the same visual/HLS evidence and
+audio-envelope results of 0.991231 correlation at 20 ms and 0.991795 at 0 ms.
 No target may be advertised as release-certified until it passes compile,
 launch, runtime, clean-shutdown, two-client A/V, and live Plex acceptance.
 No cross-loader or cross-version compatibility is implied by the protocol
