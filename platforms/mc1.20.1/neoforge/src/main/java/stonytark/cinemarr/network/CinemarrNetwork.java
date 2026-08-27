@@ -33,16 +33,9 @@ public final class CinemarrNetwork {
                 .serverAcceptedVersions(VERSION::equals)
                 .simpleChannel();
         int id = 0;
-        client(id++, CinemarrPayloads.OpenScreen.class, (value, buffer) -> {}, buffer -> new CinemarrPayloads.OpenScreen());
         client(id++, CinemarrPayloads.ServerHello.class, CinemarrPayloads.ServerHello::write, CinemarrPayloads.ServerHello::read);
         client(id++, CinemarrPayloads.TimeSyncResponse.class, CinemarrPayloads.TimeSyncResponse::write, CinemarrPayloads.TimeSyncResponse::read);
-        client(id++, CinemarrPayloads.BrowseResults.class, CinemarrPayloads.BrowseResults::write, CinemarrPayloads.BrowseResults::read);
-        client(id++, CinemarrPayloads.AudioManifest.class, CinemarrPayloads.AudioManifest::write, CinemarrPayloads.AudioManifest::read);
-        client(id++, CinemarrPayloads.AudioChunk.class, CinemarrPayloads.AudioChunk::write, CinemarrPayloads.AudioChunk::read);
-        client(id++, CinemarrPayloads.PlaybackState.class, CinemarrPayloads.PlaybackState::write, CinemarrPayloads.PlaybackState::read);
-        client(id++, CinemarrPayloads.StationState.class, CinemarrPayloads.StationState::write, CinemarrPayloads.StationState::read);
-        client(id++, CinemarrPayloads.AdventurePreview.class, CinemarrPayloads.AdventurePreview::write, CinemarrPayloads.AdventurePreview::read);
-        client(id++, CinemarrPayloads.ErrorMessage.class, CinemarrPayloads.ErrorMessage::write, CinemarrPayloads.ErrorMessage::read);
+        client(id++,VideoPayloads.OpenVideoScreen.class,VideoPayloads.OpenVideoScreen::write,VideoPayloads.OpenVideoScreen::read);client(id++,VideoPayloads.LibraryList.class,VideoPayloads.LibraryList::write,VideoPayloads.LibraryList::read);client(id++,VideoPayloads.BrowseResults.class,VideoPayloads.BrowseResults::write,VideoPayloads.BrowseResults::read);client(id++,VideoPayloads.SessionState.class,VideoPayloads.SessionState::write,VideoPayloads.SessionState::read);client(id++,VideoPayloads.TelevisionRemoved.class,VideoPayloads.TelevisionRemoved::write,VideoPayloads.TelevisionRemoved::read);client(id++,VideoPayloads.SessionQueue.class,VideoPayloads.SessionQueue::write,VideoPayloads.SessionQueue::read);client(id++,VideoPayloads.SegmentManifest.class,VideoPayloads.SegmentManifest::write,VideoPayloads.SegmentManifest::read);client(id++,VideoPayloads.SegmentChunk.class,VideoPayloads.SegmentChunk::write,VideoPayloads.SegmentChunk::read);
 
         server(id++, CinemarrPayloads.ClientHello.class, CinemarrPayloads.ClientHello::write, CinemarrPayloads.ClientHello::read,
                 (player, payload) -> {
@@ -55,22 +48,7 @@ public final class CinemarrNetwork {
         server(id++, CinemarrPayloads.TimeSyncRequest.class, CinemarrPayloads.TimeSyncRequest::write, CinemarrPayloads.TimeSyncRequest::read,
                 (player, payload) -> sendToPlayer(player, new CinemarrPayloads.TimeSyncResponse(
                         payload.nonce(), payload.clientSentEpochMs(), System.currentTimeMillis())));
-        server(id++, CinemarrPayloads.BrowseRequest.class, CinemarrPayloads.BrowseRequest::write, CinemarrPayloads.BrowseRequest::read,
-                (player, payload) -> CinemarrServer.instance().browse(player, payload));
-        server(id++, CinemarrPayloads.QueueRequest.class, CinemarrPayloads.QueueRequest::write, CinemarrPayloads.QueueRequest::read,
-                (player, payload) -> CinemarrServer.instance().queue(player, payload));
-        server(id++, CinemarrPayloads.ControlRequest.class, CinemarrPayloads.ControlRequest::write, CinemarrPayloads.ControlRequest::read,
-                (player, payload) -> CinemarrServer.instance().control(player, payload));
-        server(id++, CinemarrPayloads.StationRequest.class, CinemarrPayloads.StationRequest::write, CinemarrPayloads.StationRequest::read,
-                (player, payload) -> CinemarrServer.instance().station(player, payload));
-        server(id++, CinemarrPayloads.ChunkRequest.class, CinemarrPayloads.ChunkRequest::write, CinemarrPayloads.ChunkRequest::read,
-                (player, payload) -> CinemarrServer.instance().chunks(player, payload));
-        server(id++, CinemarrPayloads.ChunkAcknowledgement.class, CinemarrPayloads.ChunkAcknowledgement::write, CinemarrPayloads.ChunkAcknowledgement::read,
-                (player, payload) -> CinemarrServer.instance().acknowledge(player, payload));
-        server(id++, CinemarrPayloads.AudioHealth.class, CinemarrPayloads.AudioHealth::write, CinemarrPayloads.AudioHealth::read,
-                (player, payload) -> CinemarrServer.instance().health(player, payload));
-        server(id, CinemarrPayloads.ManifestRequest.class, CinemarrPayloads.ManifestRequest::write, CinemarrPayloads.ManifestRequest::read,
-                (player, payload) -> CinemarrServer.instance().sync(player));
+        server(id++,VideoPayloads.LibraryListRequest.class,VideoPayloads.LibraryListRequest::write,VideoPayloads.LibraryListRequest::read,(p,v)->CinemarrServer.instance().videoLibraries(p));server(id++,VideoPayloads.BrowseRequest.class,VideoPayloads.BrowseRequest::write,VideoPayloads.BrowseRequest::read,(p,v)->CinemarrServer.instance().videoBrowse(p,v.value()));server(id++,VideoPayloads.SessionCommand.class,VideoPayloads.SessionCommand::write,VideoPayloads.SessionCommand::read,(p,v)->CinemarrServer.instance().videoCommand(p,v.value()));server(id++,VideoPayloads.SegmentRequest.class,VideoPayloads.SegmentRequest::write,VideoPayloads.SegmentRequest::read,(p,v)->CinemarrServer.instance().videoSegments(p,v.value()));server(id++,VideoPayloads.SegmentManifestRequest.class,VideoPayloads.SegmentManifestRequest::write,VideoPayloads.SegmentManifestRequest::read,(p,v)->CinemarrServer.instance().videoManifest(p,v.value()));server(id++,VideoPayloads.SegmentAcknowledgement.class,VideoPayloads.SegmentAcknowledgement::write,VideoPayloads.SegmentAcknowledgement::read,(p,v)->CinemarrServer.instance().videoAcknowledge(p,v.value()));server(id,VideoPayloads.ClientHealth.class,VideoPayloads.ClientHealth::write,VideoPayloads.ClientHealth::read,(p,v)->CinemarrServer.instance().videoHealth(p,v.value()));
     }
 
     public static void sendToServer(CinemarrMessage payload) { required().sendToServer(payload); }
