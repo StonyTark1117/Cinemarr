@@ -8,6 +8,8 @@ import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
+import stonytark.cinemarr.Cinemarr;
+import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.core.protocol.VideoPackets;
 import stonytark.cinemarr.core.platform.CinemarrSettings;
 import stonytark.cinemarr.core.screen.ScreenFacing;
@@ -24,6 +26,7 @@ import java.util.Set;
 /** Batched world-space quads; ordinary Screen Pixel blocks never gain block entities. */
 public final class CinemarrVideoRenderer {
     private final Map<UUID,MeshCache> meshes=new HashMap<>();
+    private final Map<UUID,String> acceptanceFrames=new HashMap<>();
 
     public void render(PoseStack pose, Vec3 camera, CinemarrVideoPlaybackManager playback, CinemarrVideoClientState clientState) {
         if (!CinemarrSettings.enabled()) return;
@@ -48,8 +51,10 @@ public final class CinemarrVideoRenderer {
             MeshCache mesh=updateMesh(state);PresentationTransform transform=PresentationTransform.create(pipeline.texture().width(),pipeline.texture().height(),state.screenWidth(),state.screenHeight(),state.presentationMode());
             RenderType type=RenderTypes.entityCutout(pipeline.texture().location());used.add(type);VertexConsumer vertices=buffers.getBuffer(type);
             for(ScreenMaskMesher.Rectangle rectangle:mesh.rectangles)draw(vertices,matrix,state,rectangle,transform,pipeline.texture().width(),pipeline.texture().height());
+            if(ProtocolLimits.videoProbeEnabled()&&!pipeline.lastFrameSha256().equals(acceptanceFrames.put(state.televisionId(),pipeline.lastFrameSha256())))Cinemarr.LOGGER.info(
+                    "Acceptance video rendered: television={} frameSha256={} ptsUs={} rectangles={}",state.televisionId(),pipeline.lastFrameSha256(),pipeline.lastPresentedUs(),mesh.rectangles.size());
         }
-        for(RenderType type:used)buffers.endBatch(type);meshes.keySet().retainAll(visible);
+        for(RenderType type:used)buffers.endBatch(type);meshes.keySet().retainAll(visible);acceptanceFrames.keySet().retainAll(visible);
     }
 
     private MeshCache updateMesh(VideoPackets.SessionState state) {

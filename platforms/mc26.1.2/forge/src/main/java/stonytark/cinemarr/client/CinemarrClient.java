@@ -6,6 +6,7 @@ import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.Screenshot;
 import net.minecraft.client.renderer.LevelTargetBundle;
 import net.minecraft.client.renderer.state.level.LevelRenderState;
 import net.minecraft.resources.Identifier;
@@ -19,6 +20,7 @@ import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
 import net.minecraftforge.event.TickEvent;
 import org.lwjgl.glfw.GLFW;
 import stonytark.cinemarr.Cinemarr;
+import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.network.ClientPayloadBridge;
 
 public final class CinemarrClient {
@@ -30,6 +32,8 @@ public final class CinemarrClient {
     private static final CinemarrVideoPlaybackManager VIDEO = new CinemarrVideoPlaybackManager();
     private static final CinemarrVideoRenderer VIDEO_RENDERER = new CinemarrVideoRenderer();
     private static final CinemarrVideoAudioManager VIDEO_AUDIO = new CinemarrVideoAudioManager();
+    private int acceptanceVideoReadyTicks;
+    private boolean acceptanceVideoScreenshotSaved;
 
     public static void register() {
         RegisterKeyMappingsEvent.BUS.addListener(INSTANCE::keys);
@@ -60,6 +64,7 @@ public final class CinemarrClient {
         CinemarrClientState.INSTANCE.tick();
         VIDEO.tick(CinemarrVideoClientState.INSTANCE);
         VIDEO_AUDIO.tick(VIDEO, CinemarrVideoClientState.INSTANCE);
+        captureAcceptanceVideo(minecraft);
     }
 
     private void framePass(AddFramePassEvent event) {
@@ -80,6 +85,25 @@ public final class CinemarrClient {
         VIDEO_AUDIO.reset();
         VIDEO.reset();
         CinemarrClientState.INSTANCE.stop();
+        acceptanceVideoReadyTicks = 0;
+        acceptanceVideoScreenshotSaved = false;
+    }
+
+    private void captureAcceptanceVideo(Minecraft minecraft) {
+        if (!ProtocolLimits.videoProbeEnabled() || acceptanceVideoScreenshotSaved
+                || !VIDEO.hasPresentedFrame() || !VIDEO.presentedFrameCaughtUp() || !VIDEO_AUDIO.anyReady()) {
+            acceptanceVideoReadyTicks = 0;
+            return;
+        }
+        if (++acceptanceVideoReadyTicks < 40) return;
+        acceptanceVideoScreenshotSaved = true;
+        String frame = VIDEO.presentedFrameSha256();
+        long pts = VIDEO.presentedFrameTimeUs();
+        Cinemarr.LOGGER.info("Acceptance video ready: frameSha256={} ptsUs={} audio=true", frame, pts);
+        Screenshot.grab(minecraft.gameDirectory, "cinemarr-video-acceptance.png",
+                minecraft.getMainRenderTarget(), 1,
+                message -> Cinemarr.LOGGER.info("Acceptance video screenshot: frameSha256={} ptsUs={} result={}",
+                        frame, pts, message.getString()));
     }
 
     private CinemarrClient() {}

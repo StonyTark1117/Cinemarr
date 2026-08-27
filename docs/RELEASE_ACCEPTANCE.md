@@ -1,9 +1,9 @@
 # Release acceptance
 
 No artifact is currently release-certified. NeoForge, Fabric, Quilt, and Forge
-on 1.20.1, 1.20.2, and 1.21.1 have passed the deterministic real two-client A/V
-gate, but live Plex validation is still outstanding. A successful Gradle build
-alone is insufficient.
+on 1.20.1, 1.20.2, 1.21.1, and 26.1.2 have passed the deterministic real
+two-client A/V gate, but live Plex validation is still outstanding. A successful
+Gradle build alone is insufficient.
 
 Required checks:
 
@@ -90,16 +90,26 @@ The Forge-family captures were unobstructed; Quilt's leader capture retained a
 pause overlay but the video remained visibly identifiable. Every client,
 server, fake Plex process, audio module, and target port stopped cleanly.
 
+Fabric, Quilt, Forge, and NeoForge 26.1.2 then passed separate full-gate runs.
+Every pair visibly rendered the test card, shared decoded-frame SHA-256
+`028918a15a341e02f28328967c02c350685ed4b88e9cae106bcea6b6268618e0`,
+and completed the fake-Plex master/media/segment path. Their audio captures
+measured 0.994030, 0.991515, 0.998905, and 0.997870 correlation at -20 ms,
+30 ms, 0 ms, and 10 ms lag, respectively. Fabric and Quilt each retained one
+pause-overlay capture, and the NeoForge scene was night-darkened, but the test
+program remained clearly identifiable in every image. All processes, audio
+modules, and target ports stopped cleanly.
+
 All four 1.20.1 and all four 1.20.2 loader profiles have the additional
 two-client evidence above. The 1.21.1 Quilt, Fabric, and Forge profiles have the
 additional two-client evidence recorded above.
-The 26.1.2 and 26.2 Fabric/Quilt, Forge, and NeoForge adapters are build-verified,
+The 26.2 Fabric/Quilt, Forge, and NeoForge adapters are build-verified,
 dedicated-launch-tested, and protocol-client-tested. Forge 1.7.10 is build-
 verified and has dedicated/protocol-rejection launch evidence, but no matching-
 client renderer/audio evidence. NeoForge, Fabric, Quilt, and Forge on 1.21.1 have
 passed the deterministic two-client A/V gate; all four remain unreleased pending
 live Plex validation. All four 1.20.1 and all four 1.20.2 profiles also remain
-unreleased pending live Plex validation. All other targets remain unreleased
+unreleased pending live Plex validation, as do all four 26.1.2 profiles. All other targets remain unreleased
 pending their own two-client A/V and live Plex gates.
 
 Keep logs, JAR listings, checksums, and process/port evidence for each release.
