@@ -14,6 +14,7 @@ import stonytark.cinemarr.core.protocol.ControlPackets;
 import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.core.protocol.StatePackets;
 import stonytark.cinemarr.core.protocol.VideoPackets;
+import stonytark.cinemarr.core.server.HlsPlaylist;
 import stonytark.cinemarr.core.server.PlexVideoService;
 import stonytark.cinemarr.core.server.RedstoneControlPolicy;
 import stonytark.cinemarr.core.server.SecretRedactor;
@@ -462,7 +463,7 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
         final ActiveMedia media = active.get(key(request.sessionId(), request.generation()));
         VideoSessionCoordinator.Snapshot timeline = sessions.snapshotIfPresent(request.sessionId(), request.generation(), System.currentTimeMillis());
         if (media == null || timeline == null || request.segmentIndex() < 0 || request.segmentIndex() >= media.segmentCount()) { error(player, "Video segment is no longer available"); return; }
-        if (media.presentationTime(request.segmentIndex()) > timeline.positionMs() + 30_000L) { error(player, "Video segment request exceeds playback lead limit"); return; }
+        if (media.presentationTime(request.segmentIndex()) > timeline.positionMs() + ProtocolLimits.MAX_VIDEO_SEGMENT_LEAD_MS) { error(player, "Video segment request exceeds playback lead limit"); return; }
         transferGrants.put(player.getUniqueID(), new TransferGrant(request));
         CompletableFuture.supplyAsync(() -> { try { return media.segment(request.segmentIndex()); } catch (IOException failure) { throw new WrappedFailure(failure); } }, workers)
                 .whenComplete((segment, failure) -> mainThreadActions.add(() -> {
@@ -486,7 +487,7 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
         ActiveMedia media = active.get(key(request.sessionId(), request.generation()));
         VideoSessionCoordinator.Snapshot timeline = sessions.snapshotIfPresent(request.sessionId(), request.generation(), System.currentTimeMillis());
         if (media == null || timeline == null || request.firstSegmentIndex() >= media.segmentCount()
-                || media.presentationTime(request.firstSegmentIndex()) > timeline.positionMs() + 30_000L) { error(player, "Video manifest is no longer available"); return; }
+                || media.presentationTime(request.firstSegmentIndex()) > timeline.positionMs() + ProtocolLimits.MAX_VIDEO_SEGMENT_LEAD_MS) { error(player, "Video manifest is no longer available"); return; }
         sendManifest(player, request.sessionId(), request.generation(), media, request.firstSegmentIndex(), media.durationMs);
     }
 
@@ -674,13 +675,10 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
         throw new IllegalArgumentException("Plex playlist has no media rendition");
     }
     static List<SegmentReference> parsePlaylist(String playlist, long basePts) {
-        List<SegmentReference> values = new ArrayList<SegmentReference>(); long pts = Math.max(0, basePts), duration = 0;
-        for (String line : playlist.split("\\r?\\n")) {
-            String value = line.trim();
-            if (value.startsWith("#EXTINF:")) duration = (long) (Double.parseDouble(value.substring(8).replace(",", "")) * 1000.0);
-            else if (!value.isEmpty() && !value.startsWith("#")) { values.add(new SegmentReference(value, pts, duration)); pts += duration; duration = 0; }
-        }
-        if (values.isEmpty()) throw new IllegalArgumentException("Plex media playlist has no segments"); return values;
+        List<SegmentReference> values = new ArrayList<SegmentReference>();
+        for (HlsPlaylist.MediaSegment value : HlsPlaylist.mediaSegments(playlist, basePts))
+            values.add(new SegmentReference(value.uri(), value.presentationTimeMs(), value.durationMs()));
+        if (values.isEmpty()) throw new IllegalArgumentException("Plex media playlist has no segments at the requested offset"); return values;
     }
     private static StreamSelection selection(List<VideoStreamOption> options, int requestedAudio, int requestedSubtitle,
                                              boolean defaults) throws IOException {

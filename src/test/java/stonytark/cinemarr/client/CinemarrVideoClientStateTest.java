@@ -12,9 +12,16 @@ import stonytark.cinemarr.network.VideoPayloads;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CinemarrVideoClientStateTest {
+    @Test void segmentPrefetchStaysNearPlaybackInsteadOfExhaustingTheServerLeadWindow() {
+        assertTrue(CinemarrVideoClientState.StreamState.withinPrefetchLead(16_000,10_000));
+        assertFalse(CinemarrVideoClientState.StreamState.withinPrefetchLead(16_001,10_000));
+    }
+
     @Test void multipleTelevisionsShareOneWatchPartyStreamButIndependentSessionsDecodeSeparately() {
         CinemarrVideoClientState state=CinemarrVideoClientState.INSTANCE;state.reset();
         UUID party=UUID.randomUUID(),independent=UUID.randomUUID();

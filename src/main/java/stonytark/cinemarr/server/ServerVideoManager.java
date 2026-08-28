@@ -14,6 +14,7 @@ import stonytark.cinemarr.core.network.Hashing;
 import stonytark.cinemarr.core.platform.CinemarrSettings;
 import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.core.protocol.VideoPackets;
+import stonytark.cinemarr.core.server.HlsPlaylist;
 import stonytark.cinemarr.core.server.PlexVideoService;
 import stonytark.cinemarr.core.server.RedstoneControlPolicy;
 import stonytark.cinemarr.core.server.SecretRedactor;
@@ -302,7 +303,7 @@ public final class ServerVideoManager implements AutoCloseable {
         ActiveMedia media=active.get(key(request.sessionId(),request.generation()));
         VideoSessionCoordinator.Snapshot timeline=sessions.snapshotIfPresent(request.sessionId(),request.generation(),System.currentTimeMillis());
         if (media==null || timeline==null || request.segmentIndex()<0 || request.segmentIndex()>=media.segmentCount()) { error(player,"Video segment is no longer available"); return; }
-        if (media.presentationTime(request.segmentIndex())>timeline.positionMs()+30_000) { error(player,"Video segment request exceeds playback lead limit"); return; }
+        if (media.presentationTime(request.segmentIndex())>timeline.positionMs()+ProtocolLimits.MAX_VIDEO_SEGMENT_LEAD_MS) { error(player,"Video segment request exceeds playback lead limit"); return; }
         transferGrants.put(player.getUUID(),new TransferGrant(request));
         CompletableFuture.supplyAsync(() -> { try { return media.segment(request.segmentIndex()); } catch(IOException failure){throw new WrappedFailure(failure);} },workers)
                 .whenComplete((segment,failure)->server.execute(()->{
@@ -317,7 +318,7 @@ public final class ServerVideoManager implements AutoCloseable {
         if(request.firstSegmentIndex()<0||!sessions.isViewer(request.sessionId(),request.generation(),player.getUUID())){error(player,"Video manifest is available only while tracking its screen");return;}
         ActiveMedia media=active.get(key(request.sessionId(),request.generation()));if(media==null){error(player,"Video manifest is no longer available");return;}
         VideoSessionCoordinator.Snapshot timeline=sessions.snapshotIfPresent(request.sessionId(),request.generation(),System.currentTimeMillis());
-        if(timeline==null||request.firstSegmentIndex()>=media.segmentCount()||media.presentationTime(request.firstSegmentIndex())>timeline.positionMs()+30_000){error(player,"Video manifest request exceeds playback lead limit");return;}
+        if(timeline==null||request.firstSegmentIndex()>=media.segmentCount()||media.presentationTime(request.firstSegmentIndex())>timeline.positionMs()+ProtocolLimits.MAX_VIDEO_SEGMENT_LEAD_MS){error(player,"Video manifest request exceeds playback lead limit");return;}
         sendManifest(player,request.sessionId(),request.generation(),media,request.firstSegmentIndex(),media.durationMs);
     }
 
@@ -387,7 +388,7 @@ public final class ServerVideoManager implements AutoCloseable {
     private void failure(ServerPlayer player,Throwable error){Throwable value=error instanceof java.util.concurrent.CompletionException&&error.getCause()!=null?error.getCause():error;if(value instanceof WrappedFailure&&value.getCause()!=null)value=value.getCause();String message=SecretRedactor.message(value,CinemarrSettings.plexToken());Cinemarr.LOGGER.warn("Cinemarr video request failed: {}",message);this.error(player,message);}
     private static String key(UUID session,long generation){return session+":"+generation;}
     private static String reference(String playlist){for(String line:playlist.split("\\r?\\n")){String value=line.trim();if(!value.isEmpty()&&!value.startsWith("#"))return value;}throw new IllegalArgumentException("Plex playlist has no media rendition");}
-    private static List<SegmentReference> parsePlaylist(String playlist,long basePts){List<SegmentReference> values=new ArrayList<>();long pts=Math.max(0,basePts),duration=0;for(String line:playlist.split("\\r?\\n")){String value=line.trim();if(value.startsWith("#EXTINF:")){String seconds=value.substring(8).replace(",","");duration=(long)(Double.parseDouble(seconds)*1000);}else if(!value.isEmpty()&&!value.startsWith("#")){values.add(new SegmentReference(value,pts,duration));pts+=duration;duration=0;}}if(values.isEmpty())throw new IllegalArgumentException("Plex media playlist has no segments");return values;}
+    private static List<SegmentReference> parsePlaylist(String playlist,long basePts){List<SegmentReference> values=new ArrayList<>();for(HlsPlaylist.MediaSegment value:HlsPlaylist.mediaSegments(playlist,basePts))values.add(new SegmentReference(value.uri(),value.presentationTimeMs(),value.durationMs()));if(values.isEmpty())throw new IllegalArgumentException("Plex media playlist has no segments at the requested offset");return values;}
     private static StreamSelection selection(List<VideoStreamOption> options,int requestedAudio,int requestedSubtitle,boolean defaults)throws IOException{int audio=requestedAudio,subtitle=requestedSubtitle;if(audio<0)for(VideoStreamOption option:options)if(option.kind()==VideoStreamOption.Kind.AUDIO&&option.selected()){audio=option.id();break;}if(defaults&&subtitle<0)for(VideoStreamOption option:options)if(option.kind()==VideoStreamOption.Kind.SUBTITLE&&option.selected()){subtitle=option.id();break;}if(audio>=0&&!contains(options,VideoStreamOption.Kind.AUDIO,audio))throw new IOException("Requested Plex audio stream is unavailable");if(subtitle>=0&&!contains(options,VideoStreamOption.Kind.SUBTITLE,subtitle))throw new IOException("Requested Plex subtitle stream is unavailable");return new StreamSelection(options,audio,subtitle);}
     private static boolean contains(List<VideoStreamOption> options,VideoStreamOption.Kind kind,int id){for(VideoStreamOption option:options)if(option.kind()==kind&&option.id()==id)return true;return false;}
     @Override public void close(){long now=System.currentTimeMillis();for(String name:sessions.sessionNames()){VideoSessionCoordinator.Snapshot state=sessions.snapshotIfPresent(name,now);if(state!=null)persist(state);}try{sessions.close();}catch(IOException failure){Cinemarr.LOGGER.warn("Unable to close Plex video sessions: {}",SecretRedactor.message(failure,CinemarrSettings.plexToken()));}workers.shutdownNow();active.clear();startingOptions.remove();playbackOptions.clear();playbackLibraries.clear();queues.clear();clientHealth.clear();transferGrants.clear();restartingSessions.clear();advancingSessions.clear();trackedChunks.clear();viewingSessions.clear();visibleTelevisions.clear();}

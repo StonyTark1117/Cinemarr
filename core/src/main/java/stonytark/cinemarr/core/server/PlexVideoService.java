@@ -287,9 +287,16 @@ public final class PlexVideoService {
         JsonElement value = root.get(key);
         return value == null || value.isJsonNull() ? 0 : value.getAsInt();
     }
+    /** Plex has emitted this field as both JSON booleans and numeric flags. */
+    private static boolean selected(JsonObject stream) {
+        JsonElement value = stream.get("selected");
+        if (value == null || value.isJsonNull()) return false;
+        if (value.isJsonPrimitive() && value.getAsJsonPrimitive().isBoolean()) return value.getAsBoolean();
+        return value.getAsInt() == 1;
+    }
     private static List<VideoStreamOption> streams(JsonObject metadata){
         List<VideoStreamOption> values=new ArrayList<VideoStreamOption>();JsonArray media=array(metadata,"Media");
-        for(JsonElement mediaElement:media){if(!mediaElement.isJsonObject())continue;JsonArray parts=array(mediaElement.getAsJsonObject(),"Part");for(JsonElement partElement:parts){if(!partElement.isJsonObject())continue;JsonArray streams=array(partElement.getAsJsonObject(),"Stream");for(JsonElement streamElement:streams){if(!streamElement.isJsonObject())continue;JsonObject stream=streamElement.getAsJsonObject();int type=integer(stream,"streamType"),id=integer(stream,"id");if(id<1||(type!=2&&type!=3))continue;String language=text(stream,"language");String title=text(stream,"title");String label=title.isEmpty()?language:title;if(label.isEmpty())label=type==2?"Audio "+id:"Subtitle "+id;values.add(new VideoStreamOption(type==2?VideoStreamOption.Kind.AUDIO:VideoStreamOption.Kind.SUBTITLE,id,label,text(stream,"languageCode"),text(stream,"codec"),integer(stream,"selected")==1));}}}
+        for(JsonElement mediaElement:media){if(!mediaElement.isJsonObject())continue;JsonArray parts=array(mediaElement.getAsJsonObject(),"Part");for(JsonElement partElement:parts){if(!partElement.isJsonObject())continue;JsonArray streams=array(partElement.getAsJsonObject(),"Stream");for(JsonElement streamElement:streams){if(!streamElement.isJsonObject())continue;JsonObject stream=streamElement.getAsJsonObject();int type=integer(stream,"streamType"),id=integer(stream,"id");if(id<1||(type!=2&&type!=3))continue;String language=text(stream,"language");String title=text(stream,"title");String label=title.isEmpty()?language:title;if(label.isEmpty())label=type==2?"Audio "+id:"Subtitle "+id;values.add(new VideoStreamOption(type==2?VideoStreamOption.Kind.AUDIO:VideoStreamOption.Kind.SUBTITLE,id,label,text(stream,"languageCode"),text(stream,"codec"),selected(stream)));}}}
         return immutable(values);
     }
     private static <T> List<T> immutable(List<T> values) { return Collections.unmodifiableList(new ArrayList<T>(values)); }

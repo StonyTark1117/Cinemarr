@@ -23,7 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 /** Bounded off-thread decode queue with generation-safe render-thread delivery. */
 public final class CinemarrVideoPlayback implements AutoCloseable {
     private static final int MAX_DECODE_JOBS = 2;
-    private static final int MAX_QUEUED_VIDEO_FRAMES = 180;
+    private static final int MAX_DECODED_VIDEO_BATCHES = 2;
     private static final int MAX_QUEUED_AUDIO_FRAMES = 128;
     private final ExecutorService decoderExecutor = Executors.newSingleThreadExecutor(r -> {
         Thread thread = new Thread(r, "Cinemarr FFmpeg decoder");
@@ -32,6 +32,7 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
     });
     private final FfmpegVideoDecoder decoder = new FfmpegVideoDecoder();
     private final Queue<DecodedBatch> decoded = new ConcurrentLinkedQueue<>();
+    private final Queue<List<DecodedVideoFrame>> videoBatches = new ArrayDeque<>();
     private final PriorityQueue<DecodedVideoFrame> video = new PriorityQueue<>(Comparator.comparingLong(DecodedVideoFrame::presentationTimeUs));
     private final Queue<DecodedAudioFrame> audio = new ArrayDeque<>();
     private final AtomicInteger pending = new AtomicInteger();
@@ -57,16 +58,14 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
             generation = session.generation();
         }
         VideoSegmentAssembler.CompletedSegment segment;
-        while (pending.get() < MAX_DECODE_JOBS && decoded.size() < MAX_DECODE_JOBS
+        while (pending.get() < MAX_DECODE_JOBS && decoded.size() + videoBatches.size() < MAX_DECODED_VIDEO_BATCHES
                 && audio.size() < MAX_QUEUED_AUDIO_FRAMES && (segment = state.pollSegment()) != null) submit(segment);
-        for (DecodedBatch batch; audio.size() < MAX_QUEUED_AUDIO_FRAMES && (batch = decoded.poll()) != null; ) {
+        for (DecodedBatch batch; audio.size() < MAX_QUEUED_AUDIO_FRAMES && videoBatches.size() < MAX_DECODED_VIDEO_BATCHES && (batch = decoded.poll()) != null; ) {
             if (!batch.sessionId.equals(sessionId) || batch.generation != generation) continue;
-            for (DecodedVideoFrame frame : batch.video) {
-                if (video.size() >= MAX_QUEUED_VIDEO_FRAMES) { video.poll(); videoDrops++; }
-                video.add(frame);
-            }
+            if (!batch.video.isEmpty()) videoBatches.add(batch.video);
             audio.addAll(batch.audio);
         }
+        if (video.isEmpty() && !videoBatches.isEmpty()) video.addAll(videoBatches.poll());
         long targetUs = authoritativePositionMsLocal(session) * 1_000L;
         DecodedVideoFrame current = null;
         while (!video.isEmpty() && video.peek().presentationTimeUs() <= targetUs + 40_000L) current = video.poll();
@@ -156,6 +155,7 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
 
     private void resetQueues() {
         decoded.clear();
+        videoBatches.clear();
         video.clear();
         audio.clear();
     }

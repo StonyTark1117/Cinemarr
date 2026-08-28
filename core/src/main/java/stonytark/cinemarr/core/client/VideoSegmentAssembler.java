@@ -41,7 +41,7 @@ public final class VideoSegmentAssembler {
                                                            String sha256, long presentationTimeMs, boolean keyframe,
                                                            byte[] data) {
         if (this.sessionId == null || !this.sessionId.equals(sessionId) || this.generation != generation
-                || requestId < 1 || this.segmentIndex != segmentIndex || this.totalChunks != totalChunks
+                || requestId != this.requestId || this.segmentIndex != segmentIndex || this.totalChunks != totalChunks
                 || !this.expectedSha256.equalsIgnoreCase(sha256) || this.presentationTimeMs != presentationTimeMs
                 || this.keyframe != keyframe || chunkIndex < 0 || chunkIndex >= totalChunks || data == null
                 || data.length == 0 || data.length > ProtocolLimits.MAX_VIDEO_CHUNK_BYTES) return Optional.empty();

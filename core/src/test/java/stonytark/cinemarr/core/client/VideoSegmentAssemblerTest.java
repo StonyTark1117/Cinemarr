@@ -25,6 +25,7 @@ class VideoSegmentAssemblerTest {
         UUID session=UUID.randomUUID(); byte[] complete={1,2,3}; String hash=Hashing.sha256(complete);
         VideoSegmentAssembler assembler=new VideoSegmentAssembler(); assembler.begin(session,3,7,2,1,hash,4_000,true);
         assertFalse(assembler.accept(session,2,7,2,0,1,hash,4_000,true,complete).isPresent());
+        assertFalse(assembler.accept(session,3,8,2,0,1,hash,4_000,true,complete).isPresent());
         assertFalse(assembler.accept(session,3,7,2,0,1,hash,4_000,true,new byte[]{9}).isPresent());
         assembler.begin(session,3,8,2,2,hash,4_000,true);
         assertFalse(assembler.accept(session,3,8,2,0,2,hash,4_000,true,new byte[]{1}).isPresent());

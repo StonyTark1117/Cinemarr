@@ -23,6 +23,8 @@ public final class ProtocolLimits {
     public static final int MAX_VIDEO_QUEUE_ENTRIES = 500;
     public static final int MAX_SCREEN_MASK_BYTES = 8_192;
     public static final int MAX_VIDEO_CHUNK_BYTES = 16_384;
+    public static final long MAX_VIDEO_SEGMENT_LEAD_MS = 30_000L;
+    public static final long CLIENT_VIDEO_PREFETCH_LEAD_MS = 6_000L;
 
     /**
      * Returns the protocol advertised by a real client during release acceptance.
