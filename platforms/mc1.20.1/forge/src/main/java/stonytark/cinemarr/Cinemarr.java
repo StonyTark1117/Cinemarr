@@ -29,6 +29,7 @@ public final class Cinemarr {
         FMLJavaModLoadingContext context = FMLJavaModLoadingContext.get();
         CinemarrBlocks.REGISTER.register(context.getModEventBus());
         CinemarrItems.REGISTER.register(context.getModEventBus());
+        stonytark.cinemarr.registry.CinemarrCreativeTabs.register(context.getModEventBus());
         migrateClientConfig("forge");
         CinemarrSettings.installClient(CinemarrConfig.clientValues());
         ModLoadingContext.get().registerConfig(ModConfig.Type.CLIENT, CinemarrConfig.CLIENT_SPEC);

@@ -2,7 +2,6 @@ package stonytark.cinemarr.screen;
 
 import net.minecraft.block.Block;
 import net.minecraft.block.material.Material;
-import net.minecraft.creativetab.CreativeTabs;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.util.ChatComponentText;
@@ -16,8 +15,8 @@ import stonytark.cinemarr.Cinemarr;
 public final class LegacyTvControllerBlock extends Block {
     public LegacyTvControllerBlock() {
         super(Material.iron);
-        setBlockName("cinemarr.tv_controller"); setBlockTextureName("minecraft:iron_block");
-        setHardness(2.0F); setResistance(6.0F); setCreativeTab(CreativeTabs.tabDecorations);
+        setBlockName("cinemarr.tv_controller"); setBlockTextureName("cinemarr:tv_controller");
+        setHardness(2.0F); setResistance(6.0F); setCreativeTab(LegacyBlocks.TAB);
     }
 
     @Override public boolean onBlockActivated(World world, int x, int y, int z, EntityPlayer player,

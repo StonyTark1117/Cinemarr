@@ -2,7 +2,6 @@ package stonytark.cinemarr.screen;
 
 import net.minecraft.block.Block;
 import net.minecraft.block.material.Material;
-import net.minecraft.creativetab.CreativeTabs;
 import net.minecraft.world.World;
 import stonytark.cinemarr.core.screen.ScreenFacing;
 
@@ -10,8 +9,8 @@ import stonytark.cinemarr.core.screen.ScreenFacing;
 public final class LegacyScreenPixelBlock extends Block {
     public LegacyScreenPixelBlock() {
         super(Material.iron);
-        setBlockName("cinemarr.screen_pixel"); setBlockTextureName("minecraft:coal_block");
-        setHardness(2.0F); setResistance(6.0F); setCreativeTab(CreativeTabs.tabDecorations);
+        setBlockName("cinemarr.screen_pixel"); setBlockTextureName("cinemarr:screen_pixel");
+        setHardness(2.0F); setResistance(6.0F); setCreativeTab(LegacyBlocks.TAB);
     }
 
     @Override public int onBlockPlaced(World world, int x, int y, int z, int side, float hitX, float hitY, float hitZ, int metadata) {

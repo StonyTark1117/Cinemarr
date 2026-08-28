@@ -12,21 +12,24 @@ import stonytark.cinemarr.core.screen.QuickTvPreset;
 
 /** Forge 1.7.10 block registration for the shared television vocabulary. */
 public final class LegacyBlocks {
+    public static final CreativeTabs TAB = new CreativeTabs("cinemarr") {
+        @Override public Item getTabIconItem() { return TV_REMOTE; }
+    };
     public static final Block SCREEN_PIXEL = new LegacyScreenPixelBlock();
     public static final Block TV_CONTROLLER = new LegacyTvControllerBlock();
-    public static final Block TV_CASING = decorative("tv_casing", "minecraft:obsidian");
-    public static final Block TV_SPEAKER = decorative("tv_speaker", "minecraft:noteblock");
-    public static final Block REDSTONE_RECEIVER = decorative("redstone_receiver", "minecraft:redstone_block");
+    public static final Block TV_CASING = decorative("tv_casing");
+    public static final Block TV_SPEAKER = decorative("tv_speaker");
+    public static final Block REDSTONE_RECEIVER = decorative("redstone_receiver");
     public static final Item TV_REMOTE = new Item().setUnlocalizedName("cinemarr.tv_remote")
-            .setTextureName("minecraft:repeater").setMaxStackSize(1).setCreativeTab(CreativeTabs.tabRedstone);
-    public static final Block QUICK_TV_144P = quick(QuickTvPreset.P144, "minecraft:coal_block");
-    public static final Block QUICK_TV_240P = quick(QuickTvPreset.P240, "minecraft:stone");
-    public static final Block QUICK_TV_480P = quick(QuickTvPreset.P480, "minecraft:iron_block");
-    public static final Block QUICK_TV_720P = quick(QuickTvPreset.P720, "minecraft:lapis_block");
-    public static final Block QUICK_TV_1080P = quick(QuickTvPreset.P1080, "minecraft:redstone_block");
-    public static final Block QUICK_TV_1440P = quick(QuickTvPreset.P1440, "minecraft:gold_block");
-    public static final Block QUICK_TV_4K = quick(QuickTvPreset.P4K, "minecraft:emerald_block");
-    public static final Block QUICK_TV_8K = quick(QuickTvPreset.P8K, "minecraft:diamond_block");
+            .setTextureName("cinemarr:tv_remote").setMaxStackSize(1).setCreativeTab(TAB);
+    public static final Block QUICK_TV_144P = quick(QuickTvPreset.P144);
+    public static final Block QUICK_TV_240P = quick(QuickTvPreset.P240);
+    public static final Block QUICK_TV_480P = quick(QuickTvPreset.P480);
+    public static final Block QUICK_TV_720P = quick(QuickTvPreset.P720);
+    public static final Block QUICK_TV_1080P = quick(QuickTvPreset.P1080);
+    public static final Block QUICK_TV_1440P = quick(QuickTvPreset.P1440);
+    public static final Block QUICK_TV_4K = quick(QuickTvPreset.P4K);
+    public static final Block QUICK_TV_8K = quick(QuickTvPreset.P8K);
 
     public static void register() {
         GameRegistry.registerBlock(SCREEN_PIXEL, "screen_pixel");
@@ -68,11 +71,11 @@ public final class LegacyBlocks {
         upgrade(QUICK_TV_8K, QUICK_TV_4K, Blocks.diamond_block);
     }
 
-    private static Block decorative(final String name, String texture) {
-        return new Block(Material.iron) {{ setBlockName("cinemarr." + name); setBlockTextureName(texture);
-            setHardness(2.0F); setResistance(6.0F); setCreativeTab(CreativeTabs.tabDecorations); }};
+    private static Block decorative(final String name) {
+        return new Block(Material.iron) {{ setBlockName("cinemarr." + name); setBlockTextureName("cinemarr:" + name);
+            setHardness(2.0F); setResistance(6.0F); setCreativeTab(TAB); }};
     }
-    private static Block quick(QuickTvPreset preset, String texture) { return new LegacyQuickTvBlock(preset, texture); }
+    private static Block quick(QuickTvPreset preset) { return new LegacyQuickTvBlock(preset); }
     private static void upgrade(Block output, Block previous, Block material) {
         GameRegistry.addRecipe(new ItemStack(output), "mmm", "mkm", "mmm", 'm', material, 'k', previous);
     }

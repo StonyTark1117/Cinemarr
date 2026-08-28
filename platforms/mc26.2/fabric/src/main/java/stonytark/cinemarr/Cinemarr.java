@@ -29,6 +29,7 @@ public final class Cinemarr implements ModInitializer {
         if (!INITIALIZED.compareAndSet(false, true)) return;
         CinemarrBlocks.register();
         CinemarrItems.register();
+        stonytark.cinemarr.registry.CinemarrCreativeTabs.register();
         CinemarrNetwork.register();
         CinemarrServer.register();
         CinemarrCommands.register();

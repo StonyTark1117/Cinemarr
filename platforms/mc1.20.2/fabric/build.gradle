@@ -143,6 +143,7 @@ sourceSets {
             exclude 'stonytark/cinemarr/server/CinemarrVideoSavedData.java'
             exclude 'stonytark/cinemarr/registry/CinemarrBlocks.java'
             exclude 'stonytark/cinemarr/registry/CinemarrItems.java'
+            exclude 'stonytark/cinemarr/registry/CinemarrCreativeTabs.java'
         }
         resources {
             srcDir file('../../../src/main/resources')

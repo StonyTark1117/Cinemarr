@@ -1,11 +1,12 @@
 key.cinemarr.open=Open Cinemarr
 key.categories.cinemarr=Cinemarr
+itemGroup.cinemarr=Cinemarr
 cinemarr.screen.title=Cinemarr - Plex Video
 cinemarr.screen.search=Search movies and shows...
-tile.cinemarr.screen_pixel.name=Screen Pixel
+tile.cinemarr.screen_pixel.name=Cinemarr Screen Pixel
 tile.cinemarr.tv_controller.name=TV Controller
-tile.cinemarr.tv_casing.name=TV Casing
-tile.cinemarr.tv_speaker.name=TV Speaker
+tile.cinemarr.tv_casing.name=TV Casing Panel
+tile.cinemarr.tv_speaker.name=TV Speaker Panel
 tile.cinemarr.redstone_receiver.name=TV Redstone Receiver
 item.cinemarr.tv_remote.name=TV Remote
 tile.cinemarr.quick_tv_144p.name=144p Quick TV Kit

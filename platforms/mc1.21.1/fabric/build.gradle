@@ -127,6 +127,7 @@ sourceSets {
             exclude 'stonytark/cinemarr/network/CinemarrNetwork.java'
             exclude 'stonytark/cinemarr/registry/CinemarrBlocks.java'
             exclude 'stonytark/cinemarr/registry/CinemarrItems.java'
+            exclude 'stonytark/cinemarr/registry/CinemarrCreativeTabs.java'
             exclude 'stonytark/cinemarr/server/CinemarrCommands.java'
             exclude 'stonytark/cinemarr/server/CinemarrServer.java'
         }

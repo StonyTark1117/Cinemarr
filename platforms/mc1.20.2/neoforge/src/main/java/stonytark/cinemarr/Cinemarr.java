@@ -28,6 +28,7 @@ public final class Cinemarr {
     public Cinemarr(IEventBus modBus) {
         CinemarrBlocks.REGISTER.register(modBus);
         CinemarrItems.REGISTER.register(modBus);
+        stonytark.cinemarr.registry.CinemarrCreativeTabs.register(modBus);
         migrateClientConfig("neoforge");
         CinemarrSettings.installClient(CinemarrConfig.clientValues());
         ModLoadingContext.get().registerConfig(ModConfig.Type.CLIENT, CinemarrConfig.CLIENT_SPEC);

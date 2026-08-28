@@ -29,6 +29,7 @@ public final class Cinemarr {
         context.registerConfig(ModConfig.Type.CLIENT, CinemarrConfig.CLIENT_SPEC);
         CinemarrBlocks.register(context.getModBusGroup());
         CinemarrItems.register(context.getModBusGroup());
+        stonytark.cinemarr.registry.CinemarrCreativeTabs.register(context.getModBusGroup());
         CinemarrNetwork.register();
         CinemarrServer.register();
         CinemarrCommands.register();

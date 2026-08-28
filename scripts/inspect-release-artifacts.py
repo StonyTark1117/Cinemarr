@@ -45,6 +45,7 @@ COMMON_ENTRIES = {
 QUICK_TV_IDS = ("144p", "240p", "480p", "720p", "1080p", "1440p", "4k", "8k")
 TV_BLOCK_IDS = ("screen_pixel", "tv_controller", "tv_casing", "tv_speaker", "redstone_receiver")
 TV_COMPONENT_IDS = TV_BLOCK_IDS + ("tv_remote",)
+ALL_TV_BLOCK_IDS = TV_BLOCK_IDS + tuple(f"quick_tv_{quick_id}" for quick_id in QUICK_TV_IDS)
 PRIVATE_ADDRESS = re.compile(rb"(?<![0-9])(?:10\.(?:[0-9]{1,3}\.){2}[0-9]{1,3}|192\.168\.(?:[0-9]{1,3}\.)[0-9]{1,3}|172\.(?:1[6-9]|2[0-9]|3[01])\.(?:[0-9]{1,3}\.)[0-9]{1,3})(?![0-9])")
 TEXT_SUFFIXES = (".json", ".toml", ".info", ".lang", ".md", ".txt", ".properties", ".mf")
 
@@ -218,6 +219,15 @@ def verify_png(data: bytes, filename: str) -> None:
     colour_type = data[25]
     if width < 16 or height < 16 or colour_type not in (4, 6):
         fail(f"{filename} icon must be at least 16x16 and include an alpha channel")
+
+
+def verify_texture_png(data: bytes, label: str) -> None:
+    if len(data) < 33 or data[:8] != b"\x89PNG\r\n\x1a\n" or data[12:16] != b"IHDR":
+        fail(f"{label} is not a valid PNG texture")
+    width, height = struct.unpack(">II", data[16:24])
+    colour_type = data[25]
+    if (width, height) != (16, 16) or colour_type not in (2, 3, 4, 6):
+        fail(f"{label} must be a 16x16 RGB, indexed, grayscale-alpha, or RGBA texture")
 
 
 def verify_no_deployment_secrets(archive: zipfile.ZipFile, filename: str) -> None:
@@ -539,9 +549,39 @@ def verify_tv_components(archive: zipfile.ZipFile, names: set[str], minecraft: s
     if assets - names:
         fail(f"{filename} is missing TV component assets: {sorted(assets - names)}")
 
+    modern_textures = {f"assets/cinemarr/textures/block/{component}.png" for component in ALL_TV_BLOCK_IDS}
+    modern_textures.add("assets/cinemarr/textures/item/tv_remote.png")
+    if modern_textures - names:
+        fail(f"{filename} is missing Cinemarr-owned textures: {sorted(modern_textures - names)}")
+    for entry in sorted(modern_textures):
+        verify_texture_png(archive.read(entry), f"{filename}:{entry}")
+
+    for component in ALL_TV_BLOCK_IDS:
+        entry = f"assets/cinemarr/models/block/{component}.json"
+        model = json.loads(archive.read(entry))
+        textures = model.get("textures")
+        if not isinstance(textures, dict) or f"cinemarr:block/{component}" not in textures.values():
+            fail(f"{filename}:{entry} does not use its Cinemarr block texture")
+    remote_model = json.loads(archive.read("assets/cinemarr/models/item/tv_remote.json"))
+    if remote_model.get("textures", {}).get("layer0") != "cinemarr:item/tv_remote":
+        fail(f"{filename} TV Remote model does not use its Cinemarr item texture")
+    if minecraft in ("26.1.2", "26.2"):
+        expected_definitions = {f"assets/cinemarr/items/{component}.json"
+                                for component in ALL_TV_BLOCK_IDS + ("tv_remote",)}
+        if expected_definitions - names:
+            fail(f"{filename} is missing Minecraft 26.x item definitions: "
+                 f"{sorted(expected_definitions - names)}")
+        for component in ALL_TV_BLOCK_IDS + ("tv_remote",):
+            entry = f"assets/cinemarr/items/{component}.json"
+            definition = json.loads(archive.read(entry)).get("model", {})
+            expected_model = (f"cinemarr:item/{component}" if component == "tv_remote"
+                              else f"cinemarr:block/{component}")
+            if definition.get("type") != "minecraft:model" or definition.get("model") != expected_model:
+                fail(f"{filename}:{entry} does not resolve to {expected_model}")
+
     translations = json.loads(archive.read("assets/cinemarr/lang/en_us.json"))
-    translation_keys = {*(f"block.cinemarr.{component}" for component in TV_BLOCK_IDS),
-                        "item.cinemarr.tv_remote"}
+    translation_keys = {*(f"block.cinemarr.{component}" for component in ALL_TV_BLOCK_IDS),
+                        "item.cinemarr.tv_remote", "itemGroup.cinemarr"}
     missing_translations = {key for key in translation_keys
                             if not isinstance(translations.get(key), str) or not translations[key].strip()}
     if missing_translations:
@@ -565,9 +605,41 @@ def verify_tv_components(archive: zipfile.ZipFile, names: set[str], minecraft: s
     if minecraft == "1.7.10":
         legacy_lang = archive.read("assets/cinemarr/lang/en_US.lang")
         if b"tile.cinemarr.redstone_receiver.name=" not in legacy_lang \
-                or b"item.cinemarr.tv_remote.name=" not in legacy_lang:
+                or b"item.cinemarr.tv_remote.name=" not in legacy_lang \
+                or b"itemGroup.cinemarr=Cinemarr" not in legacy_lang:
             fail(f"{filename} is missing legacy receiver/remote translations")
+        legacy_textures = {f"assets/cinemarr/textures/blocks/{component}.png"
+                           for component in ALL_TV_BLOCK_IDS}
+        legacy_textures.add("assets/cinemarr/textures/items/tv_remote.png")
+        if legacy_textures - names:
+            fail(f"{filename} is missing legacy Cinemarr-owned textures: {sorted(legacy_textures - names)}")
+        for entry in sorted(legacy_textures):
+            verify_texture_png(archive.read(entry), f"{filename}:{entry}")
+        if "stonytark/cinemarr/screen/LegacyBlocks$1.class" not in names:
+            fail(f"{filename} is missing the dedicated legacy Cinemarr creative tab")
         return
+
+    creative_entry = "stonytark/cinemarr/registry/CinemarrCreativeTabs.class"
+    if creative_entry not in names:
+        fail(f"{filename} is missing its dedicated Cinemarr creative tab")
+    creative = archive.read(creative_entry)
+    expected_fields = {component.upper().encode() for component in ALL_TV_BLOCK_IDS}
+    expected_fields.add(b"TV_REMOTE")
+    missing_fields = {field.decode() for field in expected_fields if field not in creative}
+    if b"itemGroup.cinemarr" not in creative or missing_fields:
+        fail(f"{filename}:{creative_entry} omits creative entries: {sorted(missing_fields)}")
+
+    loot_directory = "loot_tables" if minecraft in ("1.20.1", "1.20.2") else "loot_table"
+    expected_loot = {f"data/cinemarr/{loot_directory}/blocks/{component}.json"
+                     for component in ALL_TV_BLOCK_IDS}
+    if expected_loot - names:
+        fail(f"{filename} is missing active block loot tables: {sorted(expected_loot - names)}")
+    for entry in sorted(expected_loot):
+        loot = json.loads(archive.read(entry))
+        expected_item = "cinemarr:" + PurePosixPath(entry).stem
+        encoded = json.dumps(loot, separators=(",", ":"))
+        if expected_item not in encoded or loot.get("type") != "minecraft:block":
+            fail(f"{filename}:{entry} does not self-drop {expected_item}")
 
     if minecraft not in ("1.20.1", "1.20.2"):
         controller = archive.read("stonytark/cinemarr/screen/TvControllerBlock.class")

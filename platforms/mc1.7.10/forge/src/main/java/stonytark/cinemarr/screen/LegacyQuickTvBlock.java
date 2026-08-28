@@ -2,7 +2,6 @@ package stonytark.cinemarr.screen;
 
 import net.minecraft.block.Block;
 import net.minecraft.block.material.Material;
-import net.minecraft.creativetab.CreativeTabs;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
@@ -21,11 +20,11 @@ import stonytark.cinemarr.network.LegacyPacketTypes;
 public final class LegacyQuickTvBlock extends Block {
     private final QuickTvPreset preset;
 
-    public LegacyQuickTvBlock(QuickTvPreset preset, String texture) {
+    public LegacyQuickTvBlock(QuickTvPreset preset) {
         super(Material.iron);
         this.preset = preset;
-        setBlockName("cinemarr.quick_tv_" + preset.id()); setBlockTextureName(texture);
-        setHardness(2.0F); setResistance(6.0F); setCreativeTab(CreativeTabs.tabDecorations);
+        setBlockName("cinemarr.quick_tv_" + preset.id()); setBlockTextureName("cinemarr:quick_tv_" + preset.id());
+        setHardness(2.0F); setResistance(6.0F); setCreativeTab(LegacyBlocks.TAB);
     }
 
     @Override public void onBlockPlacedBy(World world, int x, int y, int z, EntityLivingBase placer, ItemStack stack) {

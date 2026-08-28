@@ -16,6 +16,7 @@ public final class Cinemarr implements ModInitializer {
     @Override public void onInitialize() {
         CinemarrBlocks.register();
         CinemarrItems.register();
+        stonytark.cinemarr.registry.CinemarrCreativeTabs.register();
         CinemarrNetwork.register();
         CinemarrServer.register();
         CinemarrCommands.register();
