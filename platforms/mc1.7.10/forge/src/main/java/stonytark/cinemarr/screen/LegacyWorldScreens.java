@@ -30,6 +30,8 @@ public final class LegacyWorldScreens extends WorldSavedData {
     public static final int SCHEMA_VERSION = 2;
     private final Map<Long, ScreenFacing> pixels = new HashMap<Long, ScreenFacing>();
     private final Map<Long, Television> televisions = new HashMap<Long, Television>();
+    private final transient String detachedDimension = "detached:" + UUID.randomUUID();
+    private transient WorldServer world;
     private transient boolean registrationsReconciled;
 
     public LegacyWorldScreens() { this(DATA_NAME); }
@@ -43,6 +45,7 @@ public final class LegacyWorldScreens extends WorldSavedData {
             storage.setData(DATA_NAME, value);
             value.markDirty();
         }
+        value.world = world;
         if(!value.registrationsReconciled)value.reconcileRegistrations();
         return value;
     }
@@ -62,8 +65,11 @@ public final class LegacyWorldScreens extends WorldSavedData {
     }
 
     public Television removeController(int x, int y, int z) {
-        Television removed = televisions.remove(LegacyBlockPos.pack(x, y, z));
-        if (removed != null) { TelevisionLifecycle.unregister(removed.id, removed.sessionName); markDirty(); }
+        Television removed = televisions.get(LegacyBlockPos.pack(x, y, z));
+        if (removed != null) {
+            TelevisionLifecycle.unregister(removed.id, removed.sessionName);
+            if (television(removed.id) != null) removeLocal(removed.id);
+        }
         return removed;
     }
 
@@ -92,15 +98,18 @@ public final class LegacyWorldScreens extends WorldSavedData {
             }
             UUID televisionId = existing == null ? UUID.randomUUID() : existing.id;
             UUID televisionOwner = existing == null ? owner : existing.owner;
-            if (existing == null && !TelevisionLifecycle.register(televisionId, televisionOwner,
-                    CinemarrSettings.maximumScreensPerOwner())) {
-                return new Activation(false, "Maximum screens per owner reached", null);
-            }
             Television television = new Television(controller, televisionId,
                     televisionOwner, connected, geometry.width(), geometry.height(),
                     geometry.visibilityMask().toByteArray(), geometry.facing(), geometry.minimumU(), geometry.minimumV(),
                     existing == null ? PresentationMode.FIT : existing.presentationMode,
                     existing == null ? "" : existing.sessionName, geometry.width(), geometry.height());
+            if (TelevisionLifecycle.overlaps(dimensionKey(), connected, televisionId)) {
+                return new Activation(false, "Screen pixels already belong to another TV", null);
+            }
+            if (!TelevisionLifecycle.register(registration(television), CinemarrSettings.maximumScreensPerOwner())) {
+                return new Activation(false, existing == null ? "Maximum screens per owner reached"
+                        : "TV registration conflicts with another screen", null);
+            }
             televisions.put(controller, television);
             markDirty();
             return new Activation(true, "Activated " + geometry.width() + "x" + geometry.height()
@@ -114,6 +123,18 @@ public final class LegacyWorldScreens extends WorldSavedData {
     public Television television(UUID id) { for(Television value:televisions.values())if(value.id.equals(id))return value;return null; }
     public Television removeTelevision(UUID id) { Television value=television(id);return value==null?null:removeController(LegacyBlockPos.x(value.controllerPos),LegacyBlockPos.y(value.controllerPos),LegacyBlockPos.z(value.controllerPos)); }
     public List<Television> televisions() { return Collections.unmodifiableList(new ArrayList<Television>(televisions.values())); }
+    public int pruneInvalid() {
+        int removed = 0;
+        for (Television television : new ArrayList<Television>(televisions.values())) {
+            LiveValidation validation = liveValidation(television);
+            if (validation == LiveValidation.INVALID) {
+                if (TelevisionLifecycle.unregister(television.id, television.sessionName)) removed++;
+                else { removeLocal(television.id); removed++; }
+            } else TelevisionLifecycle.validation(television.id, validation == LiveValidation.LOADED
+                    ? TelevisionLifecycle.Validation.LOADED : TelevisionLifecycle.Validation.SAVED);
+        }
+        return removed;
+    }
     public boolean overlaps(long controller,Set<Long> candidates){for(Map.Entry<Long,Television> entry:televisions.entrySet())if(entry.getKey().longValue()!=controller&&intersects(entry.getValue().pixels,candidates))return true;return false;}
     public List<Television> televisionsForChunk(int chunkX, int chunkZ) {
         List<Television> values = new ArrayList<Television>();
@@ -130,7 +151,7 @@ public final class LegacyWorldScreens extends WorldSavedData {
     }
     public void updateSession(long controller, String name) {
         Television value = televisions.get(controller);
-        if (value != null) { value.sessionName = name == null ? "" : name.trim(); markDirty(); }
+        if (value != null) { value.sessionName = name == null ? "" : name.trim(); TelevisionLifecycle.session(value.id, value.sessionName); markDirty(); }
     }
     public void updateRendition(long controller, int width, int height) {
         Television value = televisions.get(controller);
@@ -155,24 +176,20 @@ public final class LegacyWorldScreens extends WorldSavedData {
     private void invalidateContaining(long pixel) {
         List<Long> invalid = new ArrayList<Long>();
         for (Map.Entry<Long, Television> entry : televisions.entrySet()) if (entry.getValue().pixels.contains(pixel)) invalid.add(entry.getKey());
-        for (Long controller : invalid) {
-            Television removed = televisions.remove(controller);
-            if (removed != null) TelevisionLifecycle.unregister(removed.id, removed.sessionName);
-        }
+        for (Long controller : invalid) removeController(LegacyBlockPos.x(controller), LegacyBlockPos.y(controller), LegacyBlockPos.z(controller));
     }
 
     private void reconcileRegistrations() {
         registrationsReconciled=true;
         List<Long> invalid = new ArrayList<Long>();
+        Set<Long> occupied = new HashSet<Long>();
         for (Map.Entry<Long, Television> entry : televisions.entrySet()) {
             Television television = entry.getValue();
-            if (!valid(television)) invalid.add(entry.getKey());
-            else TelevisionLifecycle.restore(television.id, television.owner);
+            if (!valid(television) || intersects(occupied, television.pixels)
+                    || !TelevisionLifecycle.restore(registration(television))) invalid.add(entry.getKey());
+            else occupied.addAll(television.pixels);
         }
-        for (Long controller : invalid) {
-            Television removed = televisions.remove(controller);
-            if (removed != null) TelevisionLifecycle.unregister(removed.id, removed.sessionName);
-        }
+        for (Long controller : invalid) removeLocalAt(controller);
         if (!invalid.isEmpty()) markDirty();
     }
 
@@ -190,6 +207,37 @@ public final class LegacyWorldScreens extends WorldSavedData {
             return geometry.width() == television.width && geometry.height() == television.height;
         } catch (IllegalArgumentException invalid) { return false; }
     }
+
+    private LiveValidation liveValidation(Television television) {
+        if (world == null) return LiveValidation.UNLOADED;
+        int controllerX = LegacyBlockPos.x(television.controllerPos), controllerY = LegacyBlockPos.y(television.controllerPos),
+                controllerZ = LegacyBlockPos.z(television.controllerPos);
+        if (!world.blockExists(controllerX, controllerY, controllerZ)) return LiveValidation.UNLOADED;
+        for (Long packed : television.pixels) if (!world.blockExists(LegacyBlockPos.x(packed), LegacyBlockPos.y(packed), LegacyBlockPos.z(packed))) return LiveValidation.UNLOADED;
+        net.minecraft.block.Block controller = world.getBlock(controllerX, controllerY, controllerZ);
+        if (!(controller instanceof LegacyTvControllerBlock) && !(controller instanceof LegacyQuickTvBlock)) return LiveValidation.INVALID;
+        for (Long packed : television.pixels) {
+            int x = LegacyBlockPos.x(packed), y = LegacyBlockPos.y(packed), z = LegacyBlockPos.z(packed);
+            if (!(world.getBlock(x, y, z) instanceof LegacyScreenPixelBlock)
+                    || facing(world.getBlockMetadata(x, y, z)) != television.facing) return LiveValidation.INVALID;
+        }
+        return valid(television) ? LiveValidation.LOADED : LiveValidation.INVALID;
+    }
+
+    private TelevisionLifecycle.Registration registration(final Television television) {
+        final UUID id = television.id;
+        return new TelevisionLifecycle.Registration(id, television.owner, dimensionKey(), television.controllerPos,
+                LegacyBlockPos.x(television.controllerPos), LegacyBlockPos.y(television.controllerPos),
+                LegacyBlockPos.z(television.controllerPos), television.pixels, television.sessionName,
+                TelevisionLifecycle.Validation.SAVED, new TelevisionLifecycle.Removal() {
+                    @Override public void remove() { removeLocal(id); }
+                });
+    }
+    private String dimensionKey() { return world == null ? detachedDimension : "dimension:" + world.provider.dimensionId; }
+    private Television removeLocal(UUID id) { Television value = television(id); if (value != null) { televisions.remove(value.controllerPos); markDirty(); } return value; }
+    private Television removeLocalAt(long controller) { Television value = televisions.remove(controller); if (value != null) markDirty(); return value; }
+    private static ScreenFacing facing(int side) { switch (side) { case 0:return ScreenFacing.DOWN;case 1:return ScreenFacing.UP;case 3:return ScreenFacing.SOUTH;case 4:return ScreenFacing.WEST;case 5:return ScreenFacing.EAST;default:return ScreenFacing.NORTH; } }
+    private enum LiveValidation { LOADED, UNLOADED, INVALID }
 
     private static boolean intersects(Set<Long> first, Set<Long> second) {
         for (Long value : first) if (second.contains(value)) return true;

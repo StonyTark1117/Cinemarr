@@ -6,6 +6,8 @@ import stonytark.cinemarr.core.library.VideoMediaItem;
 
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -119,6 +121,53 @@ class VideoSessionCoordinatorTest {
         coordinator.play("second", movie(), 0, 2_000);
         assertEquals(2, starts.get());
         assertEquals(3, coordinator.sessionCount());
+    }
+
+    @Test void fourPlayingSessionsFillDefaultLimitButSharedPausedAndDormantTelevisionsDoNot() throws Exception {
+        VideoSessionCoordinator coordinator = new VideoSessionCoordinator(4, 30_000,
+                (session, generation, item, offset) -> () -> {});
+        UUID first = UUID.randomUUID();
+        UUID shared = UUID.randomUUID();
+        coordinator.tune(first, "first");
+        coordinator.tune(shared, "first");
+        for (int index = 2; index <= 4; index++) coordinator.tune(UUID.randomUUID(), "session-" + index);
+        coordinator.tune(UUID.randomUUID(), "paused-dormant");
+        coordinator.tune(UUID.randomUUID(), "fifth");
+        coordinator.play("first", movie(), 0, 1_000);
+        for (int index = 2; index <= 4; index++) coordinator.play("session-" + index, movie(), 0, 1_000);
+        coordinator.restore("paused-dormant", movie(), 12_345, true, 1_000);
+        assertEquals(4, coordinator.activeStreamCount());
+        assertEquals(2, coordinator.snapshot("first", 1_000).televisions().size());
+        assertFalse(coordinator.snapshot("paused-dormant", 20_000).transcoding());
+        assertThrows(IllegalStateException.class, () -> coordinator.play("fifth", movie(), 0, 1_000));
+        coordinator.untune(shared);
+        assertTrue(coordinator.snapshot("first", 2_000).transcoding());
+        coordinator.pause("session-4", 2_000);
+        coordinator.play("fifth", movie(), 0, 2_000);
+        assertEquals(4, coordinator.activeStreamCount());
+    }
+
+    @Test void unloadedSuspensionFreezesPositionAndImmediatelyFreesStreamCapacity() throws Exception {
+        AtomicInteger stops=new AtomicInteger();
+        VideoSessionCoordinator coordinator=new VideoSessionCoordinator(1,30_000,
+                (session,generation,item,offset)->stops::incrementAndGet);
+        coordinator.tune(UUID.randomUUID(),"first");coordinator.tune(UUID.randomUUID(),"second");
+        coordinator.play("first",movie(),4_000,1_000);
+        VideoSessionCoordinator.Snapshot suspended=coordinator.suspend("first",2_000);
+        assertFalse(suspended.transcoding());assertFalse(suspended.paused());assertEquals(5_000,suspended.positionMs());
+        assertEquals(5_000,coordinator.snapshot("first",50_000).positionMs());assertEquals(0,coordinator.activeStreamCount());assertEquals(1,stops.get());
+        assertTrue(coordinator.play("second",movie(),0,2_000).transcoding());
+    }
+
+    @Test void removalRacingACompletedMediaStartClosesTheHandleAndLeavesNoSession() throws Exception {
+        CountDownLatch started=new CountDownLatch(1),release=new CountDownLatch(1);AtomicInteger stops=new AtomicInteger();
+        VideoSessionCoordinator coordinator=new VideoSessionCoordinator(1,0,(session,generation,item,offset)->{started.countDown();try{assertTrue(release.await(5,TimeUnit.SECONDS));}catch(InterruptedException interrupted){Thread.currentThread().interrupt();throw new java.io.IOException(interrupted);}return stops::incrementAndGet;});
+        UUID television=UUID.randomUUID();coordinator.tune(television,"race");
+        java.util.concurrent.atomic.AtomicReference<Throwable> failure=new java.util.concurrent.atomic.AtomicReference<>();
+        Thread play=new Thread(()->{try{coordinator.play("race",movie(),0,1_000);}catch(Throwable error){failure.set(error);}});
+        Thread remove=new Thread(()->{try{coordinator.untune(television);}catch(Throwable error){failure.set(error);}});
+        play.start();assertTrue(started.await(5,TimeUnit.SECONDS));remove.start();release.countDown();play.join(5_000);remove.join(5_000);
+        assertFalse(play.isAlive());assertFalse(remove.isAlive());assertEquals(null,failure.get());assertFalse(coordinator.sessionNames().contains("race"));assertEquals(1,stops.get());
     }
 
     private static VideoMediaItem movie() { return new VideoMediaItem(MediaKind.MOVIE, "1", "Movie", "", "PG", 0, 90_000); }

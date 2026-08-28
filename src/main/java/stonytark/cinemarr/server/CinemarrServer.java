@@ -118,8 +118,8 @@ public final class CinemarrServer {
     public void videoManifest(ServerPlayer player, VideoPackets.SegmentManifestRequest request) { if (videoManager != null) videoManager.manifest(player, request); }
     public void videoAcknowledge(ServerPlayer player, VideoPackets.SegmentAcknowledgement value) { if (videoManager != null) videoManager.acknowledge(player, value); }
     public void videoHealth(ServerPlayer player, VideoPackets.ClientHealth value) { if (videoManager != null) videoManager.health(player, value); }
-    public String videoStatus(){return videoManager==null?"Cinemarr video unavailable; "+TelevisionLifecycle.count()+" registered TV(s)":videoManager.status();}
-    public String videoDiagnostics(){return videoManager==null?"Plex=unavailable; registeredTvs="+TelevisionLifecycle.count()+"; libraries=0; sessions=0; activeStreams=0/"+CinemarrSettings.maximumConcurrentStreams():videoManager.diagnostics();}
+    public String videoStatus(){return videoManager==null?"Cinemarr video unavailable; registeredTvs="+TelevisionLifecycle.count()+"; activeStreams=0/"+CinemarrSettings.maximumConcurrentStreams()+"; attachedSessions=0; dormantSessions=0":videoManager.status();}
+    public String videoDiagnostics(){return videoManager==null?"Plex=unavailable; registeredTvs="+TelevisionLifecycle.count()+"; libraries=0; activeStreams=0/"+CinemarrSettings.maximumConcurrentStreams()+"; attachedSessions=0; dormantSessions=0":videoManager.diagnostics();}
 
     private void prepareAcceptanceVideo(ServerPlayer player) {
         if (!ProtocolLimits.videoProbeEnabled() || videoManager == null) return;

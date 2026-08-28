@@ -14,6 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 class CinemarrWorldScreensTest {
     @Test void activatedGeometryOwnershipMaskPresentationAndSessionRoundTrip(){
@@ -50,6 +51,28 @@ class CinemarrWorldScreensTest {
         assertEquals(1,TelevisionLifecycle.count(owner));
         data.removePixel(new BlockPos(2,0,0));
         assertFalse(data.televisions().iterator().hasNext());assertEquals(0,TelevisionLifecycle.count(owner));assertEquals(1,removed.get());
+        data.putPixel(new BlockPos(2,0,0),Direction.NORTH);
+        assertNull(data.television(controller));
+        assertTrue(data.activate(controller,owner).success());
+        TelevisionLifecycle.reset(null);
+    }
+
+    @Test void controllerRemovalAndRemoteLifecycleRemovalShareTheSameAuthority() {
+        TelevisionLifecycle.reset(null);CinemarrWorldScreens data=new CinemarrWorldScreens();UUID owner=UUID.randomUUID();
+        for(int x=0;x<4;x++)data.putPixel(new BlockPos(x,0,0),Direction.NORTH);
+        BlockPos controller=new BlockPos(0,0,1);assertTrue(data.activate(controller,owner).success());UUID id=data.television(controller).id();
+        assertTrue(TelevisionLifecycle.unregister(id));assertNull(data.television(controller));assertEquals(0,TelevisionLifecycle.count(owner));
+        assertTrue(data.activate(controller,owner).success());data.removeController(controller);assertNull(data.television(controller));assertEquals(0,TelevisionLifecycle.count(owner));
+        TelevisionLifecycle.reset(null);
+    }
+
+    @Test void overlappingActivationFailsAndSavedMissingPixelsArePrunedOnReconciliation() {
+        TelevisionLifecycle.reset(null);CinemarrWorldScreens data=new CinemarrWorldScreens();UUID owner=UUID.randomUUID();
+        for(int x=0;x<4;x++)data.putPixel(new BlockPos(x,0,0),Direction.NORTH);
+        BlockPos first=new BlockPos(0,0,1),second=new BlockPos(3,0,1);assertTrue(data.activate(first,owner).success());assertFalse(data.activate(second,owner).success());
+        CompoundTag saved=data.save(new CompoundTag(),null);saved.getList("pixels",net.minecraft.nbt.Tag.TAG_COMPOUND).remove(0);
+        TelevisionLifecycle.reset(null);CinemarrWorldScreens restored=CinemarrWorldScreens.load(saved,null);restored.reconcileRegistrations();
+        assertTrue(restored.televisions().isEmpty());assertEquals(0,TelevisionLifecycle.count(owner));
         TelevisionLifecycle.reset(null);
     }
 }

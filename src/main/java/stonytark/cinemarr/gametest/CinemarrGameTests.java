@@ -15,6 +15,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.GameType;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -22,11 +23,13 @@ import stonytark.cinemarr.registry.CinemarrBlocks;
 import stonytark.cinemarr.registry.CinemarrItems;
 import stonytark.cinemarr.screen.CinemarrWorldScreens;
 import stonytark.cinemarr.screen.QuickTvBlock;
+import stonytark.cinemarr.screen.ScreenPixelBlock;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 import stonytark.cinemarr.Cinemarr;
 import stonytark.cinemarr.server.CinemarrSavedData;
 import stonytark.cinemarr.core.server.QueueOperations;
+import stonytark.cinemarr.core.server.TelevisionLifecycle;
 import stonytark.cinemarr.server.StationDefinition;
 import stonytark.cinemarr.core.server.StationSelection;
 import stonytark.cinemarr.server.StationGenerator;
@@ -142,6 +145,73 @@ public final class CinemarrGameTests {
             helper.getLevel().destroyBlock(BlockPos.of(packed), false);
         }
         helper.getLevel().destroyBlock(controller, false);
+        helper.succeed();
+    }
+
+    @GameTest(template = "empty", timeoutTicks = 40)
+    public static void quickTvRollbackPreservesPreexistingPixels(GameTestHelper helper) {
+        BlockPos relative = new BlockPos(8, 1, 8);
+        BlockPos controller = helper.absolutePos(relative);
+        BlockPos strayRelative = new BlockPos(16, 1, 7);
+        BlockPos stray = helper.absolutePos(strayRelative);
+        QuickTvBlock block = CinemarrBlocks.QUICK_TV_144P.get();
+        var state = block.defaultBlockState().setValue(QuickTvBlock.FACING, Direction.NORTH);
+        var pixel = CinemarrBlocks.screenPixel().defaultBlockState().setValue(ScreenPixelBlock.FACING, Direction.NORTH);
+        helper.setBlock(strayRelative, pixel);
+        helper.setBlock(relative, state);
+        List<BlockPos> initiallyAir = new java.util.ArrayList<>();
+        BlockPos anchor = controller.relative(Direction.NORTH).relative(Direction.EAST, -8);
+        for (int y = 0; y < 9; y++) for (int x = 0; x < 16; x++) {
+            BlockPos target = anchor.relative(Direction.EAST, x).above(y);
+            if (helper.getLevel().getBlockState(target).isAir()) initiallyAir.add(target);
+        }
+        helper.assertTrue(!initiallyAir.isEmpty(), "Rollback test did not begin with any empty footprint blocks");
+        Player player = helper.makeMockPlayer(GameType.CREATIVE);
+        block.setPlacedBy(helper.getLevel(), controller, state, player, ItemStack.EMPTY);
+        helper.assertTrue(CinemarrWorldScreens.get(helper.getLevel()).television(controller) == null,
+                "Quick TV unexpectedly activated across an incomplete 17x9 mask");
+        helper.assertTrue(helper.getLevel().getBlockState(stray).is(CinemarrBlocks.screenPixel()),
+                "Quick TV rollback deleted a pre-existing screen pixel");
+        for (BlockPos newlyPlaced : initiallyAir) helper.assertTrue(helper.getLevel().getBlockState(newlyPlaced).isAir(),
+                "Quick TV rollback left a newly placed pixel behind: " + newlyPlaced + "=" + helper.getLevel().getBlockState(newlyPlaced));
+        helper.getLevel().destroyBlock(stray, false);
+        helper.getLevel().destroyBlock(controller, false);
+        helper.succeed();
+    }
+
+    @GameTest(template = "empty", timeoutTicks = 60)
+    public static void televisionBreakAndExplosionPathsReleaseRegistration(GameTestHelper helper) {
+        BlockPos relative = new BlockPos(8, 1, 8);
+        BlockPos controller = helper.absolutePos(relative);
+        QuickTvBlock block = CinemarrBlocks.QUICK_TV_144P.get();
+        var state = block.defaultBlockState().setValue(QuickTvBlock.FACING, Direction.NORTH);
+        Player player = helper.makeMockPlayer(GameType.CREATIVE);
+        helper.setBlock(relative, state);
+        block.setPlacedBy(helper.getLevel(), controller, state, player, ItemStack.EMPTY);
+        CinemarrWorldScreens screens = CinemarrWorldScreens.get(helper.getLevel());
+        CinemarrWorldScreens.Television first = screens.television(controller);
+        helper.assertTrue(first != null && TelevisionLifecycle.count(player.getUUID()) == 1,
+                "Quick TV did not consume one owner registration");
+
+        BlockPos removedPixel = BlockPos.of(first.pixels().iterator().next());
+        helper.getLevel().destroyBlock(removedPixel, false);
+        helper.assertTrue(screens.television(controller) == null && TelevisionLifecycle.count(player.getUUID()) == 0,
+                "Breaking a registered pixel did not immediately unregister its TV");
+        helper.getLevel().setBlockAndUpdate(removedPixel, CinemarrBlocks.screenPixel().defaultBlockState()
+                .setValue(ScreenPixelBlock.FACING, Direction.NORTH));
+        CinemarrWorldScreens.Activation repaired = screens.activate(controller, player.getUUID());
+        helper.assertTrue(repaired.success(), "Repairing a pixel could not be manually reactivated: " + repaired.message());
+        helper.getLevel().destroyBlock(controller, false);
+        helper.assertTrue(screens.television(controller) == null && TelevisionLifecycle.count(player.getUUID()) == 0,
+                "Breaking a Quick TV controller did not release its registration");
+
+        helper.setBlock(relative, state);
+        block.setPlacedBy(helper.getLevel(), controller, state, player, ItemStack.EMPTY);
+        helper.assertTrue(screens.television(controller) != null, "Quick TV did not rebuild for explosion coverage");
+        helper.getLevel().explode(null, controller.getX() + 0.5, controller.getY() + 0.5,
+                controller.getZ() + 0.5, 2.0F, Level.ExplosionInteraction.BLOCK);
+        helper.assertTrue(screens.television(controller) == null && TelevisionLifecycle.count(player.getUUID()) == 0,
+                "Explosion removal did not immediately release the TV registration");
         helper.succeed();
     }
 

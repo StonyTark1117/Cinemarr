@@ -110,8 +110,10 @@ public final class CinemarrServer {
     public void videoManifest(ServerPlayer player, VideoPackets.SegmentManifestRequest value) { if (manager != null) manager.manifest(player, value); }
     public void videoAcknowledge(ServerPlayer player, VideoPackets.SegmentAcknowledgement value) { if (manager != null) manager.acknowledge(player, value); }
     public void videoHealth(ServerPlayer player, VideoPackets.ClientHealth value) { if (manager != null) manager.health(player, value); }
-    public String videoStatus() { return manager == null ? "Cinemarr video is unavailable" : manager.status(); }
-    public String videoDiagnostics() { return manager == null ? "Plex=unavailable; libraries=0; sessions=0; transcodes=0" : manager.diagnostics(); }
+    public String videoStatus() { return manager == null ? unavailableStatus() : manager.status(); }
+    public String videoDiagnostics() { return manager == null ? unavailableDiagnostics() : manager.diagnostics(); }
+    private static String unavailableStatus() { return "Cinemarr video unavailable; registeredTvs="+stonytark.cinemarr.core.server.TelevisionLifecycle.count()+"; activeStreams=0/"+CinemarrSettings.maximumConcurrentStreams()+"; attachedSessions=0; dormantSessions=0"; }
+    private static String unavailableDiagnostics() { return "Plex=unavailable; registeredTvs="+stonytark.cinemarr.core.server.TelevisionLifecycle.count()+"; libraries=0; activeStreams=0/"+CinemarrSettings.maximumConcurrentStreams()+"; attachedSessions=0; dormantSessions=0"; }
 
     private void prepareAcceptanceVideo(ServerPlayer player) {
         if (!ProtocolLimits.videoProbeEnabled() || manager == null) return;

@@ -9,6 +9,7 @@ import stonytark.cinemarr.core.library.VideoMediaItem;
 import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LegacyVideoSavedDataTest {
@@ -25,6 +26,23 @@ class LegacyVideoSavedDataTest {
         assertEquals(12_345, value.positionMs()); assertTrue(value.paused());
         assertEquals(7, value.audioStreamId()); assertEquals(9, value.subtitleStreamId());
         assertEquals("43", value.queue().get(0).item().key());
+    }
+
+    @Test
+    void dormantSessionsUseDurableLeastRecentlyUsedEviction() {
+        LegacyVideoSavedData data = new LegacyVideoSavedData();
+        for (int index = 0; index < 64; index++) data.put(record("session-" + index));
+        assertEquals("session-0", data.record("session-0").sessionName());
+        data.put(record("session-64"));
+        assertNull(data.record("session-1"));
+        assertEquals(64, data.records().size());
+        assertEquals("session-0", data.records().get(62).sessionName());
+        assertEquals("session-64", data.records().get(63).sessionName());
+    }
+
+    private static LegacyVideoSavedData.Record record(String name) {
+        return new LegacyVideoSavedData.Record(name, "movies", item(name, "Movie"), 0, true, -1, -1,
+                Collections.<QueuedVideo>emptyList());
     }
 
     private static VideoMediaItem item(String key, String title) {

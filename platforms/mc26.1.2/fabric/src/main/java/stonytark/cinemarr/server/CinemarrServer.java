@@ -123,8 +123,10 @@ public final class CinemarrServer {
     public void videoManifest(ServerPlayer player, VideoPackets.SegmentManifestRequest request) { if (accepted(player) && videoManager != null) videoManager.manifest(player, request); }
     public void videoAcknowledge(ServerPlayer player, VideoPackets.SegmentAcknowledgement value) { if (accepted(player) && videoManager != null) videoManager.acknowledge(player, value); }
     public void videoHealth(ServerPlayer player, VideoPackets.ClientHealth value) { if (accepted(player) && videoManager != null) videoManager.health(player, value); }
-    public String videoStatus() { return videoManager == null ? "Cinemarr video is unavailable" : videoManager.status(); }
-    public String videoDiagnostics() { return videoManager == null ? "Plex=unavailable; libraries=0; sessions=0; transcodes=0" : videoManager.diagnostics(); }
+    public String videoStatus() { return videoManager == null ? unavailableStatus() : videoManager.status(); }
+    public String videoDiagnostics() { return videoManager == null ? unavailableDiagnostics() : videoManager.diagnostics(); }
+    private static String unavailableStatus() { return "Cinemarr video unavailable; registeredTvs="+stonytark.cinemarr.core.server.TelevisionLifecycle.count()+"; activeStreams=0/"+CinemarrSettings.maximumConcurrentStreams()+"; attachedSessions=0; dormantSessions=0"; }
+    private static String unavailableDiagnostics() { return "Plex=unavailable; registeredTvs="+stonytark.cinemarr.core.server.TelevisionLifecycle.count()+"; libraries=0; activeStreams=0/"+CinemarrSettings.maximumConcurrentStreams()+"; attachedSessions=0; dormantSessions=0"; }
 
     private void prepareAcceptanceVideo(ServerPlayer player) {
         if (!ProtocolLimits.videoProbeEnabled() || videoManager == null) return;

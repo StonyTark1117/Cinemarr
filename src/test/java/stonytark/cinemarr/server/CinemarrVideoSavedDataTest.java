@@ -3,9 +3,10 @@ package stonytark.cinemarr.server;
 import net.minecraft.nbt.CompoundTag;
 import org.junit.jupiter.api.Test;
 import stonytark.cinemarr.core.library.MediaKind;
-import stonytark.cinemarr.core.library.VideoMediaItem;
 import stonytark.cinemarr.core.library.QueuedVideo;
+import stonytark.cinemarr.core.library.VideoMediaItem;
 
+import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -26,4 +27,18 @@ class CinemarrVideoSavedDataTest {
         data.retain(Set.of("different"));assertTrue(data.records().isEmpty());
         CompoundTag malformed=new CompoundTag();malformed.putString("kind","NOT_A_KIND");assertTrue(CinemarrVideoSavedData.load(malformed,null).records().isEmpty());
     }
+
+    @Test void dormantSessionsUseDurableLeastRecentlyUsedEviction() {
+        CinemarrVideoSavedData data=new CinemarrVideoSavedData();
+        for(int index=0;index<64;index++)data.put(record("session-"+index));
+        assertEquals("session-0",data.record("session-0").sessionName());
+        data.put(record("session-64"));
+        assertNull(data.record("session-1"));
+        assertEquals(64,data.records().size());
+        List<CinemarrVideoSavedData.Record> order=data.records();
+        assertEquals("session-0",order.get(order.size()-2).sessionName());
+        assertEquals("session-64",order.get(order.size()-1).sessionName());
+    }
+
+    private static CinemarrVideoSavedData.Record record(String name){return new CinemarrVideoSavedData.Record(name,"movies",new VideoMediaItem(MediaKind.MOVIE,name,"Movie","","PG",0,90_000),0,true,-1,-1);}
 }

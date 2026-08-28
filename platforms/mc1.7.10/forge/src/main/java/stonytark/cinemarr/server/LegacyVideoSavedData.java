@@ -20,7 +20,7 @@ import java.util.Set;
 public final class LegacyVideoSavedData extends WorldSavedData {
     public static final String DATA_NAME = "cinemarr_video_sessions";
     private static final int MAX_SESSIONS = 64;
-    private final Map<String, Record> sessions = new LinkedHashMap<String, Record>();
+    private final Map<String, Record> sessions = new LinkedHashMap<String, Record>(16, 0.75F, true);
 
     public LegacyVideoSavedData() { this(DATA_NAME); }
     public LegacyVideoSavedData(String name) { super(name); }
@@ -33,7 +33,7 @@ public final class LegacyVideoSavedData extends WorldSavedData {
     }
 
     public List<Record> records() { return Collections.unmodifiableList(new ArrayList<Record>(sessions.values())); }
-    public Record record(String name) { return sessions.get(name); }
+    public Record record(String name) { Record value = sessions.get(name); if (value != null) markDirty(); return value; }
     public void put(Record value) {
         if (value == null) return;
         sessions.remove(value.sessionName());

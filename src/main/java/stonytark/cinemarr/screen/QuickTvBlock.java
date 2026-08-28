@@ -80,7 +80,12 @@ public final class QuickTvBlock extends HorizontalDirectionalBlock {
         CinemarrWorldScreens screens = CinemarrWorldScreens.get(level);
         CinemarrWorldScreens.Activation activated = screens.activate(controller, player.getUUID());
         if (!activated.success()) {
-            for(BlockPos target:placed)if(level.getBlockState(target).is(CinemarrBlocks.screenPixel()))level.setBlock(target,net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(),3);
+            for (int index = placed.size() - 1; index >= 0; index--) {
+                BlockPos target = placed.get(index);
+                if (level.getBlockState(target).is(CinemarrBlocks.screenPixel())) {
+                    level.setBlockAndUpdate(target, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState());
+                }
+            }
             player.displayClientMessage(Component.literal(activated.message()), false); return false;
         }
         screens.updateRendition(controller, preset.renditionWidth(), preset.renditionHeight());

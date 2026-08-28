@@ -18,10 +18,10 @@ import java.util.Map;
 public final class CinemarrVideoSavedData extends SavedData {
     private static final int MAX_SESSIONS=64;
     public static final Factory<CinemarrVideoSavedData> FACTORY=new Factory<>(CinemarrVideoSavedData::new,CinemarrVideoSavedData::load,null);
-    private final Map<String,Record> sessions=new LinkedHashMap<>();
+    private final Map<String,Record> sessions=new LinkedHashMap<>(16,0.75F,true);
     public static CinemarrVideoSavedData get(MinecraftServer server){return server.overworld().getDataStorage().computeIfAbsent(FACTORY,"cinemarr_video_sessions");}
     public List<Record> records(){return Collections.unmodifiableList(new ArrayList<>(sessions.values()));}
-    public Record record(String name){return sessions.get(name);}
+    public Record record(String name){Record value=sessions.get(name);if(value!=null)setDirty();return value;}
     public void put(Record value){if(value==null)return;sessions.remove(value.sessionName());sessions.put(value.sessionName(),value);while(sessions.size()>MAX_SESSIONS)sessions.remove(sessions.keySet().iterator().next());setDirty();}
     public void remove(String name){if(sessions.remove(name)!=null)setDirty();}
     public void retain(java.util.Set<String> names){if(sessions.keySet().removeIf(name->!names.contains(name)))setDirty();}

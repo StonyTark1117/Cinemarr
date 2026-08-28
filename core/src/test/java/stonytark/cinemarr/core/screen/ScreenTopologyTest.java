@@ -32,11 +32,20 @@ class ScreenTopologyTest {
                 pixel(0, 1), pixel(1, 1), pixel(2, 1),
                 pixel(0, 2), pixel(1, 2), pixel(2, 2)),
                 ScreenLimits.DEFAULTS, false).height());
+        assertEquals(5, ScreenTopology.analyze(Arrays.asList(
+                pixel(0, 0), pixel(0, 1), pixel(0, 2), pixel(0, 3), pixel(0, 4)),
+                ScreenLimits.DEFAULTS, false).height());
         assertThrows(IllegalArgumentException.class, () -> ScreenTopology.analyze(Arrays.asList(
                 pixel(0, 0), pixel(1, 0), pixel(2, 0), pixel(0, 1), pixel(2, 1),
                 pixel(0, 2), pixel(1, 2), pixel(2, 2)), ScreenLimits.DEFAULTS, false));
         assertThrows(IllegalArgumentException.class, () -> ScreenTopology.analyze(Arrays.asList(
                 pixel(0, 0), pixel(1, 0), pixel(0, 1), pixel(0, 2)), ScreenLimits.DEFAULTS, false));
+        assertThrows(IllegalArgumentException.class, () -> ScreenTopology.analyze(Arrays.asList(
+                pixel(0, 0), pixel(1, 0), pixel(2, 0), pixel(1, 1), pixel(1, 2)), ScreenLimits.DEFAULTS, false));
+        assertEquals(5, ScreenTopology.analyze(Arrays.asList(
+                pixel(0, 0), pixel(1, 0), pixel(2, 0), pixel(1, 1), pixel(1, 2)), ScreenLimits.DEFAULTS, true).pixelCount());
+        assertThrows(IllegalArgumentException.class, () -> ScreenTopology.analyze(Arrays.asList(
+                pixel(0, 0), pixel(1, 0), pixel(10, 0), pixel(11, 0)), ScreenLimits.DEFAULTS, true));
     }
 
     @Test void acceptsTheProposedTwoThousandByTwentyScreenWithoutLoadingChunks() {

@@ -153,15 +153,16 @@ public final class VideoSessionCoordinator implements AutoCloseable {
         for (Session session : sessions.values()) {
             if (session.media != null && session.viewers.isEmpty() && session.noViewersSinceMs >= 0
                     && nowMs - session.noViewersSinceMs >= inactiveGraceMs) {
-                close(session.media);
-                session.media = null;
-                Snapshot frozen = session.snapshotAt(nowMs);
-                session.positionAtStartMs = frozen.positionMs();
-                session.startedAtMs = nowMs;
-                session.suspendedAtMs = nowMs;
-                session.generation++;
+                suspendInternal(session, nowMs);
             }
         }
+    }
+
+    /** Immediately freezes playback and releases its media handle without marking it user-paused. */
+    public synchronized Snapshot suspend(String name, long nowMs) throws IOException {
+        Session value = required(name);
+        suspendInternal(value, nowMs);
+        return value.snapshotAt(nowMs);
     }
 
     public synchronized Snapshot snapshot(String name, long nowMs) { return required(name).snapshotAt(nowMs); }
@@ -188,7 +189,14 @@ public final class VideoSessionCoordinator implements AutoCloseable {
 
     public synchronized void untune(UUID televisionId) throws IOException {
         String name = televisionSessions.remove(televisionId);
-        if (name != null) detachTelevision(televisionId, name);
+        if (name == null) return;
+        Session previous = sessions.get(name);
+        if (previous == null) return;
+        previous.televisions.remove(televisionId);
+        if (previous.televisions.isEmpty()) {
+            try { close(previous.media); }
+            finally { previous.media = null; sessions.remove(name); }
+        }
     }
 
     private int activeStreamCountInternal() {
@@ -205,6 +213,17 @@ public final class VideoSessionCoordinator implements AutoCloseable {
             closeUnchecked(previous.media);
             sessions.remove(name);
         }
+    }
+    private static void suspendInternal(Session value, long nowMs) throws IOException {
+        if (value.media == null) return;
+        Snapshot frozen = value.snapshotAt(nowMs);
+        close(value.media);
+        value.media = null;
+        value.positionAtStartMs = frozen.positionMs();
+        value.startedAtMs = nowMs;
+        value.suspendedAtMs = nowMs;
+        value.noViewersSinceMs = -1;
+        value.generation++;
     }
     private Session required(String name) {
         Session value = sessions.get(name);

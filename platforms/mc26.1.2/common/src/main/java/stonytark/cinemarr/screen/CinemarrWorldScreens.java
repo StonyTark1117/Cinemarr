@@ -39,10 +39,13 @@ public final class CinemarrWorldScreens extends SavedData {
             CinemarrWorldScreens::new, CODEC, DataFixTypes.SAVED_DATA_COMMAND_STORAGE);
     private final Map<Long, Direction> pixels = new HashMap<>();
     private final Map<Long, Television> televisions = new HashMap<>();
+    private final transient String detachedDimension = "detached:" + UUID.randomUUID();
+    private transient ServerLevel level;
     private transient boolean registrationsReconciled;
 
     public static CinemarrWorldScreens get(ServerLevel level) {
         CinemarrWorldScreens value = level.getDataStorage().computeIfAbsent(TYPE);
+        value.level = level;
         if(!value.registrationsReconciled)value.reconcileRegistrations();
         return value;
     }
@@ -60,8 +63,8 @@ public final class CinemarrWorldScreens extends SavedData {
     }
 
     public Television removeController(BlockPos pos) {
-        Television removed = televisions.remove(pos.asLong());
-        if (removed != null) { TelevisionLifecycle.unregister(removed.id, removed.sessionName); setDirty(); }
+        Television removed = televisions.get(pos.asLong());
+        if (removed != null) { TelevisionLifecycle.unregister(removed.id, removed.sessionName); if (television(removed.id) != null) removeLocal(removed.id); }
         return removed;
     }
 
@@ -80,21 +83,19 @@ public final class CinemarrWorldScreens extends SavedData {
         try {
             ScreenGeometry geometry = ScreenTopology.analyze(values, limits(), CinemarrSettings.allowIrregularScreens());
             Television existing = televisions.get(controller.asLong());
-            for (Map.Entry<Long, Television> entry : televisions.entrySet()) {
-                if (entry.getKey().longValue() != controller.asLong() && intersects(entry.getValue().pixels, connected)) {
-                    return new Activation(false, "Screen pixels already belong to another TV");
-                }
-            }
+            for (Map.Entry<Long, Television> entry : televisions.entrySet()) if (entry.getKey().longValue() != controller.asLong()
+                    && intersects(entry.getValue().pixels, connected)) return new Activation(false, "Screen pixels already belong to another TV");
             UUID televisionId = existing == null ? UUID.randomUUID() : existing.id;
             UUID televisionOwner = existing == null ? owner : existing.owner;
-            if (existing == null && !TelevisionLifecycle.register(televisionId, televisionOwner,
-                    CinemarrSettings.maximumScreensPerOwner())) {
-                return new Activation(false, "Maximum screens per owner reached");
-            }
-            televisions.put(controller.asLong(), new Television(controller.asLong(), televisionId, televisionOwner, connected,
+            if (TelevisionLifecycle.overlaps(dimensionKey(), connected, televisionId)) return new Activation(false, "Screen pixels already belong to another TV");
+            Television activated = new Television(controller.asLong(), televisionId, televisionOwner, connected,
                     geometry.width(), geometry.height(), geometry.visibilityMask().toByteArray(), geometry.facing(),
                     geometry.minimumU(), geometry.minimumV(), existing == null ? PresentationMode.FIT : existing.presentationMode,
-                    existing == null ? "" : existing.sessionName, geometry.width(), geometry.height()));
+                    existing == null ? "" : existing.sessionName, geometry.width(), geometry.height());
+            if (!TelevisionLifecycle.register(registration(activated), CinemarrSettings.maximumScreensPerOwner())) {
+                return new Activation(false, existing == null ? "Maximum screens per owner reached" : "TV registration conflicts with another screen");
+            }
+            televisions.put(controller.asLong(), activated);
             setDirty();
             return new Activation(true, "Activated " + geometry.width() + "x" + geometry.height()
                     + " TV with " + geometry.pixelCount() + " visible pixels");
@@ -118,7 +119,7 @@ public final class CinemarrWorldScreens extends SavedData {
         return found;
     }
     public int pixelCount() { return pixels.size(); }
-    public int pruneInvalid(){int before=televisions.size();registrationsReconciled=false;reconcileRegistrations();return before-televisions.size();}
+    public int pruneInvalid(){int removed=0;for(Television television:new ArrayList<>(televisions.values())){LiveValidation validation=liveValidation(television);if(validation==LiveValidation.INVALID){if(TelevisionLifecycle.unregister(television.id,television.sessionName))removed++;else{removeLocal(television.id);removed++;}}else TelevisionLifecycle.validation(television.id,validation==LiveValidation.LOADED?TelevisionLifecycle.Validation.LOADED:TelevisionLifecycle.Validation.SAVED);}return removed;}
     public boolean overlaps(BlockPos controller, Set<Long> candidates) {
         for (Map.Entry<Long, Television> entry : televisions.entrySet()) {
             if (entry.getKey().longValue() != controller.asLong() && intersects(entry.getValue().pixels, candidates)) return true;
@@ -126,7 +127,7 @@ public final class CinemarrWorldScreens extends SavedData {
         return false;
     }
     public void updatePresentation(BlockPos controller, PresentationMode mode) { Television value=televisions.get(controller.asLong()); if(value!=null&&mode!=null){value.presentationMode=mode;setDirty();} }
-    public void updateSession(BlockPos controller, String name) { Television value=televisions.get(controller.asLong()); if(value!=null){value.sessionName=name==null?"":name.trim();setDirty();} }
+    public void updateSession(BlockPos controller, String name) { Television value=televisions.get(controller.asLong()); if(value!=null){value.sessionName=name==null?"":name.trim();TelevisionLifecycle.session(value.id,value.sessionName);setDirty();} }
     public void updateRendition(BlockPos controller, int width, int height) { Television value=televisions.get(controller.asLong()); if(value!=null&&width>0&&height>0){value.renditionWidth=width;value.renditionHeight=height;setDirty();} }
 
     private Set<Long> connected(BlockPos start) {
@@ -150,23 +151,19 @@ public final class CinemarrWorldScreens extends SavedData {
     private void invalidateContaining(long pixel) {
         List<Long> invalid = new ArrayList<>();
         for (Map.Entry<Long, Television> entry : televisions.entrySet()) if (entry.getValue().pixels.contains(pixel)) invalid.add(entry.getKey());
-        for (Long controller : invalid) {
-            Television removed = televisions.remove(controller);
-            if (removed != null) TelevisionLifecycle.unregister(removed.id, removed.sessionName);
-        }
+        for (Long controller : invalid) removeController(BlockPos.of(controller));
     }
     private void reconcileRegistrations() {
         registrationsReconciled=true;
         List<Long> invalid = new ArrayList<>();
+        Set<Long> occupied = new HashSet<>();
         for (Map.Entry<Long, Television> entry : televisions.entrySet()) {
             Television television = entry.getValue();
-            if (!valid(television)) invalid.add(entry.getKey());
-            else TelevisionLifecycle.restore(television.id, television.owner);
+            if (!valid(television) || intersects(occupied,television.pixels)
+                    || !TelevisionLifecycle.restore(registration(television))) invalid.add(entry.getKey());
+            else occupied.addAll(television.pixels);
         }
-        for (Long controller : invalid) {
-            Television removed = televisions.remove(controller);
-            if (removed != null) TelevisionLifecycle.unregister(removed.id, removed.sessionName);
-        }
+        for (Long controller : invalid) removeLocalAt(controller);
         if (!invalid.isEmpty()) setDirty();
     }
     private boolean valid(Television television) {
@@ -183,6 +180,12 @@ public final class CinemarrWorldScreens extends SavedData {
             return geometry.width() == television.width && geometry.height() == television.height;
         } catch (IllegalArgumentException invalid) { return false; }
     }
+    private LiveValidation liveValidation(Television television){if(level==null)return LiveValidation.UNLOADED;BlockPos controller=BlockPos.of(television.controllerPos);if(!level.hasChunkAt(controller))return LiveValidation.UNLOADED;for(Long packed:television.pixels)if(!level.hasChunkAt(BlockPos.of(packed)))return LiveValidation.UNLOADED;net.minecraft.world.level.block.Block controllerBlock=level.getBlockState(controller).getBlock();if(!(controllerBlock instanceof TvControllerBlock)&&!(controllerBlock instanceof QuickTvBlock))return LiveValidation.INVALID;for(Long packed:television.pixels){BlockPos pos=BlockPos.of(packed);net.minecraft.world.level.block.state.BlockState state=level.getBlockState(pos);if(!(state.getBlock() instanceof ScreenPixelBlock)||state.getValue(ScreenPixelBlock.FACING)!=Direction.valueOf(television.facing.name()))return LiveValidation.INVALID;}return valid(television)?LiveValidation.LOADED:LiveValidation.INVALID;}
+    private TelevisionLifecycle.Registration registration(final Television television){BlockPos controller=BlockPos.of(television.controllerPos);return new TelevisionLifecycle.Registration(television.id,television.owner,dimensionKey(),television.controllerPos,controller.getX(),controller.getY(),controller.getZ(),television.pixels,television.sessionName,TelevisionLifecycle.Validation.SAVED,()->removeLocal(television.id));}
+    private String dimensionKey(){return level==null?detachedDimension:String.valueOf(level.dimension());}
+    private Television removeLocal(UUID id){Television value=television(id);if(value!=null){televisions.remove(value.controllerPos);setDirty();}return value;}
+    private Television removeLocalAt(long controller){Television value=televisions.remove(controller);if(value!=null)setDirty();return value;}
+    private enum LiveValidation{LOADED,UNLOADED,INVALID}
     private static boolean intersects(Set<Long> first, Set<Long> second) {
         Set<Long> smaller = first.size() <= second.size() ? first : second;
         Set<Long> larger = smaller == first ? second : first;
