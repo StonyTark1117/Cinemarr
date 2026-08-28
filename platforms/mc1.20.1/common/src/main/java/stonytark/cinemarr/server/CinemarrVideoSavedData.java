@@ -21,7 +21,7 @@ public final class CinemarrVideoSavedData extends SavedData {
     public static CinemarrVideoSavedData get(MinecraftServer server){return server.overworld().getDataStorage().computeIfAbsent(CinemarrVideoSavedData::load,CinemarrVideoSavedData::new,"cinemarr_video_sessions");}
     public List<Record> records(){return Collections.unmodifiableList(new ArrayList<>(sessions.values()));}
     public Record record(String name){return sessions.get(name);}
-    public void put(Record value){if(value==null)return;sessions.put(value.sessionName(),value);while(sessions.size()>MAX_SESSIONS)sessions.remove(sessions.keySet().iterator().next());setDirty();}
+    public void put(Record value){if(value==null)return;sessions.remove(value.sessionName());sessions.put(value.sessionName(),value);while(sessions.size()>MAX_SESSIONS)sessions.remove(sessions.keySet().iterator().next());setDirty();}
     public void remove(String name){if(sessions.remove(name)!=null)setDirty();}
     public void retain(java.util.Set<String> names){if(sessions.keySet().removeIf(name->!names.contains(name)))setDirty();}
     @Override public CompoundTag save(CompoundTag tag){tag.putInt("schemaVersion",1);ListTag values=new ListTag();for(Record record:sessions.values())values.add(saveRecord(record));tag.put("sessions",values);return tag;}

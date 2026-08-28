@@ -20,6 +20,7 @@ public final class CinemarrCommands {
                                     CinemarrServer.instance().videoDiagnostics()), false);
                             return 1;
                         }));
+        root.then(CinemarrTvCommands.command());
         event.getDispatcher().register(root);
     }
     private static int status(CommandSourceStack source) {

@@ -15,7 +15,8 @@ public final class CinemarrCommands {
                 .executes(context->status(context.getSource()))
                 .then(Commands.literal("status").executes(context->status(context.getSource())))
                 .then(Commands.literal("diagnostics").requires(source->source.hasPermission(CinemarrSettings.operatorPermissionLevel()))
-                        .executes(context->{context.getSource().sendSuccess(()->Component.literal(CinemarrServer.instance().videoDiagnostics()),false);return 1;}));
+                        .executes(context->{context.getSource().sendSuccess(()->Component.literal(CinemarrServer.instance().videoDiagnostics()),false);return 1;}))
+                .then(CinemarrTvCommands.command());
         event.getDispatcher().register(root);
     }
     private static int status(CommandSourceStack source){source.sendSuccess(()->Component.literal(CinemarrServer.instance().videoStatus()),false);return 1;}

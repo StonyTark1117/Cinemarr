@@ -20,6 +20,7 @@ import stonytark.cinemarr.core.server.RedstoneControlPolicy;
 import stonytark.cinemarr.core.server.SecretRedactor;
 import stonytark.cinemarr.core.server.SlidingWindowRateLimiter;
 import stonytark.cinemarr.core.server.VideoSessionCoordinator;
+import stonytark.cinemarr.core.server.TelevisionLifecycle;
 import stonytark.cinemarr.core.video.PresentationMode;
 import stonytark.cinemarr.core.video.RenditionPolicy;
 import stonytark.cinemarr.network.LegacyNetwork;
@@ -81,9 +82,9 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
         this.server = server; this.plex = plex;
         this.libraries = Collections.unmodifiableList(new ArrayList<PlexVideoService.ResolvedLibrary>(libraries));
         this.saved = saved;
-        sessions = new VideoSessionCoordinator(CinemarrSettings.maximumActiveTelevisions(),
+        sessions = new VideoSessionCoordinator(CinemarrSettings.maximumConcurrentStreams(),
                 CinemarrSettings.inactiveSessionGraceSeconds() * 1000L, this::startMedia);
-        restoreSessions(); initializeReceiverPower(); LegacyNetwork.setServerListener(this);
+        restoreSessions(); initializeReceiverPower(); TelevisionLifecycle.listener(this::televisionRemoved); LegacyNetwork.setServerListener(this);
     }
 
     private void restoreSessions() {
@@ -91,7 +92,6 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
         for (WorldServer world : server.worldServers) if (world != null) for (LegacyWorldScreens.Television television : LegacyWorldScreens.get(world).televisions()) {
             if (!television.sessionName().trim().isEmpty()) { sessions.tune(television.id(), television.sessionName()); tunedNames.add(television.sessionName()); }
         }
-        saved.retain(tunedNames);
         for (LegacyVideoSavedData.Record record : saved.records()) {
             VideoSessionCoordinator.Snapshot current = sessions.snapshotIfPresent(record.sessionName(), now);
             PlexVideoService.ResolvedLibrary library = library(record.libraryId());
@@ -140,7 +140,7 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
                         && state.item().durationMs() > 0 && state.positionMs() >= state.item().durationMs()) advance(state, null);
             }
             if (now - lastCheckpointMs >= 5_000L) {
-                lastCheckpointMs = now; saved.retain(names);
+                lastCheckpointMs = now;
                 for (String name : names) persist(sessions.snapshotIfPresent(name, now));
             }
         } catch (IOException failure) {
@@ -148,7 +148,7 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
         }
     }
 
-    private void tickRedstoneReceivers(long now) {
+    private void tickRedstoneReceivers(long now) throws IOException {
         Set<UUID> present = new LinkedHashSet<UUID>();
         Set<String> risingSessions = new LinkedHashSet<String>();
         for (WorldServer world : server.worldServers) if (world != null) {
@@ -168,7 +168,8 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
         for (String name : risingSessions) {
             VideoSessionCoordinator.Snapshot state = sessions.snapshotIfPresent(name, now);
             if (state == null || state.item() == null) continue;
-            if (state.paused()) sessions.resume(name, now); else sessions.pause(name, now);
+            if (state.paused()) { sessions.resume(name, now); restartIfNeeded(name, sessions.snapshot(name, now)); }
+            else sessions.pause(name, now);
             VideoSessionCoordinator.Snapshot changed = sessions.snapshot(name, now);
             persist(changed);
             publishSession(changed, changed.paused() ? "Paused by redstone receiver" : "Resumed by redstone receiver", false, null);
@@ -252,7 +253,7 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
         viewingSessions.put(playerId, nextSessions);
         for (String name : nextSessions) {
             VideoSessionCoordinator.Snapshot state = sessions.snapshotIfPresent(name, now);
-            if (state != null && state.item() != null && !state.transcoding()) restartIfNeeded(name, state);
+            if (state != null && state.item() != null && !state.transcoding() && !state.paused()) restartIfNeeded(name, state);
         }
         Map<UUID, Long> previousTvs = visibleTelevisions.get(playerId);
         if (previousTvs == null) previousTvs = Collections.emptyMap();
@@ -305,7 +306,9 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
         if (!canControl(player, television)) { error(player, "Only the TV owner or an operator can control this TV"); return; }
         try {
             String requested = command.sessionName().trim().isEmpty() ? television.sessionName() : command.sessionName();
-            final VideoSessionCoordinator.Snapshot tuned = sessions.tune(television.id(), requested);
+            VideoSessionCoordinator.Snapshot selected = sessions.tune(television.id(), requested);
+            if (selected.item() == null) selected = restoreDormant(selected);
+            final VideoSessionCoordinator.Snapshot tuned = selected;
             screenData.updateSession(command.controllerPos(), tuned.name()); refreshAllTracking();
             if (command.action() == VideoPackets.SessionAction.SET_PRESENTATION) screenData.updatePresentation(command.controllerPos(), command.presentationMode());
             final PresentationMode presentation = command.action() == VideoPackets.SessionAction.SET_PRESENTATION
@@ -313,8 +316,8 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
             if (command.action() == VideoPackets.SessionAction.TUNE) { publish(player, television, tuned, presentation, "Tuned", true); return; }
             if (command.expectedGeneration() != tuned.generation()) { error(player, "TV state changed; refresh before controlling it"); return; }
             switch (command.action()) {
-                case PAUSE: sessions.pause(tuned.name(), System.currentTimeMillis()); publishSnapshot(player, television, tuned.name(), presentation, "Paused", false); break;
-                case RESUME: sessions.resume(tuned.name(), System.currentTimeMillis()); publishSnapshot(player, television, tuned.name(), presentation, "Playing", false); break;
+                case PAUSE: sessions.pause(tuned.name(), System.currentTimeMillis()); publishSession(sessions.snapshot(tuned.name(),System.currentTimeMillis()), "Paused", false, player); break;
+                case RESUME: sessions.resume(tuned.name(), System.currentTimeMillis()); VideoSessionCoordinator.Snapshot resumed=sessions.snapshot(tuned.name(),System.currentTimeMillis());persist(resumed);publishSession(resumed,"Resuming",false,player);restartIfNeeded(tuned.name(),resumed);break;
                 case SEEK: asyncSeek(player, television, tuned, command, presentation); break;
                 case PLAY: case SET_STREAMS: asyncPlay(player, television, tuned, command, presentation); break;
                 case STOP:
@@ -344,7 +347,7 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
         String libraryId = command.action() == VideoPackets.SessionAction.SET_STREAMS ? playbackLibraries.get(tuned.id()) : command.libraryId();
         final PlexVideoService.ResolvedLibrary library = library(libraryId, player); if (library == null) return;
         final int playerPermission = permission(player);
-        final RenditionPolicy.Dimensions rendition = RenditionPolicy.choose(television.renditionWidth(), television.renditionHeight(), 1920, 1080, 1920, 1080);
+        final RenditionPolicy.Dimensions rendition = renditionFor(television);
         CompletableFuture.supplyAsync(() -> {
             try {
                 String itemKey = command.itemKey().trim().isEmpty() && tuned.item() != null ? tuned.item().key() : command.itemKey();
@@ -366,7 +369,7 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
     private void asyncSeek(final EntityPlayerMP player, final LegacyWorldScreens.Television television,
                            final VideoSessionCoordinator.Snapshot tuned, final VideoPackets.SessionCommand command,
                            final PresentationMode presentation) {
-        final RenditionPolicy.Dimensions rendition = RenditionPolicy.choose(television.renditionWidth(), television.renditionHeight(), 1920, 1080, 1920, 1080);
+        final RenditionPolicy.Dimensions rendition = renditionFor(television);
         CompletableFuture.runAsync(() -> {
             try {
                 StartOptions previous = playbackOptions.get(tuned.id());
@@ -501,8 +504,9 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
         clientHealth.put(player.getUniqueID(), new HealthRecord(value, System.currentTimeMillis()));
     }
 
-    public String status() { return "Cinemarr video: " + sessions.sessionCount() + " session(s), " + active.size()
-            + " active transcode(s), " + libraries.size() + " allowed librar" + (libraries.size() == 1 ? "y" : "ies"); }
+    public String status() { return "Cinemarr video: " + TelevisionLifecycle.count() + " registered TV(s), "
+            + sessions.activeStreamCount() + "/" + CinemarrSettings.maximumConcurrentStreams() + " active stream(s), "
+            + saved.records().size() + " saved session(s)"; }
     public String diagnostics() {
         long now = System.currentTimeMillis(); int cached = 0, reports = 0, recoveries = 0, drops = 0, underruns = 0, queued = 0; long drift = 0;
         for (ActiveMedia media : active.values()) cached += media.cachedSegments();
@@ -511,7 +515,8 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
             underruns += record.value.audioUnderruns(); drift = Math.max(drift, Math.abs(record.value.driftMs()));
         }
         for (List<QueuedVideo> queue : queues.values()) queued += queue.size();
-        return "Plex=ready; libraries=" + libraries.size() + "; sessions=" + sessions.sessionCount() + "; transcodes=" + active.size()
+        return "Plex=ready; libraries=" + libraries.size() + "; registeredTvs=" + TelevisionLifecycle.count()
+                + "; sessions=" + sessions.sessionCount() + "; activeStreams=" + sessions.activeStreamCount() + "/" + CinemarrSettings.maximumConcurrentStreams()
                 + "; cachedSegments=" + cached + "; queued=" + queued + "; trackingClients=" + visibleTelevisions.size()
                 + "; healthReports=" + reports + "; decoderRecoveries=" + recoveries + "; videoDrops=" + drops
                 + "; audioUnderruns=" + underruns + "; maxDriftMs=" + drift;
@@ -550,13 +555,51 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
         saved.put(new LegacyVideoSavedData.Record(state.name(), library, state.item(), state.positionMs(), state.paused(),
                 options.streams.audioId, options.streams.subtitleId, queue));
     }
+    private boolean current(VideoSessionCoordinator.Snapshot state) { return state != null && sessions.snapshotIfPresent(state.id(), state.generation(), System.currentTimeMillis()) != null; }
 
+    private VideoSessionCoordinator.Snapshot restoreDormant(VideoSessionCoordinator.Snapshot tuned) {
+        LegacyVideoSavedData.Record record = saved.record(tuned.name());
+        PlexVideoService.ResolvedLibrary library = record == null ? null : library(record.libraryId());
+        if (record == null || library == null || !library.rule().allows(record.item(), 4)) return tuned;
+        playbackLibraries.put(tuned.id(), record.libraryId());
+        playbackOptions.put(tuned.id(), new StartOptions(renditionForSession(tuned.name()),
+                new StreamSelection(Collections.<VideoStreamOption>emptyList(), record.audioStreamId(), record.subtitleStreamId())));
+        queues.put(tuned.id(), new ArrayList<QueuedVideo>(record.queue()));
+        return sessions.restore(tuned.name(), record.item(), record.positionMs(), true, System.currentTimeMillis());
+    }
+
+    public void televisionRemoved(UUID televisionId, String sessionName) {
+        if (televisionId == null) return;
+        long now = System.currentTimeMillis();
+        VideoSessionCoordinator.Snapshot state = sessionName == null || sessionName.trim().isEmpty()
+                ? null : sessions.snapshotIfPresent(sessionName, now);
+        if (state != null && state.televisions().contains(televisionId) && state.televisions().size() == 1 && state.item() != null) {
+            String library = playbackLibraries.get(state.id()); StartOptions options = playbackOptions.get(state.id());
+            List<QueuedVideo> queue = queues.get(state.id()); if (queue == null) queue = Collections.emptyList();
+            if (library != null && options != null) saved.put(new LegacyVideoSavedData.Record(state.name(), library,
+                    state.item(), state.positionMs(), true, options.streams.audioId, options.streams.subtitleId, queue));
+        }
+        try { sessions.untune(televisionId); }
+        catch (IOException failure) { Cinemarr.LOGGER.warn("Unable to stop removed TV session: {}",
+                SecretRedactor.message(failure, CinemarrSettings.plexToken())); }
+        if (state != null && state.televisions().size() == 1) {
+            playbackLibraries.remove(state.id()); playbackOptions.remove(state.id()); queues.remove(state.id());
+            restartingSessions.remove(state.id()); advancingSessions.remove(state.id());
+        }
+        refreshAllTracking();
+    }
+
+    private static RenditionPolicy.Dimensions renditionFor(LegacyWorldScreens.Television television) {
+        return RenditionPolicy.chooseForScreen(television.width(), television.height(), television.renditionWidth(),
+                television.renditionHeight(), 1920, 1080, 1920, 1080);
+    }
     private RenditionPolicy.Dimensions renditionForSession(String name) {
         int width = 0, height = 0;
         for (WorldServer world : server.worldServers) if (world != null) for (LegacyWorldScreens.Television television : LegacyWorldScreens.get(world).televisions()) {
-            if (name.equals(television.sessionName())) { width = Math.max(width, television.renditionWidth()); height = Math.max(height, television.renditionHeight()); }
+            if (name.equals(television.sessionName())) { RenditionPolicy.Dimensions value = renditionFor(television); width = Math.max(width, value.width()); height = Math.max(height, value.height()); }
         }
-        return RenditionPolicy.choose(width == 0 ? 1280 : width, height == 0 ? 720 : height, 1920, 1080, 1920, 1080);
+        return width == 0 ? RenditionPolicy.choose(1280, 720, 1920, 1080, 1920, 1080)
+                : RenditionPolicy.choose(width, height, width, height, width, height);
     }
     private List<LegacyWorldScreens.Television> televisionsForSession(String name) {
         List<LegacyWorldScreens.Television> values = new ArrayList<LegacyWorldScreens.Television>();
@@ -694,6 +737,7 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
     }
 
     @Override public void close() {
+        TelevisionLifecycle.listener(null);
         long now = System.currentTimeMillis(); for (String name : sessions.sessionNames()) persist(sessions.snapshotIfPresent(name, now));
         try { sessions.close(); } catch (IOException failure) { Cinemarr.LOGGER.warn("Unable to close Plex video sessions: {}", SecretRedactor.message(failure, CinemarrSettings.plexToken())); }
         workers.shutdownNow(); active.clear(); startingOptions.remove(); playbackOptions.clear(); playbackLibraries.clear();

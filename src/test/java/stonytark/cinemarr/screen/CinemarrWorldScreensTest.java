@@ -6,12 +6,14 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.level.ChunkPos;
 import org.junit.jupiter.api.Test;
 import stonytark.cinemarr.core.video.PresentationMode;
+import stonytark.cinemarr.core.server.TelevisionLifecycle;
 
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class CinemarrWorldScreensTest {
     @Test void activatedGeometryOwnershipMaskPresentationAndSessionRoundTrip(){
@@ -36,5 +38,18 @@ class CinemarrWorldScreensTest {
         assertEquals(data.television(controller).id(),data.televisionsForChunk(new ChunkPos(0,0)).getFirst().id());
         assertEquals(data.television(controller).id(),data.televisionsForChunk(new ChunkPos(1,0)).getFirst().id());
         assertTrue(data.televisionsForChunk(new ChunkPos(2,0)).isEmpty());
+    }
+
+    @Test void breakingARegisteredPixelUnregistersAndNotifiesLifecycle() {
+        java.util.concurrent.atomic.AtomicInteger removed=new java.util.concurrent.atomic.AtomicInteger();
+        TelevisionLifecycle.reset((id,session)->removed.incrementAndGet());
+        CinemarrWorldScreens data=new CinemarrWorldScreens();UUID owner=UUID.randomUUID();
+        data.putPixel(new BlockPos(0,0,0),Direction.NORTH);data.putPixel(new BlockPos(1,0,0),Direction.NORTH);
+        data.putPixel(new BlockPos(2,0,0),Direction.NORTH);data.putPixel(new BlockPos(3,0,0),Direction.NORTH);
+        BlockPos controller=new BlockPos(0,0,1);assertTrue(data.activate(controller,owner).success());
+        assertEquals(1,TelevisionLifecycle.count(owner));
+        data.removePixel(new BlockPos(2,0,0));
+        assertFalse(data.televisions().iterator().hasNext());assertEquals(0,TelevisionLifecycle.count(owner));assertEquals(1,removed.get());
+        TelevisionLifecycle.reset(null);
     }
 }

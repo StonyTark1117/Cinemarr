@@ -7,9 +7,16 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
-/** Validates arbitrary four-connected planar silhouettes and produces their logical raster. */
+/** Validates a planar screen and produces its logical raster. */
 public final class ScreenTopology {
     public static ScreenGeometry analyze(Collection<ScreenPixel> input, ScreenLimits limits) {
+        return analyze(input, limits, true);
+    }
+
+    /**
+     * @param allowIrregular when false, every cell in the rectangular bounds must be present
+     */
+    public static ScreenGeometry analyze(Collection<ScreenPixel> input, ScreenLimits limits, boolean allowIrregular) {
         if (input == null || limits == null) throw new IllegalArgumentException("Pixels and limits are required");
         Set<ScreenPixel> pixels = new LinkedHashSet<ScreenPixel>(input);
         if (pixels.size() != input.size()) throw new IllegalArgumentException("Duplicate screen pixel");
@@ -46,6 +53,9 @@ public final class ScreenTopology {
         assertConnected(projected);
         int width = (int) widthLong;
         int height = (int) heightLong;
+        if (!allowIrregular && (long) projected.size() != widthLong * heightLong) {
+            throw new IllegalArgumentException("Screen must be a solid rectangle");
+        }
         BitSet mask = new BitSet(width * height);
         for (long packed : projected) {
             int u = unpackFirst(packed);

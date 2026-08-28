@@ -15,6 +15,7 @@ import stonytark.cinemarr.core.screen.ScreenLimits;
 import stonytark.cinemarr.core.screen.ScreenPixel;
 import stonytark.cinemarr.core.screen.ScreenTopology;
 import stonytark.cinemarr.core.platform.CinemarrSettings;
+import stonytark.cinemarr.core.server.TelevisionLifecycle;
 import stonytark.cinemarr.core.video.PresentationMode;
 
 import java.util.ArrayDeque;
@@ -33,9 +34,12 @@ public final class CinemarrWorldScreens extends SavedData {
             CinemarrWorldScreens::load, null);
     private final Map<Long, Direction> pixels = new HashMap<>();
     private final Map<Long, Television> televisions = new HashMap<>();
+    private transient boolean registrationsReconciled;
 
     public static CinemarrWorldScreens get(ServerLevel level) {
-        return level.getDataStorage().computeIfAbsent(FACTORY, "cinemarr_screens");
+        CinemarrWorldScreens value = level.getDataStorage().computeIfAbsent(FACTORY, "cinemarr_screens");
+        if(!value.registrationsReconciled)value.reconcileRegistrations();
+        return value;
     }
 
     public void putPixel(BlockPos pos, Direction facing) {
@@ -50,7 +54,11 @@ public final class CinemarrWorldScreens extends SavedData {
         setDirty();
     }
 
-    public void removeController(BlockPos pos) { if (televisions.remove(pos.asLong()) != null) setDirty(); }
+    public Television removeController(BlockPos pos) {
+        Television removed = televisions.remove(pos.asLong());
+        if (removed != null) { TelevisionLifecycle.unregister(removed.id, removed.sessionName); setDirty(); }
+        return removed;
+    }
 
     public Activation activate(BlockPos controller, UUID owner) {
         BlockPos start = null;
@@ -65,13 +73,19 @@ public final class CinemarrWorldScreens extends SavedData {
             values.add(new ScreenPixel(pos.getX(), pos.getY(), pos.getZ(), facing(pixels.get(packed))));
         }
         try {
-            ScreenGeometry geometry = ScreenTopology.analyze(values, limits());
+            ScreenGeometry geometry = ScreenTopology.analyze(values, limits(), CinemarrSettings.allowIrregularScreens());
             Television existing = televisions.get(controller.asLong());
-            if (existing == null && ownedBy(owner) >= CinemarrSettings.maximumScreensPerOwner()) {
-                return new Activation(false, "Maximum screens per owner reached");
+            for (Map.Entry<Long, Television> entry : televisions.entrySet()) {
+                if (entry.getKey().longValue() != controller.asLong() && intersects(entry.getValue().pixels, connected)) {
+                    return new Activation(false, "Screen pixels already belong to another TV");
+                }
             }
             UUID televisionId = existing == null ? UUID.randomUUID() : existing.id;
             UUID televisionOwner = existing == null ? owner : existing.owner;
+            if (existing == null && !TelevisionLifecycle.register(televisionId, televisionOwner,
+                    CinemarrSettings.maximumScreensPerOwner())) {
+                return new Activation(false, "Maximum screens per owner reached");
+            }
             televisions.put(controller.asLong(), new Television(controller.asLong(), televisionId, televisionOwner, connected,
                     geometry.width(), geometry.height(), geometry.visibilityMask().toByteArray(), geometry.facing(),
                     geometry.minimumU(), geometry.minimumV(), existing == null ? PresentationMode.FIT : existing.presentationMode,
@@ -85,6 +99,8 @@ public final class CinemarrWorldScreens extends SavedData {
     }
 
     public Television television(BlockPos controller) { return televisions.get(controller.asLong()); }
+    public Television television(UUID id) { for(Television value:televisions.values())if(value.id.equals(id))return value;return null; }
+    public Television removeTelevision(UUID id) { Television value=television(id);return value==null?null:removeController(BlockPos.of(value.controllerPos)); }
     public List<Television> televisions(){return java.util.Collections.unmodifiableList(new ArrayList<>(televisions.values()));}
     public List<Television> televisionsForChunk(ChunkPos chunk) {
         List<Television> found = new ArrayList<>();
@@ -97,7 +113,13 @@ public final class CinemarrWorldScreens extends SavedData {
         return found;
     }
     public int pixelCount() { return pixels.size(); }
-    private int ownedBy(UUID owner) { int count=0; for(Television value:televisions.values())if(value.owner.equals(owner))count++; return count; }
+    public int pruneInvalid(){int before=televisions.size();registrationsReconciled=false;reconcileRegistrations();return before-televisions.size();}
+    public boolean overlaps(BlockPos controller, Set<Long> candidates) {
+        for (Map.Entry<Long, Television> entry : televisions.entrySet()) {
+            if (entry.getKey().longValue() != controller.asLong() && intersects(entry.getValue().pixels, candidates)) return true;
+        }
+        return false;
+    }
     public void updatePresentation(BlockPos controller, PresentationMode mode) { Television value=televisions.get(controller.asLong()); if(value!=null&&mode!=null){value.presentationMode=mode;setDirty();} }
     public void updateSession(BlockPos controller, String name) { Television value=televisions.get(controller.asLong()); if(value!=null){value.sessionName=name==null?"":name.trim();setDirty();} }
     public void updateRendition(BlockPos controller, int width, int height) {
@@ -126,7 +148,44 @@ public final class CinemarrWorldScreens extends SavedData {
     private void invalidateContaining(long pixel) {
         List<Long> invalid = new ArrayList<>();
         for (Map.Entry<Long, Television> entry : televisions.entrySet()) if (entry.getValue().pixels.contains(pixel)) invalid.add(entry.getKey());
-        for (Long controller : invalid) televisions.remove(controller);
+        for (Long controller : invalid) {
+            Television removed = televisions.remove(controller);
+            if (removed != null) TelevisionLifecycle.unregister(removed.id, removed.sessionName);
+        }
+    }
+    private void reconcileRegistrations() {
+        registrationsReconciled=true;
+        List<Long> invalid = new ArrayList<>();
+        for (Map.Entry<Long, Television> entry : televisions.entrySet()) {
+            Television television = entry.getValue();
+            if (!valid(television)) invalid.add(entry.getKey());
+            else TelevisionLifecycle.restore(television.id, television.owner);
+        }
+        for (Long controller : invalid) {
+            Television removed = televisions.remove(controller);
+            if (removed != null) TelevisionLifecycle.unregister(removed.id, removed.sessionName);
+        }
+        if (!invalid.isEmpty()) setDirty();
+    }
+    private boolean valid(Television television) {
+        if (television.pixels.isEmpty()) return false;
+        List<ScreenPixel> values = new ArrayList<>(television.pixels.size());
+        for (Long packed : television.pixels) {
+            Direction direction = pixels.get(packed);
+            if (direction == null) return false;
+            BlockPos pos = BlockPos.of(packed);
+            values.add(new ScreenPixel(pos.getX(), pos.getY(), pos.getZ(), facing(direction)));
+        }
+        try {
+            ScreenGeometry geometry = ScreenTopology.analyze(values, limits(), CinemarrSettings.allowIrregularScreens());
+            return geometry.width() == television.width && geometry.height() == television.height;
+        } catch (IllegalArgumentException invalid) { return false; }
+    }
+    private static boolean intersects(Set<Long> first, Set<Long> second) {
+        Set<Long> smaller = first.size() <= second.size() ? first : second;
+        Set<Long> larger = smaller == first ? second : first;
+        for (Long value : smaller) if (larger.contains(value)) return true;
+        return false;
     }
     private static int plane(BlockPos pos, Direction facing) {
         switch (facing.getAxis()) { case X: return pos.getX(); case Y: return pos.getY(); default: return pos.getZ(); }

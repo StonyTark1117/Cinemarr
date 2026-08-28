@@ -13,6 +13,7 @@ import net.minecraft.world.WorldServer;
 import stonytark.cinemarr.Cinemarr;
 import stonytark.cinemarr.core.platform.CinemarrSettings;
 import stonytark.cinemarr.core.screen.QuickTvPreset;
+import stonytark.cinemarr.core.server.TelevisionLifecycle;
 import stonytark.cinemarr.network.LegacyNetwork;
 import stonytark.cinemarr.network.LegacyPacketTypes;
 
@@ -50,7 +51,7 @@ public final class LegacyQuickTvBlock extends Block {
     }
 
     private boolean build(WorldServer world, int x, int y, int z, int facing, EntityPlayer player) {
-        String problem = preflight(world, x, y, z, facing);
+        String problem = preflight(world, x, y, z, facing, player);
         if (problem != null) { player.addChatMessage(new ChatComponentText(problem)); return false; }
         int frontX = facing == 4 ? -1 : facing == 5 ? 1 : 0;
         int frontZ = facing == 2 ? -1 : facing == 3 ? 1 : 0;
@@ -58,12 +59,15 @@ public final class LegacyQuickTvBlock extends Block {
         int acrossZ = facing == 4 ? -1 : facing == 5 ? 1 : 0;
         int anchorX = x + frontX - acrossX * (preset.physicalWidth() / 2);
         int anchorZ = z + frontZ - acrossZ * (preset.physicalWidth() / 2);
+        java.util.List<Long> placed = new java.util.ArrayList<Long>();
         for (int py = 0; py < preset.physicalHeight(); py++) for (int px = 0; px < preset.physicalWidth(); px++) {
-            world.setBlock(anchorX + acrossX * px, y + py, anchorZ + acrossZ * px, LegacyBlocks.SCREEN_PIXEL, facing, 3);
+            int targetX=anchorX+acrossX*px,targetY=y+py,targetZ=anchorZ+acrossZ*px;
+            if(world.isAirBlock(targetX,targetY,targetZ))placed.add(LegacyBlockPos.pack(targetX,targetY,targetZ));
+            world.setBlock(targetX,targetY,targetZ, LegacyBlocks.SCREEN_PIXEL, facing, 3);
         }
         LegacyWorldScreens screens = LegacyWorldScreens.get(world);
         LegacyWorldScreens.Activation activated = screens.activate(x, y, z, player.getUniqueID());
-        if (!activated.success()) { player.addChatMessage(new ChatComponentText(activated.message())); return false; }
+        if (!activated.success()) { for(Long target:placed)if(world.getBlock(LegacyBlockPos.x(target),LegacyBlockPos.y(target),LegacyBlockPos.z(target))==LegacyBlocks.SCREEN_PIXEL)world.setBlockToAir(LegacyBlockPos.x(target),LegacyBlockPos.y(target),LegacyBlockPos.z(target));player.addChatMessage(new ChatComponentText(activated.message())); return false; }
         screens.updateRendition(LegacyBlockPos.pack(x, y, z), preset.renditionWidth(), preset.renditionHeight());
         Cinemarr.televisionActivated(world, screens.television(LegacyBlockPos.pack(x, y, z)));
         player.addChatMessage(new ChatComponentText("Built " + preset.id() + " Quick TV: "
@@ -72,8 +76,11 @@ public final class LegacyQuickTvBlock extends Block {
         return true;
     }
 
-    private String preflight(WorldServer world, int x, int y, int z, int facing) {
+    private String preflight(WorldServer world, int x, int y, int z, int facing, EntityPlayer player) {
         if (!CinemarrSettings.quickTvPresetEnabled(preset)) return preset.id() + " Quick TV kits are disabled by the server";
+        LegacyWorldScreens screens=LegacyWorldScreens.get(world);
+        long controller=LegacyBlockPos.pack(x,y,z);
+        if(screens.television(controller)==null&&TelevisionLifecycle.count(player.getUniqueID())>=CinemarrSettings.maximumScreensPerOwner())return "Maximum screens per owner reached";
         if (preset.physicalPixels() < CinemarrSettings.minimumScreenPixels()
                 || preset.physicalPixels() > CinemarrSettings.maximumScreenPixels()
                 || preset.physicalWidth() > CinemarrSettings.maximumScreenDimension()
@@ -86,8 +93,10 @@ public final class LegacyQuickTvBlock extends Block {
         int acrossZ = facing == 4 ? -1 : facing == 5 ? 1 : 0;
         int anchorX = x + frontX - acrossX * (preset.physicalWidth() / 2);
         int anchorZ = z + frontZ - acrossZ * (preset.physicalWidth() / 2);
+        java.util.Set<Long> footprint=new java.util.HashSet<Long>();
         for (int py = 0; py < preset.physicalHeight(); py++) for (int px = 0; px < preset.physicalWidth(); px++) {
             int targetX = anchorX + acrossX * px, targetY = y + py, targetZ = anchorZ + acrossZ * px;
+            footprint.add(LegacyBlockPos.pack(targetX,targetY,targetZ));
             if (targetY < 0 || targetY >= 256 || !world.blockExists(targetX, targetY, targetZ)) {
                 return "Load the complete " + preset.id() + " Quick TV footprint before building";
             }
@@ -96,6 +105,7 @@ public final class LegacyQuickTvBlock extends Block {
                 return "The " + preset.id() + " Quick TV footprint is obstructed at " + targetX + "," + targetY + "," + targetZ;
             }
         }
+        if(screens.overlaps(controller,footprint))return "Quick TV pixels already belong to another TV";
         return null;
     }
 

@@ -59,6 +59,7 @@ public final class CinemarrServer {
                     .resolve("serverconfig").resolve(CanonicalConfigFiles.SERVER_FILE_NAME);
             CanonicalConfigFiles.ServerConfig config = CanonicalConfigFiles.loadServerForLoader(canonical, configDirectory, "forge");
             CinemarrSettings.installServer(config);
+            for (net.minecraft.server.level.ServerLevel level : event.getServer().getAllLevels()) stonytark.cinemarr.screen.CinemarrWorldScreens.get(level);
             java.nio.file.Path libraryFile = event.getServer().getWorldPath(LevelResource.ROOT)
                     .resolve("serverconfig").resolve(LibraryAllowlistFiles.FILE_NAME);
             List<LibraryRule> rules = LibraryAllowlistFiles.load(libraryFile);

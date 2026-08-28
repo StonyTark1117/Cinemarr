@@ -2,6 +2,7 @@ package stonytark.cinemarr.core.platform;
 
 import stonytark.cinemarr.core.model.RestartMode;
 import stonytark.cinemarr.core.screen.QuickTvPreset;
+import stonytark.cinemarr.core.server.TelevisionLifecycle;
 
 /** Loader-neutral validated configuration access installed by each platform adapter. */
 public final class CinemarrSettings {
@@ -19,8 +20,11 @@ public final class CinemarrSettings {
         default int minimumScreenPixels() { return 4; }
         default int maximumScreenPixels() { return 65_536; }
         default int maximumScreenDimension() { return 2_048; }
-        default int maximumActiveTelevisions() { return 2; }
-        default int maximumScreensPerOwner() { return 4; }
+        default int maximumConcurrentStreams() { return maximumActiveTelevisions(); }
+        /** Legacy config bridge retained for old loader adapters and existing files. */
+        @Deprecated default int maximumActiveTelevisions() { return 4; }
+        default int maximumScreensPerOwner() { return 8; }
+        default boolean allowIrregularScreens() { return false; }
         default int inactiveSessionGraceSeconds() { return 30; }
         default boolean quickTvKitsEnabled() { return true; }
         default boolean quickTvPresetEnabled(QuickTvPreset preset) { return true; }
@@ -41,6 +45,7 @@ public final class CinemarrSettings {
     public static void installServer(ServerValues values) {
         if (values == null) throw new IllegalArgumentException("values");
         server = values;
+        TelevisionLifecycle.reset(null);
     }
 
     public static void installClient(ClientValues values) {
@@ -67,8 +72,11 @@ public final class CinemarrSettings {
     public static int minimumScreenPixels() { return clamp(server.minimumScreenPixels(), 1, 65_536); }
     public static int maximumScreenPixels() { return clamp(server.maximumScreenPixels(), minimumScreenPixels(), 65_536); }
     public static int maximumScreenDimension() { return clamp(server.maximumScreenDimension(), 1, 2_048); }
-    public static int maximumActiveTelevisions() { return clamp(server.maximumActiveTelevisions(), 1, 64); }
+    public static int maximumConcurrentStreams() { return clamp(server.maximumConcurrentStreams(), 1, 64); }
+    /** @deprecated use {@link #maximumConcurrentStreams()}. */
+    @Deprecated public static int maximumActiveTelevisions() { return maximumConcurrentStreams(); }
     public static int maximumScreensPerOwner() { return clamp(server.maximumScreensPerOwner(), 1, 64); }
+    public static boolean allowIrregularScreens() { return server.allowIrregularScreens(); }
     public static int inactiveSessionGraceSeconds() { return clamp(server.inactiveSessionGraceSeconds(), 0, 600); }
     public static boolean quickTvKitsEnabled() { return server.quickTvKitsEnabled(); }
     public static boolean quickTvPresetEnabled(QuickTvPreset preset) {

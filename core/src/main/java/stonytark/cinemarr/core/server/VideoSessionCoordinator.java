@@ -15,15 +15,15 @@ public final class VideoSessionCoordinator implements AutoCloseable {
     public interface MediaFactory { MediaHandle start(UUID sessionId, long generation, VideoMediaItem item, long offsetMs) throws IOException; }
     public interface MediaHandle extends AutoCloseable { @Override void close() throws IOException; }
 
-    private final int maximumSessions;
+    private final int maximumStreams;
     private final long inactiveGraceMs;
     private final MediaFactory mediaFactory;
     private final Map<String, Session> sessions = new LinkedHashMap<String, Session>();
     private final Map<UUID, String> televisionSessions = new LinkedHashMap<UUID, String>();
 
-    public VideoSessionCoordinator(int maximumSessions, long inactiveGraceMs, MediaFactory mediaFactory) {
-        if (maximumSessions < 1 || inactiveGraceMs < 0 || mediaFactory == null) throw new IllegalArgumentException("Invalid video session policy");
-        this.maximumSessions = maximumSessions;
+    public VideoSessionCoordinator(int maximumStreams, long inactiveGraceMs, MediaFactory mediaFactory) {
+        if (maximumStreams < 1 || inactiveGraceMs < 0 || mediaFactory == null) throw new IllegalArgumentException("Invalid video session policy");
+        this.maximumStreams = maximumStreams;
         this.inactiveGraceMs = inactiveGraceMs;
         this.mediaFactory = mediaFactory;
     }
@@ -35,7 +35,6 @@ public final class VideoSessionCoordinator implements AutoCloseable {
         if (name.equals(previous)) return sessions.get(name).snapshot();
         Session target = sessions.get(name);
         if (target == null) {
-            if (sessions.size() >= maximumSessions) throw new IllegalStateException("Maximum active TV sessions reached");
             target = new Session(UUID.randomUUID(), name);
             sessions.put(name, target);
         }
@@ -54,6 +53,9 @@ public final class VideoSessionCoordinator implements AutoCloseable {
         Session session = required(name);
         if (expectedGeneration >= 0 && session.generation != expectedGeneration) {
             throw new IllegalStateException("TV state changed while preparing playback");
+        }
+        if (session.media == null && activeStreamCountInternal() >= maximumStreams) {
+            throw new IllegalStateException("Maximum concurrent Plex streams reached");
         }
         long nextGeneration = session.generation + 1;
         MediaHandle replacement = mediaFactory.start(session.id, nextGeneration, item, Math.max(0, offsetMs));
@@ -90,10 +92,26 @@ public final class VideoSessionCoordinator implements AutoCloseable {
         if (session.viewers.isEmpty() && session.media != null && session.noViewersSinceMs < 0) session.noViewersSinceMs = nowMs;
     }
 
-    public synchronized void pause(String name, long nowMs) { Session value = required(name); if (value.pausedAtMs < 0) value.pausedAtMs = nowMs; }
+    public synchronized void pause(String name, long nowMs) throws IOException {
+        Session value = required(name);
+        if (value.pausedAtMs >= 0) return;
+        Snapshot frozen = value.snapshotAt(nowMs);
+        close(value.media);
+        value.media = null;
+        value.positionAtStartMs = frozen.positionMs();
+        value.startedAtMs = nowMs;
+        value.pausedAtMs = nowMs;
+        value.suspendedAtMs = nowMs;
+        value.noViewersSinceMs = -1;
+        value.generation++;
+    }
     public synchronized void resume(String name, long nowMs) {
         Session value = required(name);
-        if (value.pausedAtMs >= 0) { value.startedAtMs += Math.max(0, nowMs - value.pausedAtMs); value.pausedAtMs = -1; }
+        if (value.pausedAtMs >= 0) {
+            value.startedAtMs += Math.max(0, nowMs - value.pausedAtMs);
+            value.pausedAtMs = -1;
+            value.suspendedAtMs = -1;
+        }
     }
     public synchronized void seek(String name, long positionMs, long nowMs) throws IOException {
         seek(name, positionMs, nowMs, -1);
@@ -165,11 +183,18 @@ public final class VideoSessionCoordinator implements AutoCloseable {
         return false;
     }
     public synchronized int sessionCount() { return sessions.size(); }
+    public synchronized int activeStreamCount() { return activeStreamCountInternal(); }
     public synchronized Set<String> sessionNames(){return Collections.unmodifiableSet(new HashSet<String>(sessions.keySet()));}
 
     public synchronized void untune(UUID televisionId) throws IOException {
         String name = televisionSessions.remove(televisionId);
         if (name != null) detachTelevision(televisionId, name);
+    }
+
+    private int activeStreamCountInternal() {
+        int count = 0;
+        for (Session session : sessions.values()) if (session.media != null) count++;
+        return count;
     }
 
     private void detachTelevision(UUID televisionId, String name) {

@@ -29,6 +29,21 @@ class VideoPolicyTest {
         assertEquals(1078, odd.height());
     }
 
+    @Test void namedQuickTvTargetsBoundTheRealPlexRendition() {
+        RenditionPolicy.Dimensions quick144 = RenditionPolicy.chooseForScreen(
+                16, 9, 256, 144, 1920, 1080, 1920, 1080);
+        assertEquals(256, quick144.width());
+        assertEquals(144, quick144.height());
+        RenditionPolicy.Dimensions quick8k = RenditionPolicy.chooseForScreen(
+                128, 72, 7680, 4320, 1920, 1080, 1920, 1080);
+        assertEquals(1920, quick8k.width());
+        assertEquals(1080, quick8k.height());
+        RenditionPolicy.Dimensions handBuilt = RenditionPolicy.chooseForScreen(
+                2000, 20, 2000, 20, 1919, 1079, 1920, 1080);
+        assertEquals(1918, handBuilt.width());
+        assertEquals(1078, handBuilt.height());
+    }
+
     @Test void mediaSegmentsAreHashedBoundedAndSeekFromKeyframes() {
         byte[] data = new byte[MediaSegment.MAX_PAYLOAD_BYTES * 2 + 7];
         MediaSegment segment = new MediaSegment(5_000, true, data);

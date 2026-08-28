@@ -36,6 +36,7 @@ public final class LegacyVideoSavedData extends WorldSavedData {
     public Record record(String name) { return sessions.get(name); }
     public void put(Record value) {
         if (value == null) return;
+        sessions.remove(value.sessionName());
         sessions.put(value.sessionName(), value);
         while (sessions.size() > MAX_SESSIONS) sessions.remove(sessions.keySet().iterator().next());
         markDirty();

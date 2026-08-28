@@ -42,12 +42,10 @@
   Screen rules:
 
   - All pixels must lie on one plane and face the same direction.
-  - Any four-directionally connected shape is valid.
-  - Rectangles, L-shapes, circles, holes, notches, and other
-    connected silhouettes work.
-
-  - The shape’s bounding box defines its logical resolution; missing
-    blocks form a visibility mask.
+  - Solid rectangles are valid by default, including squares, odd
+    dimensions, and one-pixel-wide horizontal or vertical lines.
+  - Operators may enable connected irregular silhouettes, holes, and
+    visibility masks with `allowIrregularScreens`.
 
   - Disconnected islands are separate TVs unless joined with pixels.
   - Screens can face north, south, east, west, upward, or downward.
@@ -72,9 +70,9 @@
   ───────────────────────────────  ─────────
    Maximum width or height            2,048
   ───────────────────────────────  ─────────
-   Maximum concurrent active TVs          2
+   Maximum concurrent Plex streams        4
   ───────────────────────────────  ─────────
-   Maximum screens per owner              4
+   Maximum screens per owner              8
 
   That admits both 4×4 and 2000×20 while excluding multi-million-
   block screens by default. Operators can change the limits.
@@ -121,8 +119,8 @@
   4. Odd encoded dimensions are padded to codec-safe dimensions and
      cropped before display.
 
-  5. The screen mask removes pixels where the player did not place
-     blocks.
+  5. When irregular screens are enabled, the screen mask removes
+     pixels where the player did not place blocks.
 
   Examples:
 
@@ -133,8 +131,8 @@
     resolution; Cinemarr performs the final 2000×20 stretch, fit, or
     crop.
 
-  - 17×11 L-shaped TV: Cinemarr produces a 17×11 frame and masks out
-    the absent blocks.
+  - 17×11 L-shaped TV: rejected by default; with irregular screens
+    enabled, Cinemarr produces a 17×11 frame and masks absent blocks.
 
   This supports arbitrary logical output without depending on
   undocumented Plex behavior.

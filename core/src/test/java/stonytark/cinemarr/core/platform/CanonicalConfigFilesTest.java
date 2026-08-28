@@ -22,7 +22,20 @@ class CanonicalConfigFilesTest {
         assertEquals("http://127.0.0.1:32400", config.plexUrl());
         assertEquals(RestartMode.RESTART_TRACK, config.restartMode());
         assertEquals(500, config.queueLimit());
+        assertEquals(4, config.maximumConcurrentStreams());
+        assertEquals(8, config.maximumScreensPerOwner());
+        assertFalse(config.allowIrregularScreens());
         assertNull(config.importedFrom());
+    }
+
+    @Test void migratesLegacyActiveTelevisionLimitWithoutResettingIt() throws Exception {
+        Path canonical = temporary.resolve("legacy-limit.toml");
+        Files.write(canonical, "maximumActiveTelevisions = 2\n".getBytes(StandardCharsets.UTF_8));
+        CanonicalConfigFiles.ServerConfig config = CanonicalConfigFiles.loadServer(canonical);
+        assertEquals(2, config.maximumConcurrentStreams());
+        String saved = new String(Files.readAllBytes(canonical), StandardCharsets.UTF_8);
+        assertTrue(saved.contains("maximumConcurrentStreams = 2"));
+        assertFalse(saved.contains("maximumActiveTelevisions"));
     }
 
     @Test void importsLegacyOnceWithoutModifyingSource() throws Exception {

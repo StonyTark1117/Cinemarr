@@ -63,8 +63,9 @@ public final class CanonicalConfigFiles {
                 integer(values, "minimumScreenPixels", 4, 1, 65_536),
                 integer(values, "maximumScreenPixels", 65_536, 4, 65_536),
                 integer(values, "maximumScreenDimension", 2_048, 1, 2_048),
-                integer(values, "maximumActiveTelevisions", 2, 1, 64),
-                integer(values, "maximumScreensPerOwner", 4, 1, 64),
+                concurrentStreams(values),
+                integer(values, "maximumScreensPerOwner", 8, 1, 64),
+                bool(values, "allowIrregularScreens", false),
                 integer(values, "inactiveSessionGraceSeconds", 30, 0, 600),
                 bool(values, "quickTvKitsEnabled", true),
                 quickTvPresets(values),
@@ -98,8 +99,9 @@ public final class CanonicalConfigFiles {
         private final int minimumScreenPixels;
         private final int maximumScreenPixels;
         private final int maximumScreenDimension;
-        private final int maximumActiveTelevisions;
+        private final int maximumConcurrentStreams;
         private final int maximumScreensPerOwner;
+        private final boolean allowIrregularScreens;
         private final int inactiveSessionGraceSeconds;
         private final boolean quickTvKitsEnabled;
         private final Set<QuickTvPreset> quickTvPresets;
@@ -109,7 +111,8 @@ public final class CanonicalConfigFiles {
                              RestartMode restartMode, boolean pauseWhenEmpty, int operatorPermissionLevel,
                              int queueLimit, int audioBitrateKbps, long cacheSizeMiB,
                              boolean stationMetadataFallbackEnabled, int minimumScreenPixels, int maximumScreenPixels,
-                             int maximumScreenDimension, int maximumActiveTelevisions, int maximumScreensPerOwner,
+                             int maximumScreenDimension, int maximumConcurrentStreams, int maximumScreensPerOwner,
+                             boolean allowIrregularScreens,
                              int inactiveSessionGraceSeconds, boolean quickTvKitsEnabled,
                              Set<QuickTvPreset> quickTvPresets, Path importedFrom) {
             this.path = path;
@@ -127,8 +130,9 @@ public final class CanonicalConfigFiles {
             this.minimumScreenPixels = minimumScreenPixels;
             this.maximumScreenPixels = maximumScreenPixels;
             this.maximumScreenDimension = maximumScreenDimension;
-            this.maximumActiveTelevisions = maximumActiveTelevisions;
+            this.maximumConcurrentStreams = maximumConcurrentStreams;
             this.maximumScreensPerOwner = maximumScreensPerOwner;
+            this.allowIrregularScreens = allowIrregularScreens;
             this.inactiveSessionGraceSeconds = inactiveSessionGraceSeconds;
             this.quickTvKitsEnabled = quickTvKitsEnabled;
             this.quickTvPresets = Collections.unmodifiableSet(EnumSet.copyOf(quickTvPresets));
@@ -150,8 +154,9 @@ public final class CanonicalConfigFiles {
         @Override public int minimumScreenPixels() { return minimumScreenPixels; }
         @Override public int maximumScreenPixels() { return maximumScreenPixels; }
         @Override public int maximumScreenDimension() { return maximumScreenDimension; }
-        @Override public int maximumActiveTelevisions() { return maximumActiveTelevisions; }
+        @Override public int maximumConcurrentStreams() { return maximumConcurrentStreams; }
         @Override public int maximumScreensPerOwner() { return maximumScreensPerOwner; }
+        @Override public boolean allowIrregularScreens() { return allowIrregularScreens; }
         @Override public int inactiveSessionGraceSeconds() { return inactiveSessionGraceSeconds; }
         @Override public boolean quickTvKitsEnabled() { return quickTvKitsEnabled; }
         @Override public boolean quickTvPresetEnabled(QuickTvPreset preset) { return quickTvPresets.contains(preset); }
@@ -165,12 +170,13 @@ public final class CanonicalConfigFiles {
             lines.add("operatorPermissionLevel = " + operatorPermissionLevel);
             lines.add("queueLimit = " + queueLimit);
             lines.add("");
-            lines.add("# Player-built video screen and playback-session limits.");
+            lines.add("# Player-built video screen and concurrent Plex stream limits.");
             lines.add("minimumScreenPixels = " + minimumScreenPixels);
             lines.add("maximumScreenPixels = " + maximumScreenPixels);
             lines.add("maximumScreenDimension = " + maximumScreenDimension);
-            lines.add("maximumActiveTelevisions = " + maximumActiveTelevisions);
+            lines.add("maximumConcurrentStreams = " + maximumConcurrentStreams);
             lines.add("maximumScreensPerOwner = " + maximumScreensPerOwner);
+            lines.add("allowIrregularScreens = " + allowIrregularScreens);
             lines.add("inactiveSessionGraceSeconds = " + inactiveSessionGraceSeconds);
             lines.add("");
             lines.add("# Compact 16:9 prefab builders with exact named video rendition targets.");
@@ -328,6 +334,13 @@ public final class CanonicalConfigFiles {
         } catch (NumberFormatException ignored) { throw invalid(key); }
     }
 
+    private static int concurrentStreams(Map<String, String> values) throws ConfigValidationException {
+        if (values.containsKey(normalize("maximumConcurrentStreams"))) {
+            return integer(values, "maximumConcurrentStreams", 4, 1, 64);
+        }
+        return integer(values, "maximumActiveTelevisions", 4, 1, 64);
+    }
+
     private static double decimal(Map<String, String> values, String key, double fallback, double minimum, double maximum)
             throws ConfigValidationException {
         String value = values.get(normalize(key));
@@ -422,7 +435,8 @@ public final class CanonicalConfigFiles {
             normalize("operatorPermissionLevel"), normalize("queueLimit"), normalize("audioBitrateKbps"),
             normalize("cacheSizeMiB"), normalize("stationMetadataFallbackEnabled"),
             normalize("minimumScreenPixels"), normalize("maximumScreenPixels"), normalize("maximumScreenDimension"),
-            normalize("maximumActiveTelevisions"), normalize("maximumScreensPerOwner"), normalize("inactiveSessionGraceSeconds"),
+            normalize("maximumActiveTelevisions"), normalize("maximumConcurrentStreams"), normalize("maximumScreensPerOwner"),
+            normalize("allowIrregularScreens"), normalize("inactiveSessionGraceSeconds"),
             normalize("quickTvKitsEnabled"), normalize("quickTv144pEnabled"), normalize("quickTv240pEnabled"),
             normalize("quickTv480pEnabled"), normalize("quickTv720pEnabled"), normalize("quickTv1080pEnabled"),
             normalize("quickTv1440pEnabled"), normalize("quickTv4KEnabled"), normalize("quickTv8KEnabled"));

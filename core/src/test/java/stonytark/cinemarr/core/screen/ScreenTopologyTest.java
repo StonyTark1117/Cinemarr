@@ -23,6 +23,22 @@ class ScreenTopologyTest {
         assertFalse(result.visibleAt(2, 2));
     }
 
+    @Test void solidPolicyAcceptsOddRectanglesAndLinesButRejectsHolesAndCorners() {
+        assertEquals(5, ScreenTopology.analyze(Arrays.asList(
+                pixel(0, 0), pixel(1, 0), pixel(2, 0), pixel(3, 0), pixel(4, 0)),
+                ScreenLimits.DEFAULTS, false).width());
+        assertEquals(3, ScreenTopology.analyze(Arrays.asList(
+                pixel(0, 0), pixel(1, 0), pixel(2, 0),
+                pixel(0, 1), pixel(1, 1), pixel(2, 1),
+                pixel(0, 2), pixel(1, 2), pixel(2, 2)),
+                ScreenLimits.DEFAULTS, false).height());
+        assertThrows(IllegalArgumentException.class, () -> ScreenTopology.analyze(Arrays.asList(
+                pixel(0, 0), pixel(1, 0), pixel(2, 0), pixel(0, 1), pixel(2, 1),
+                pixel(0, 2), pixel(1, 2), pixel(2, 2)), ScreenLimits.DEFAULTS, false));
+        assertThrows(IllegalArgumentException.class, () -> ScreenTopology.analyze(Arrays.asList(
+                pixel(0, 0), pixel(1, 0), pixel(0, 1), pixel(0, 2)), ScreenLimits.DEFAULTS, false));
+    }
+
     @Test void acceptsTheProposedTwoThousandByTwentyScreenWithoutLoadingChunks() {
         List<ScreenPixel> pixels = new ArrayList<ScreenPixel>(40_000);
         for (int x = -1000; x < 1000; x++) for (int y = 0; y < 20; y++) pixels.add(pixel(x, y));

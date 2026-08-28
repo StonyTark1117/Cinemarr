@@ -102,5 +102,24 @@ class VideoSessionCoordinatorTest {
         VideoSessionCoordinator.Snapshot stopped=coordinator.stop("party",2_000);assertFalse(stopped.transcoding());assertEquals(null,stopped.item());assertEquals(2,stopped.televisions().size());assertTrue(coordinator.sessionNames().contains("party"));
     }
 
+    @Test void streamLimitCountsOnlyOpenMediaAndPauseFreesCapacity() throws Exception {
+        AtomicInteger starts = new AtomicInteger();
+        AtomicInteger stops = new AtomicInteger();
+        VideoSessionCoordinator coordinator = new VideoSessionCoordinator(1, 30_000,
+                (session, generation, item, offset) -> { starts.incrementAndGet(); return stops::incrementAndGet; });
+        coordinator.tune(UUID.randomUUID(), "first");
+        coordinator.tune(UUID.randomUUID(), "second");
+        coordinator.tune(UUID.randomUUID(), "third-idle");
+        coordinator.play("first", movie(), 0, 1_000);
+        assertEquals(1, coordinator.activeStreamCount());
+        assertThrows(IllegalStateException.class, () -> coordinator.play("second", movie(), 0, 1_000));
+        coordinator.pause("first", 2_000);
+        assertEquals(0, coordinator.activeStreamCount());
+        assertEquals(1, stops.get());
+        coordinator.play("second", movie(), 0, 2_000);
+        assertEquals(2, starts.get());
+        assertEquals(3, coordinator.sessionCount());
+    }
+
     private static VideoMediaItem movie() { return new VideoMediaItem(MediaKind.MOVIE, "1", "Movie", "", "PG", 0, 90_000); }
 }

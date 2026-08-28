@@ -12,7 +12,7 @@ public final class CinemarrCommands {
     public static void register() { NeoForge.EVENT_BUS.register(INSTANCE); }
 
     @SubscribeEvent public void commands(RegisterCommandsEvent event) {
-        event.getDispatcher().register(Commands.literal("cinemarr")
+        com.mojang.brigadier.builder.LiteralArgumentBuilder<net.minecraft.commands.CommandSourceStack> root=Commands.literal("cinemarr")
                 .executes(context -> status(context.getSource()))
                 .then(Commands.literal("status").executes(context -> status(context.getSource())))
                 .then(Commands.literal("diagnostics")
@@ -21,7 +21,9 @@ public final class CinemarrCommands {
                             context.getSource().sendSuccess(
                                     () -> Component.literal(CinemarrServer.instance().videoDiagnostics()), false);
                             return 1;
-                        })));
+                        }));
+        root.then(CinemarrTvCommands.command());
+        event.getDispatcher().register(root);
     }
 
     private static int status(net.minecraft.commands.CommandSourceStack source) {

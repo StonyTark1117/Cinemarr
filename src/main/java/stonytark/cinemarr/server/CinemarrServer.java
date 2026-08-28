@@ -23,6 +23,7 @@ import stonytark.cinemarr.network.CinemarrNetwork;
 import stonytark.cinemarr.core.library.LibraryAllowlistFiles;
 import stonytark.cinemarr.core.library.LibraryRule;
 import stonytark.cinemarr.core.server.PlexVideoService;
+import stonytark.cinemarr.core.server.TelevisionLifecycle;
 import stonytark.cinemarr.core.protocol.VideoPackets;
 import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.registry.CinemarrBlocks;
@@ -50,6 +51,8 @@ public final class CinemarrServer {
             CanonicalConfigFiles.ServerConfig config = CanonicalConfigFiles.loadServerForLoader(
                     canonical, configDirectory, "neoforge");
             CinemarrSettings.installServer(config);
+            TelevisionLifecycle.reset(null);
+            for (net.minecraft.server.level.ServerLevel level : event.getServer().getAllLevels()) CinemarrWorldScreens.get(level);
             if (config.importedFrom() != null) {
                 Cinemarr.LOGGER.info("Imported legacy Cinemarr server settings from {}", config.importedFrom());
             }
@@ -76,7 +79,7 @@ public final class CinemarrServer {
     @SubscribeEvent public void stopping(ServerStoppingEvent event) {
         if (player != null) { player.close(); player = null; }
         if (videoManager != null) { videoManager.close(); videoManager = null; }
-        videoService = null; videoLibraries = Collections.emptyList();
+        TelevisionLifecycle.reset(null); videoService = null; videoLibraries = Collections.emptyList();
     }
     @SubscribeEvent public void tick(ServerTickEvent.Post event) { if (player != null) player.tick(); if (videoManager != null) videoManager.tick(); }
     @SubscribeEvent public void joined(PlayerEvent.PlayerLoggedInEvent event) {
@@ -115,8 +118,8 @@ public final class CinemarrServer {
     public void videoManifest(ServerPlayer player, VideoPackets.SegmentManifestRequest request) { if (videoManager != null) videoManager.manifest(player, request); }
     public void videoAcknowledge(ServerPlayer player, VideoPackets.SegmentAcknowledgement value) { if (videoManager != null) videoManager.acknowledge(player, value); }
     public void videoHealth(ServerPlayer player, VideoPackets.ClientHealth value) { if (videoManager != null) videoManager.health(player, value); }
-    public String videoStatus(){return videoManager==null?"Cinemarr video is unavailable":videoManager.status();}
-    public String videoDiagnostics(){return videoManager==null?"Plex=unavailable; libraries=0; sessions=0; transcodes=0":videoManager.diagnostics();}
+    public String videoStatus(){return videoManager==null?"Cinemarr video unavailable; "+TelevisionLifecycle.count()+" registered TV(s)":videoManager.status();}
+    public String videoDiagnostics(){return videoManager==null?"Plex=unavailable; registeredTvs="+TelevisionLifecycle.count()+"; libraries=0; sessions=0; activeStreams=0/"+CinemarrSettings.maximumConcurrentStreams():videoManager.diagnostics();}
 
     private void prepareAcceptanceVideo(ServerPlayer player) {
         if (!ProtocolLimits.videoProbeEnabled() || videoManager == null) return;

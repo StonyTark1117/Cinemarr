@@ -21,6 +21,7 @@ import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.phys.BlockHitResult;
 import stonytark.cinemarr.core.platform.CinemarrSettings;
 import stonytark.cinemarr.core.screen.QuickTvPreset;
+import stonytark.cinemarr.core.server.TelevisionLifecycle;
 import stonytark.cinemarr.network.CinemarrNetwork;
 import stonytark.cinemarr.network.VideoPayloads;
 import stonytark.cinemarr.registry.CinemarrBlocks;
@@ -64,18 +65,24 @@ public final class QuickTvBlock extends HorizontalDirectionalBlock {
     }
 
     private boolean build(ServerLevel level, BlockPos controller, BlockState state, Player player) {
-        String problem = preflight(level, controller, state);
+        String problem = preflight(level, controller, state, player);
         if (problem != null) { player.displayClientMessage(Component.literal(problem), false); return false; }
         Direction front = state.getValue(FACING);
         Direction across = front.getClockWise();
         BlockPos anchor = controller.relative(front).relative(across, -(preset.physicalWidth() / 2));
         BlockState pixel = CinemarrBlocks.screenPixel().defaultBlockState().setValue(ScreenPixelBlock.FACING, front);
+        java.util.List<BlockPos> placed = new java.util.ArrayList<>();
         for (int y = 0; y < preset.physicalHeight(); y++) for (int x = 0; x < preset.physicalWidth(); x++) {
-            level.setBlock(anchor.relative(across, x).above(y), pixel, 3);
+            BlockPos target=anchor.relative(across, x).above(y);
+            if(level.getBlockState(target).isAir())placed.add(target);
+            level.setBlock(target, pixel, 3);
         }
         CinemarrWorldScreens screens = CinemarrWorldScreens.get(level);
         CinemarrWorldScreens.Activation activated = screens.activate(controller, player.getUUID());
-        if (!activated.success()) { player.displayClientMessage(Component.literal(activated.message()), false); return false; }
+        if (!activated.success()) {
+            for(BlockPos target:placed)if(level.getBlockState(target).is(CinemarrBlocks.screenPixel()))level.setBlock(target,net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(),3);
+            player.displayClientMessage(Component.literal(activated.message()), false); return false;
+        }
         screens.updateRendition(controller, preset.renditionWidth(), preset.renditionHeight());
         player.displayClientMessage(Component.literal("Built " + preset.id() + " Quick TV: "
                 + preset.physicalWidth() + "x" + preset.physicalHeight() + " dense screen, "
@@ -83,8 +90,10 @@ public final class QuickTvBlock extends HorizontalDirectionalBlock {
         return true;
     }
 
-    private String preflight(ServerLevel level, BlockPos controller, BlockState state) {
+    private String preflight(ServerLevel level, BlockPos controller, BlockState state, Player player) {
         if (!CinemarrSettings.quickTvPresetEnabled(preset)) return preset.id() + " Quick TV kits are disabled by the server";
+        CinemarrWorldScreens screens=CinemarrWorldScreens.get(level);
+        if(screens.television(controller)==null&&TelevisionLifecycle.count(player.getUUID())>=CinemarrSettings.maximumScreensPerOwner())return "Maximum screens per owner reached";
         if (preset.physicalPixels() < CinemarrSettings.minimumScreenPixels()
                 || preset.physicalPixels() > CinemarrSettings.maximumScreenPixels()
                 || preset.physicalWidth() > CinemarrSettings.maximumScreenDimension()
@@ -94,16 +103,20 @@ public final class QuickTvBlock extends HorizontalDirectionalBlock {
         Direction front = state.getValue(FACING);
         Direction across = front.getClockWise();
         BlockPos anchor = controller.relative(front).relative(across, -(preset.physicalWidth() / 2));
+        java.util.Set<Long> footprint=new java.util.HashSet<>();
         for (int y = 0; y < preset.physicalHeight(); y++) for (int x = 0; x < preset.physicalWidth(); x++) {
             BlockPos target = anchor.relative(across, x).above(y);
+            footprint.add(target.asLong());
             if (!level.hasChunkAt(target)) return "Load the complete " + preset.id() + " Quick TV footprint before building";
             BlockState existing = level.getBlockState(target);
             if (!existing.isAir() && !existing.is(CinemarrBlocks.screenPixel())) {
                 return "The " + preset.id() + " Quick TV footprint is obstructed at " + target.toShortString();
             }
         }
+        if(screens.overlaps(controller,footprint))return "Quick TV pixels already belong to another TV";
         return null;
     }
+
 
     @Override protected void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean movedByPiston) {
         if (!level.isClientSide && level instanceof ServerLevel && !newState.is(state.getBlock())) {

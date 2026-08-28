@@ -75,6 +75,7 @@ public final class Cinemarr {
     public void serverStarting(FMLServerStartingEvent event) {
         try {
             LegacyConfig.installServer(event.getServer());
+            for(net.minecraft.world.WorldServer world:event.getServer().worldServers)if(world!=null)stonytark.cinemarr.screen.LegacyWorldScreens.get(world);
             LegacyVideoSavedData saved = LegacyVideoSavedData.get(event.getServer());
             String worldDirectory = event.getServer().getFolderName();
             Path libraryPath = event.getServer().getFile(worldDirectory + "/serverconfig/" + LibraryAllowlistFiles.FILE_NAME).toPath();
@@ -89,7 +90,7 @@ public final class Cinemarr {
                 unavailableReason = "";
                 LOGGER.info("Validated {} allowed Plex video libraries", libraries.size());
             }
-            event.registerServerCommand(new LegacyVideoCommands(videoManager, unavailableReason));
+            event.registerServerCommand(new LegacyVideoCommands(event.getServer(), videoManager, unavailableReason));
         } catch (IOException error) {
             throw new IllegalStateException("Unable to load canonical Cinemarr server configuration", error);
         }
