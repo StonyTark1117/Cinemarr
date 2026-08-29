@@ -1,28 +1,31 @@
 # Compatibility
 
-Cinemarr's 16 artifacts have completed the recorded release gates. Deterministic
-real-client acceptance is complete for all 21 runtime profiles, including the
-isolated Forge 1.7.10 implementation, and the shared server core passed its
-credentialed live Plex H.264/AAC start, fetch, and clean-stop smoke.
+Cinemarr's 16 local 1.0.1 artifacts are release-ready but unpublished. A fresh
+post-fix matrix passed all 21 loader/runtime profiles, all 10 GameTests, and
+byte-level inspection of every canonical JAR. The shared production path is
+additionally certified by a credentialed two-client controller/UI run on
+1.21.1 NeoForge against real Plex. The per-target values below remain the
+deterministic fake-Plex runtime evidence; they do not imply that credentials
+were repeated independently on every loader.
 The shared transport core is Java-8-compatible; loader networking, registries,
 render events, native decoder packaging, and Quick TV Kit registration are
 platform-specific.
 
 | Minecraft | Loader | Status |
 | --- | --- | --- |
-| 1.21.1 | NeoForge | release-gate complete: build, dedicated launch, protocol client, shared live Plex, and real two-client 144p Quick TV deterministic-HLS A/V (0.997385 correlation, 100 ms measured lag) |
-| 1.21.1 | Fabric | release-gate complete: build, dedicated launch, protocol client, shared live Plex, and real two-client 144p Quick TV deterministic-HLS A/V (0.990926 correlation, 90 ms measured lag) |
-| 1.21.1 | Quilt | release-gate complete for the Fabric-port runtime: build, dedicated launch, protocol client, shared live Plex, and real two-client A/V (0.991250 correlation, 50 ms measured lag) |
-| 1.21.1 | Forge | release-gate complete: build, dedicated launch, protocol client, shared live Plex, and real two-client 144p Quick TV deterministic-HLS A/V (0.980633 correlation, 40 ms measured lag) |
-| 1.20.1 | Fabric / Quilt | release-gate complete: build, dedicated launch, protocol client, shared live Plex, and real two-client A/V (Fabric: 0.994679 correlation at -50 ms; Quilt: 0.993132 at 50 ms) |
-| 1.20.1 | Forge / NeoForge | release-gate complete: build, dedicated launch, protocol client, shared live Plex, and real two-client A/V (Forge: 0.989935 correlation at -40 ms; NeoForge: 0.991707 at 20 ms) |
-| 1.20.2 | Fabric / Quilt | release-gate complete: build, dedicated launch, protocol client, shared live Plex, and real two-client A/V (Fabric: 0.993858 correlation at 70 ms; Quilt: 0.993567 at -10 ms) |
-| 1.20.2 | Forge / NeoForge | release-gate complete: build, dedicated launch, protocol client, shared live Plex, and real two-client A/V (Forge: 0.994218 correlation at -20 ms; NeoForge: 0.995144 at -10 ms) |
-| 26.1.2 | Fabric / Quilt | release-gate complete: build, dedicated launch, protocol client, shared live Plex, and real two-client A/V (Fabric: 0.990218 correlation at 10 ms; Quilt: 0.997147 at -10 ms) |
-| 26.1.2 | Forge / NeoForge | release-gate complete: build, dedicated launch, protocol client, shared live Plex, and real two-client A/V (Forge: 0.987922 correlation at 70 ms; NeoForge: 0.988920 at -40 ms) |
-| 26.2 | Fabric / Quilt | release-gate complete: build, dedicated launch, protocol client, shared live Plex, and real two-client A/V (Fabric: 0.999427 correlation at 20 ms; Quilt: 0.996959 at -20 ms) |
-| 26.2 | Forge / NeoForge | release-gate complete: build, dedicated launch, protocol client, shared live Plex, and real two-client A/V (Forge: 0.996621 correlation at 80 ms; NeoForge: 0.990375 at 40 ms) |
-| 1.7.10 | Forge | release-gate complete for the isolated runtime: build, dedicated launch, protocol client, shared live Plex, and consecutive fresh real two-client A/V runs (0.986105 correlation at -10 ms; 0.978383 at -30 ms) |
+| 1.21.1 | NeoForge | 1.0.1 verified; real-Plex controller A/V: 0.704172 correlation, 0 ms lag; exact-candidate deterministic A/V: 0.990893, -10 ms |
+| 1.21.1 | Fabric | 1.0.1 verified; deterministic A/V: 0.990926 correlation, 90 ms lag |
+| 1.21.1 | Quilt | 1.0.1 verified; deterministic A/V: 0.991250 correlation, 50 ms lag |
+| 1.21.1 | Forge | 1.0.1 verified; deterministic A/V: 0.980633 correlation, 40 ms lag |
+| 1.20.1 | Fabric / Quilt | 1.0.1 verified; deterministic A/V (Fabric: 0.994679 at -50 ms; Quilt: 0.993132 at 50 ms) |
+| 1.20.1 | Forge / NeoForge | 1.0.1 verified; deterministic A/V (Forge: 0.989935 at -40 ms; NeoForge: 0.991707 at 20 ms) |
+| 1.20.2 | Fabric / Quilt | 1.0.1 verified; deterministic A/V (Fabric: 0.993858 at 70 ms; Quilt: 0.993567 at -10 ms) |
+| 1.20.2 | Forge / NeoForge | 1.0.1 verified; deterministic A/V (Forge: 0.994218 at -20 ms; NeoForge: 0.995144 at -10 ms) |
+| 26.1.2 | Fabric / Quilt | 1.0.1 verified; deterministic A/V (Fabric: 0.990218 at 10 ms; Quilt: 0.997147 at -10 ms) |
+| 26.1.2 | Forge / NeoForge | 1.0.1 verified; deterministic A/V (Forge: 0.987922 at 70 ms; NeoForge: 0.988920 at -40 ms) |
+| 26.2 | Fabric / Quilt | 1.0.1 verified; deterministic A/V (Fabric: 0.999427 at 20 ms; Quilt: 0.996959 at -20 ms) |
+| 26.2 | Forge / NeoForge | 1.0.1 verified; deterministic A/V (Forge: 0.996621 at 80 ms; NeoForge: 0.990375 at 40 ms) |
+| 1.7.10 | Forge | 1.0.1 verified; deterministic A/V runs: 0.986105 at -10 ms and 0.978383 at -30 ms |
 
 Every listed target contains the eight configurable Quick TV Kit registrations,
 the complete survival-craftable Screen Pixel/controller/casing/speaker set, the
@@ -55,14 +58,70 @@ teardown.
 The corresponding exact Forge 26.2 response-path regression passed at 0.991658
 correlation / 0 ms lag with matching frame evidence and clean teardown.
 
-The repository decoder also passed a Windows-x64 native smoke under a Windows
-Temurin 21 JVM: JavaCV/FFmpeg loaded and decoded three video frames and 30 audio
-frames. This proves the packaged Windows decoder path, not a full Windows
-Minecraft-client launch.
+The repository decoder also passed the through-4K standalone benchmark under a
+native Windows 11 Temurin 21 JVM with the packaged Windows-x64 classifier. Each
+run used two warmups and five measured samples per rendition.
 
-Every listed target has passed compile, launch, runtime, clean-shutdown, and
-two-client A/V acceptance. The environment-only live Plex smoke validates the
-shared `PlexVideoService` packaged through every server adapter.
+## Experimental client hardware decoding
+
+Hardware video decoding is implemented as an opt-in client setting. User
+configuration and the in-game selector expose only `software`, `auto`, and
+`vaapi`, with an optional VAAPI render-node string. Explicit QSV, CUDA,
+D3D11VA, and DXVA2 configuration values are not accepted; `auto` may select an
+internal host-appropriate backend for capability probing and diagnostics.
+Startup probing runs away from the render thread. A failed probe or decode
+permanently selects software for that playback. Audio remains software-decoded.
+Video frames are always downloaded and converted to CPU-side RGBA because
+Minecraft's dynamic texture requires system memory.
+
+The 2026-08-28 H.264 MPEG-TS benchmark covered the packaged Linux-x64 and
+Windows-x64 FFmpeg classifiers:
+
+* AMD Radeon RX 7900 XTX on Linux: VAAPI produced matching output from 144p
+  through 4K. It reduced decoder-thread CPU by about 24% at 1080p but only 1%
+  at 4K; 144p and 240p wall time regressed by about 105% and 62%.
+  Hardware/software timestamp comparisons reported zero microseconds of
+  video-PTS difference.
+* Intel UHD 630 on Linux: VAAPI decoded 144p through 4K with SSIM at least
+  0.999778. QSV device creation failed and transparently retried in software;
+  `auto` continued to VAAPI. VAAPI reduced CPU by about 25% at 1080p and 37% at
+  4K, but 144p wall time regressed by about 14%.
+* NVIDIA Quadro P600 on Linux: the internal CUDA candidate decoded 144p through
+  4K with SSIM at least 0.999774, but CPU RGBA conversion dominated the result.
+  Decoder-thread CPU increased about 4% at 1080p and 40% at 4K, while wall time
+  increased about 8% and 46%. CUDA is therefore not an explicit setting.
+* NVIDIA Quadro P600 passed through to a native Windows 11 VM with driver
+  576.02: the internal D3D11VA, DXVA2, and CUDA candidates and `auto` each
+  hardware-decoded all 35 measured samples from 144p through 4K with SSIM at
+  least 0.999754, zero fallback, and matching timestamps. D3D11VA increased
+  decoder-thread CPU by about 41% at 1080p and 32% at 4K, and low-resolution
+  wall time regressed by 42% to 170%. These backends are not explicit settings.
+
+Both `software` and `auto` also passed the deterministic two-client
+identifiable-frame, screenshot, PCM synchronization, and teardown gate across
+all 21 maintained Linux runtime profiles. On the RX 7900 XTX host, `auto`
+selected VAAPI without fallback in the final runs. The packaged Linux ARM64
+classifier passed real ARM64 Java/JavaCPP software decoding under QEMU and the
+unsupported-hardware fallback check; no ARM GPU was available to test.
+
+A native Windows 11 Forge 1.7.10 client using the passed-through P600 selected
+D3D11VA in `auto` mode, rendered the expected frame, saved a non-empty in-game
+screenshot, established AAC audio, and recorded zero fallback, recovery, video
+drop, or audio-underrun events. The corrected wrapper was not rerun to a formal
+green result. Native Windows Minecraft-client behavior remains untested for
+NeoForge 1.21.1 and Fabric 26.2. Hardware decoding is also untested on Linux
+ARM64 GPUs, macOS, AMD Windows drivers, Intel Windows drivers, and GPUs or driver
+versions other than those listed above.
+
+No backend met the threshold for default enablement across machines and
+renditions, so `software` remains the default. Reconsidering that default
+requires a backend/driver combination to improve CPU use and frame time without
+introducing dropped frames or measurable A/V drift in a real Minecraft-client
+run.
+
+Every listed target passed the fresh post-fix compile, test, packaging, and
+artifact-inspection matrix. The shared controller/UI path also passed the
+credentialed real-Plex two-client A/V gate on 1.21.1 NeoForge.
 No cross-loader or cross-version compatibility is implied by the protocol
 number or by a shared-core test. Forge 1.7.10 uses its own Java 8 bytecode,
 LWJGL 2 renderer/audio adapter, and embedded native-decoder implementation.

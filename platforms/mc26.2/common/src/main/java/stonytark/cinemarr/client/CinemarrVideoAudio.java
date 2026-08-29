@@ -24,9 +24,9 @@ import java.util.UUID;
 
 /** Timeline-gated positional TV audio. Audio starts only after a future buffer exists. */
 public final class CinemarrVideoAudio {
-    private static final long START_BUFFER_US = 700_000;
-    private static final long SCHEDULE_LEAD_US = 3_000_000;
-    private static final long SCHEDULE_QUANTUM_US = 1_000_000;
+    private static final long START_BUFFER_US = 3_000_000;
+    private static final long SCHEDULE_LEAD_US = 1_500_000;
+    private static final long SCHEDULE_QUANTUM_US = 250_000;
     private static final long SOURCE_PREROLL_US = 1_000_000;
     private static final int SOURCE_PREROLL_BUFFERS = 2;
     private static final int STREAM_BUFFER_MS = 250;
@@ -130,8 +130,10 @@ public final class CinemarrVideoAudio {
         }
         if (ProtocolLimits.videoProbeEnabled() && System.currentTimeMillis() - lastAcceptanceLogMs >= 1_000) {
             lastAcceptanceLogMs = System.currentTimeMillis();
-            Cinemarr.LOGGER.info("Acceptance video audio timeline: targetMs={} videoMs={} javaBufferMs={} pendingFrames={} pendingFirstMs={} decodedFrames={} starvations={} underruns={}",
+            long acceptanceAudioUs = audioTimelineNanos == Long.MIN_VALUE ? 0L : audioTimelineUs;
+            Cinemarr.LOGGER.info("Acceptance video audio timeline: targetMs={} videoMs={} audioMs={} driftMs={} javaBufferMs={} pendingFrames={} pendingFirstMs={} decodedFrames={} starvations={} underruns={}",
                     targetUs / 1_000L, playback.lastPresentedUs() / 1_000L,
+                    acceptanceAudioUs / 1_000L, (acceptanceAudioUs - targetUs) / 1_000L,
                     stream == null ? 0 : stream.bufferedMs(), pending.size(),
                     pending.isEmpty() ? -1 : pending.peek().presentationTimeUs() / 1_000L,
                     playback.queuedAudioFrames(), stream == null ? 0 : stream.starvations(), underruns);
@@ -141,32 +143,33 @@ public final class CinemarrVideoAudio {
     private void prepareAndStart(VideoPackets.SessionState session, long targetUs) {
         while (!pending.isEmpty() && endUs(pending.peek()) < targetUs - 50_000L) pending.poll();
         if (pending.isEmpty()) return;
-        DecodedAudioFrame first = pending.peek(), last = first;
-        for (DecodedAudioFrame value : pending) last = value;
-        if (endUs(last) - Math.max(targetUs, first.presentationTimeUs()) < START_BUFFER_US || first.presentationTimeUs() > targetUs + 100_000L) return;
+        long scheduledStartUs = scheduledStartUs(targetUs);
+        StartWindow window = startWindow(scheduledStartUs);
+        if (window == null || !hasStartRunway(scheduledStartUs, window.first.presentationTimeUs(),
+                endUs(window.first), endUs(window.last))) return;
         UUID expectedSession = sessionId; long expectedGeneration = generation; long expectedAttempt = ++channelAttempt; channelPending = true;
         ChannelAccess access = ((SoundEngineAccessor) ((SoundManagerAccessor) (Object) Minecraft.getInstance().getSoundManager()).cinemarr$soundEngine()).cinemarr$channelAccess();
         access.createHandle(Library.Pool.STREAMING).whenComplete((handle, error) -> Minecraft.getInstance().execute(
-                () -> finishStart(session, expectedSession, expectedGeneration, expectedAttempt, handle, error)));
+                () -> finishStart(session, expectedSession, expectedGeneration, expectedAttempt, scheduledStartUs, handle, error)));
     }
 
     private void finishStart(VideoPackets.SessionState session, UUID expectedSession, long expectedGeneration,
-                             long expectedAttempt, ChannelAccess.ChannelHandle handle, Throwable error) {
+                             long expectedAttempt, long scheduledStartUs,
+                             ChannelAccess.ChannelHandle handle, Throwable error) {
         if (expectedAttempt != channelAttempt) { if (handle != null) handle.execute(com.mojang.blaze3d.audio.Channel::stop); return; }
         channelPending = false;
         if (error != null || handle == null || !expectedSession.equals(sessionId) || expectedGeneration != generation) {
             if (handle != null) handle.execute(com.mojang.blaze3d.audio.Channel::stop); return;
         }
         long targetUs = CinemarrVideoPlayback.authoritativePositionMsLocal(session) * 1_000L;
-        long scheduledStartUs = roundUp(targetUs + SCHEDULE_LEAD_US, SCHEDULE_QUANTUM_US);
-        while (!pending.isEmpty() && endUs(pending.peek()) <= scheduledStartUs) pending.poll();
-        if (pending.isEmpty()) { handle.execute(com.mojang.blaze3d.audio.Channel::stop); return; }
-        DecodedAudioFrame first = pending.peek(), last = first;
-        for (DecodedAudioFrame value : pending) last = value;
-        if (endUs(last) - Math.max(scheduledStartUs, first.presentationTimeUs()) < START_BUFFER_US
-                || first.presentationTimeUs() > scheduledStartUs + 100_000L) {
+        StartWindow window = startWindow(scheduledStartUs);
+        if (scheduledStartUs - targetUs < SOURCE_PREROLL_US || window == null
+                || !hasStartRunway(scheduledStartUs, window.first.presentationTimeUs(),
+                endUs(window.first), endUs(window.last))) {
             handle.execute(com.mojang.blaze3d.audio.Channel::stop); return;
         }
+        while (!pending.isEmpty() && endUs(pending.peek()) <= scheduledStartUs) pending.poll();
+        DecodedAudioFrame first = pending.peek();
         VideoPcmAudioStream startingStream = new VideoPcmAudioStream(first.sampleRate(), first.channels());
         startingStream.scheduleSilenceFor(SOURCE_PREROLL_US);
         boolean firstFrame = true;
@@ -311,6 +314,25 @@ public final class CinemarrVideoAudio {
         return Math.floorDiv(value + quantum - 1, quantum) * quantum;
     }
 
+    static long scheduledStartUs(long targetUs) {
+        return roundUp(targetUs + SCHEDULE_LEAD_US, SCHEDULE_QUANTUM_US);
+    }
+
+    static boolean hasStartRunway(long scheduledStartUs, long firstStartUs, long firstEndUs, long lastEndUs) {
+        return firstEndUs > scheduledStartUs
+                && firstStartUs <= scheduledStartUs + 100_000L
+                && lastEndUs - Math.max(scheduledStartUs, firstStartUs) >= START_BUFFER_US;
+    }
+
+    private StartWindow startWindow(long scheduledStartUs) {
+        DecodedAudioFrame first = null, last = null;
+        for (DecodedAudioFrame value : pending) {
+            if (first == null && endUs(value) > scheduledStartUs) first = value;
+            last = value;
+        }
+        return first == null ? null : new StartWindow(first, last);
+    }
+
     private static int streamBufferBytes(VideoPcmAudioStream value) {
         int frameSize = value.getFormat().getFrameSize();
         int bytes = (int) value.getFormat().getSampleRate() * frameSize * STREAM_BUFFER_MS / 1_000;
@@ -341,4 +363,6 @@ public final class CinemarrVideoAudio {
         sourceStartPending=false;sourceStartProbeQueued=false;sourceStartScheduledUs=0;sourceStartServerBoundaryEpochMs=0;sourceStartSilenceUs=0;
         sourceStartSampleRate=0;sourceStartRequestedNanos=0;
     }
+
+    private record StartWindow(DecodedAudioFrame first, DecodedAudioFrame last) {}
 }

@@ -1,7 +1,10 @@
 package stonytark.cinemarr.client;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.opentest4j.TestAbortedException;
+import stonytark.cinemarr.core.platform.DecoderProbeFixture;
+import stonytark.cinemarr.core.platform.VideoDecoderBackend;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -34,14 +37,58 @@ final class LegacyFfmpegVideoDecoderTest {
         assertTrue((first.rgba()[0] & 0xff) > (first.rgba()[2] & 0xff), "decoded frame remains red");
     }
 
+    @Test
+    void javaEightContractDecodesBundledHardwareProbeFixture() throws Exception {
+        LegacyMediaSegmentDecoder decoder = new LegacyFfmpegVideoDecoder(VideoDecoderBackend.SOFTWARE, "");
+        LegacyDecodedMediaSegment decoded = decoder.decode(DecoderProbeFixture.bytes());
+        assertFalse(decoded.video().isEmpty());
+        assertFalse(decoded.audio().isEmpty());
+        assertEquals(64, decoded.video().get(0).width());
+        assertEquals(48_000, decoded.audio().get(0).sampleRate());
+    }
+
+    @Test
+    void javaEightUnknownAutoSelectionUsesSoftwareWithoutFallback() throws Exception {
+        String previous = System.getProperty("cinemarr.video.gpuVendor");
+        try {
+            System.setProperty("cinemarr.video.gpuVendor", "unknown");
+            LegacyFfmpegVideoDecoder decoder = new LegacyFfmpegVideoDecoder(VideoDecoderBackend.AUTO, "secret/device/path");
+            assertFalse(decoder.decode(syntheticSegment()).video().isEmpty());
+            assertEquals(VideoDecoderBackend.SOFTWARE, decoder.effectiveBackend());
+            assertEquals(0L, decoder.fallbackCount());
+            assertEquals("explicit-selector", decoder.deviceType());
+            assertFalse(decoder.fallbackReason().contains("secret/device/path"));
+        } finally {
+            if (previous == null) System.clearProperty("cinemarr.video.gpuVendor");
+            else System.setProperty("cinemarr.video.gpuVendor", previous);
+        }
+    }
+
+    @Test
+    @EnabledIfEnvironmentVariable(named = "CINEMARR_HARDWARE_VIDEO_TEST", matches = "true")
+    void javaEightHardwareDecoderReadsSyntheticProgram() throws Exception {
+        VideoDecoderBackend backend = VideoDecoderBackend.parseInternal(System.getenv("CINEMARR_HARDWARE_VIDEO_BACKEND"));
+        LegacyFfmpegVideoDecoder decoder = new LegacyFfmpegVideoDecoder(
+                backend, System.getenv("CINEMARR_HARDWARE_VIDEO_DEVICE"));
+        LegacyDecodedMediaSegment decoded = decoder.decode(syntheticSegment(1280, 720, 30, "0.6"));
+        assertFalse(decoded.video().isEmpty());
+        assertFalse(decoded.audio().isEmpty());
+        assertEquals(backend, decoder.effectiveBackend(), decoder.fallbackReason());
+    }
+
     private static byte[] syntheticSegment() throws IOException, InterruptedException {
+        return syntheticSegment(16, 16, 5, "0.6");
+    }
+
+    private static byte[] syntheticSegment(int width, int height, int rate, String duration)
+            throws IOException, InterruptedException {
         Process process;
         try {
             process = new ProcessBuilder("ffmpeg", "-hide_banner", "-loglevel", "error",
-                    "-f", "lavfi", "-i", "color=c=red:s=16x16:r=5",
+                    "-f", "lavfi", "-i", "color=c=red:s=" + width + "x" + height + ":r=" + rate,
                     "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000",
-                    "-t", "0.6", "-pix_fmt", "yuv420p", "-c:v", "libx264", "-preset", "ultrafast",
-                    "-g", "5", "-c:a", "aac", "-f", "mpegts", "pipe:1")
+                    "-t", duration, "-pix_fmt", "yuv420p", "-c:v", "libx264", "-preset", "ultrafast",
+                    "-g", Integer.toString(rate), "-c:a", "aac", "-f", "mpegts", "pipe:1")
                     .redirectError(ProcessBuilder.Redirect.INHERIT).start();
         } catch (IOException missing) {
             throw new TestAbortedException("Host ffmpeg is unavailable", missing);

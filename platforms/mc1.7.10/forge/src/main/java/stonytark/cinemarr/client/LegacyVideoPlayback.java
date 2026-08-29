@@ -3,6 +3,7 @@ package stonytark.cinemarr.client;
 import stonytark.cinemarr.Cinemarr;
 import stonytark.cinemarr.core.client.VideoSegmentAssembler;
 import stonytark.cinemarr.core.network.Hashing;
+import stonytark.cinemarr.core.platform.CinemarrSettings;
 import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.core.protocol.VideoPackets;
 import stonytark.cinemarr.network.LegacyNetwork;
@@ -21,16 +22,19 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Bounded Java-8 FFmpeg pipeline with generation-safe client-thread delivery. */
 final class LegacyVideoPlayback implements AutoCloseable {
     private static final int MAX_DECODE_JOBS = 2;
     private static final int MAX_VIDEO_FRAMES = 180;
+    private static final long MAX_QUEUED_VIDEO_BYTES = 192L * 1024L * 1024L;
     private static final int MAX_AUDIO_FRAMES = 128;
     private final ExecutorService executor = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "Cinemarr legacy FFmpeg decoder"); thread.setDaemon(true); return thread;
     });
-    private final LegacyFfmpegVideoDecoder decoder = new LegacyFfmpegVideoDecoder();
+    private final LegacyFfmpegVideoDecoder decoder = new LegacyFfmpegVideoDecoder(
+            CinemarrSettings.videoDecoderBackend(), CinemarrSettings.videoDecoderDevice());
     private final Queue<DecodedBatch> decoded = new ConcurrentLinkedQueue<DecodedBatch>();
     private final PriorityQueue<LegacyDecodedVideoFrame> video = new PriorityQueue<LegacyDecodedVideoFrame>(32,
             new Comparator<LegacyDecodedVideoFrame>() { @Override public int compare(LegacyDecodedVideoFrame left, LegacyDecodedVideoFrame right) {
@@ -38,6 +42,8 @@ final class LegacyVideoPlayback implements AutoCloseable {
             }});
     private final Queue<LegacyDecodedAudioFrame> audio = new ArrayDeque<LegacyDecodedAudioFrame>();
     private final AtomicInteger pending = new AtomicInteger();
+    private final AtomicBoolean decoderSelectionLogged = new AtomicBoolean();
+    private final AtomicBoolean decoderFallbackLogged = new AtomicBoolean();
     private final LegacyVideoTexture texture = new LegacyVideoTexture();
     private UUID sessionId;
     private long generation = -1;
@@ -47,6 +53,7 @@ final class LegacyVideoPlayback implements AutoCloseable {
     private String lastFrameSha256 = "";
     private long lastHealthMs;
     private boolean caughtUp;
+    private long queuedVideoBytes;
 
     void tick(LegacyVideoClientState.StreamState stream) {
         VideoPackets.SessionState session = stream.session();
@@ -55,16 +62,21 @@ final class LegacyVideoPlayback implements AutoCloseable {
             resetQueues(); sessionId = session.sessionId(); generation = session.generation();
         }
         VideoSegmentAssembler.CompletedSegment segment;
-        while (pending.get() < MAX_DECODE_JOBS && decoded.size() < MAX_DECODE_JOBS
+        while (pending.get() < MAX_DECODE_JOBS && decoded.size() < MAX_DECODE_JOBS && queuedVideoBytes < MAX_QUEUED_VIDEO_BYTES
                 && audio.size() < MAX_AUDIO_FRAMES && (segment = stream.pollSegment()) != null) submit(segment);
         DecodedBatch batch;
         while (audio.size() < MAX_AUDIO_FRAMES && (batch = decoded.poll()) != null) if (batch.sessionId.equals(sessionId) && batch.generation == generation) {
-            for (LegacyDecodedVideoFrame frame : batch.video) { if (video.size() >= MAX_VIDEO_FRAMES) { video.poll(); videoDrops++; } video.add(frame); }
+            for (LegacyDecodedVideoFrame frame : batch.video) {
+                if (video.size() >= MAX_VIDEO_FRAMES) { queuedVideoBytes -= video.poll().rgbaView().length; videoDrops++; }
+                video.add(frame); queuedVideoBytes += frame.rgbaView().length;
+            }
             audio.addAll(batch.audio);
         }
         long targetUs = authoritativePositionMs(session, LegacyClientState.INSTANCE.serverEpoch(System.currentTimeMillis())) * 1_000L;
         LegacyDecodedVideoFrame current = null;
-        while (!video.isEmpty() && video.peek().presentationTimeUs() <= targetUs + 40_000L) current = video.poll();
+        while (!video.isEmpty() && video.peek().presentationTimeUs() <= targetUs + 40_000L) {
+            current = video.poll(); queuedVideoBytes -= current.rgbaView().length;
+        }
         if (current != null) {
             texture.upload(current); lastPresentedUs = current.presentationTimeUs();
             lastFrameSha256 = Hashing.sha256(current.rgbaView());
@@ -80,6 +92,7 @@ final class LegacyVideoPlayback implements AutoCloseable {
         CompletableFuture.runAsync(() -> {
             try {
                 LegacyDecodedMediaSegment result = decoder.decode(segment.data()); long first = earliestTimestamp(result);
+                logDecoderSelection();
                 long offset = segment.presentationTimeMs() * 1_000L - first;
                 List<LegacyDecodedVideoFrame> shiftedVideo = new ArrayList<LegacyDecodedVideoFrame>();
                 for (LegacyDecodedVideoFrame frame : result.video()) shiftedVideo.add(new LegacyDecodedVideoFrame(
@@ -92,6 +105,18 @@ final class LegacyVideoPlayback implements AutoCloseable {
                 decoderRecoveries++; Cinemarr.LOGGER.warn("Cinemarr rejected legacy video segment {}: {}", segment.segmentIndex(), failure.toString());
             } finally { pending.decrementAndGet(); }
         }, executor);
+    }
+
+    private void logDecoderSelection() {
+        if (decoder.fallbackCount() > 0L) {
+            if (decoderFallbackLogged.compareAndSet(false, true)) Cinemarr.LOGGER.warn(
+                    "Cinemarr legacy video decoder requested={} deviceType={} fell back permanently to software: {}",
+                    decoder.requestedBackend().configValue(), decoder.deviceType(), decoder.fallbackReason());
+            return;
+        }
+        if (decoderSelectionLogged.compareAndSet(false, true)) Cinemarr.LOGGER.info(
+                "Cinemarr legacy video decoder requested={} effective={} deviceType={}",
+                decoder.requestedBackend().configValue(), decoder.effectiveBackend().configValue(), decoder.deviceType());
     }
 
     private static long earliestTimestamp(LegacyDecodedMediaSegment result) {
@@ -116,14 +141,32 @@ final class LegacyVideoPlayback implements AutoCloseable {
         VideoPackets.SessionState session = stream.session(); long now = System.currentTimeMillis();
         if (session == null || session.item() == null || now - lastHealthMs < 5_000L) return;
         long target = authoritativePositionMs(session, LegacyClientState.INSTANCE.serverEpoch(now)) * 1_000L;
-        long last = lastPresentedUs; for (LegacyDecodedVideoFrame frame : video) last = Math.max(last, frame.presentationTimeUs());
-        long buffered = Math.max(0, (last - target) / 1_000L); long drift = last == 0 ? 0 : Math.max(-30_000, Math.min(30_000, (last - target) / 1_000L));
+        long newestQueued = lastPresentedUs;
+        for (LegacyDecodedVideoFrame frame : video) newestQueued = Math.max(newestQueued, frame.presentationTimeUs());
+        long buffered = bufferedMs(target, newestQueued);
+        long drift = presentedDriftMs(target, lastPresentedUs);
         LegacyNetwork.sendToServer(LegacyPacketTypes.VIDEO_CLIENT_HEALTH, new VideoPackets.ClientHealth(session.sessionId(),
                 session.generation(), texture.ready() ? "PLAYING" : "BUFFERING", decoderRecoveries, videoDrops, underruns,
-                Math.min(60_000, buffered), drift)); lastHealthMs = now;
+                Math.min(60_000, buffered), drift));
+        if (ProtocolLimits.videoProbeEnabled()) Cinemarr.LOGGER.info(
+                "Acceptance decoder metrics: requested={} effective={} deviceType={} segments={} frames={} wallNanos={} "
+                        + "cpuNanos={} transferNanos={} conversionNanos={} peakRetainedBytes={} fallbackCount={} "
+                        + "recoveries={} videoDrops={} audioUnderruns={} bufferedMs={} driftMs={}",
+                decoder.requestedBackend().configValue(), decoder.effectiveBackend().configValue(), decoder.deviceType(),
+                decoder.decodedSegments(), decoder.decodedFrames(), decoder.wallNanos(), decoder.cpuNanos(),
+                decoder.transferNanos(), decoder.conversionNanos(), decoder.peakRetainedBytes(), decoder.fallbackCount(),
+                decoderRecoveries, videoDrops, underruns, buffered, drift);
+        lastHealthMs = now;
+    }
+    static long bufferedMs(long targetUs, long newestQueuedUs) {
+        return Math.max(0L, (newestQueuedUs - targetUs) / 1_000L);
+    }
+    static long presentedDriftMs(long targetUs, long lastPresentedUs) {
+        if (lastPresentedUs == 0L) return 0L;
+        return Math.max(-30_000L, Math.min(30_000L, (lastPresentedUs - targetUs) / 1_000L));
     }
     void reset() { sessionId = null; generation = -1; lastPresentedUs = lastHealthMs = 0; lastFrameSha256 = ""; caughtUp = false; resetQueues(); texture.close(); }
-    private void resetQueues() { decoded.clear(); video.clear(); audio.clear(); }
+    private void resetQueues() { decoded.clear(); video.clear(); audio.clear(); queuedVideoBytes = 0L; }
     @Override public void close() { reset(); executor.shutdownNow(); }
 
     private static final class DecodedBatch {

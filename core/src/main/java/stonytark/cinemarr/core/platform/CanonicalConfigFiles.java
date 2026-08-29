@@ -79,7 +79,10 @@ public final class CanonicalConfigFiles {
         Path source = chooseSource(canonical, legacyCandidates);
         Map<String, String> values = source == null ? Collections.<String, String>emptyMap() : parse(source);
         ClientConfig config = new ClientConfig(canonical, bool(values, "enabled", true),
-                decimal(values, "volume", 1.0, 0.0, 1.0), source != null && !source.equals(canonical) ? source : null);
+                decimal(values, "volume", 1.0, 0.0, 1.0),
+                VideoDecoderBackend.parse(string(values, "videoDecoderBackend", "software", 32)),
+                string(values, "videoDecoderDevice", "", 256),
+                source != null && !source.equals(canonical) ? source : null);
         config.save();
         return config;
     }
@@ -193,11 +196,16 @@ public final class CanonicalConfigFiles {
         private final Path importedFrom;
         private boolean enabled;
         private double volume;
+        private VideoDecoderBackend videoDecoderBackend;
+        private String videoDecoderDevice;
 
-        private ClientConfig(Path path, boolean enabled, double volume, Path importedFrom) {
+        private ClientConfig(Path path, boolean enabled, double volume, VideoDecoderBackend videoDecoderBackend,
+                             String videoDecoderDevice, Path importedFrom) {
             this.path = path;
             this.enabled = enabled;
             this.volume = volume;
+            this.videoDecoderBackend = videoDecoderBackend;
+            this.videoDecoderDevice = videoDecoderDevice;
             this.importedFrom = importedFrom;
         }
 
@@ -209,10 +217,21 @@ public final class CanonicalConfigFiles {
         @Override public synchronized double volume() { return volume; }
         @Override public synchronized void volume(double value) { volume = clamp(value, 0.0, 1.0); }
         @Override public void saveVolume() { saveUnchecked(); }
+        @Override public synchronized VideoDecoderBackend videoDecoderBackend() { return videoDecoderBackend; }
+        @Override public synchronized void videoDecoderBackend(VideoDecoderBackend value) {
+            videoDecoderBackend = value == null ? VideoDecoderBackend.SOFTWARE : value;
+        }
+        @Override public synchronized String videoDecoderDevice() { return videoDecoderDevice; }
+        @Override public synchronized void videoDecoderDevice(String value) {
+            videoDecoderDevice = value == null ? "" : value.trim();
+        }
+        @Override public void saveVideoDecoder() { saveUnchecked(); }
 
         public synchronized void save() throws IOException {
             write(path, Arrays.asList("# Cinemarr local client settings.", "enabled = " + enabled,
-                    "volume = " + number(volume)));
+                    "volume = " + number(volume),
+                    "videoDecoderBackend = " + quoted(videoDecoderBackend.configValue()),
+                    "videoDecoderDevice = " + quoted(videoDecoderDevice)));
         }
 
         private void saveUnchecked() {
@@ -440,7 +459,8 @@ public final class CanonicalConfigFiles {
             normalize("quickTvKitsEnabled"), normalize("quickTv144pEnabled"), normalize("quickTv240pEnabled"),
             normalize("quickTv480pEnabled"), normalize("quickTv720pEnabled"), normalize("quickTv1080pEnabled"),
             normalize("quickTv1440pEnabled"), normalize("quickTv4KEnabled"), normalize("quickTv8KEnabled"));
-    private static final List<String> CLIENT_KEYS = Arrays.asList(normalize("enabled"), normalize("volume"));
+    private static final List<String> CLIENT_KEYS = Arrays.asList(normalize("enabled"), normalize("volume"),
+            normalize("videoDecoderBackend"), normalize("videoDecoderDevice"));
 
     public static final class ConfigValidationException extends IOException {
         public ConfigValidationException(String message) { super(message); }

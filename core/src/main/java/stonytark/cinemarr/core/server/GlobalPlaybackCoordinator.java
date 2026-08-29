@@ -918,7 +918,7 @@ public final class GlobalPlaybackCoordinator<P> implements AutoCloseable {
         return value;
     }
 
-    private String safe(Throwable error) { return SecretRedactor.message(error, CinemarrSettings.plexToken()); }
+    private String safe(Throwable error) { return SecretRedactor.message(error, CinemarrSettings.plexToken(), CinemarrSettings.plexUrl()); }
     private static boolean blank(String value) { return value == null || value.trim().isEmpty(); }
     private static Throwable root(Throwable error) {
         Throwable value = error;

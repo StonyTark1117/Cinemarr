@@ -103,6 +103,11 @@ sourceSets {
     }
 }
 
+def sharedHardwareDecoder = objects.sourceDirectorySet('sharedHardwareDecoder', 'shared hardware decoder')
+sharedHardwareDecoder.srcDir('../../../src/main/java')
+sharedHardwareDecoder.include('stonytark/cinemarr/client/FfmpegHardwareVideoDecoder.java')
+sourceSets.main.java.source(sharedHardwareDecoder)
+
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
 }
@@ -187,6 +192,7 @@ tasks.register('verifyRelease') {
                     'stonytark/cinemarr/client/LegacyAudioPlayer.class',
                     'stonytark/cinemarr/client/LegacyScreen.class',
                     'stonytark/cinemarr/client/LegacyFfmpegVideoDecoder.class',
+                    'stonytark/cinemarr/client/FfmpegHardwareVideoDecoder.class',
                     'stonytark/cinemarr/client/LegacyVideoPlayback.class',
                     'stonytark/cinemarr/client/LegacyVideoRenderer.class',
                     'stonytark/cinemarr/client/LegacyVideoAudio.class',
@@ -219,7 +225,7 @@ tasks.register('verifyRelease') {
             String metadata = zip.getInputStream(zip.getEntry('mcmod.info')).getText('UTF-8')
             [
                     '"modid": "cinemarr"',
-                    '"version": "1.0.0"',
+                    '"version": "1.0.1"',
                     '"mcversion": "1.7.10"'
             ].each { required ->
                 if (!metadata.contains(required)) throw new GradleException("Legacy metadata is missing ${required}")

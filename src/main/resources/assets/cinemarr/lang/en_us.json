@@ -47,6 +47,8 @@
   "cinemarr.config.on": "On",
   "cinemarr.config.off": "Off",
   "cinemarr.config.done": "Done",
+  "cinemarr.config.video_decoder": "Video decoder: %s (next playback)",
+  "cinemarr.config.video_decoder_warning": "Experimental; may be slower",
   "itemGroup.cinemarr": "Cinemarr",
   "block.cinemarr.screen_pixel": "Cinemarr Screen Pixel",
   "block.cinemarr.tv_controller": "TV Controller",

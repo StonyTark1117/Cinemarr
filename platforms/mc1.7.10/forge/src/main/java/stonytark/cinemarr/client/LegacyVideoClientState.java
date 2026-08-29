@@ -2,6 +2,7 @@ package stonytark.cinemarr.client;
 
 import stonytark.cinemarr.core.client.VideoSegmentAssembler;
 import stonytark.cinemarr.core.library.QueuedVideo;
+import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.core.protocol.VideoPackets;
 import stonytark.cinemarr.network.LegacyNetwork;
 import stonytark.cinemarr.network.LegacyPacketTypes;
@@ -110,6 +111,7 @@ final class LegacyVideoClientState {
     }
 
     static final class StreamState {
+        private static final int MAX_READY_SEGMENTS = 4;
         private final StreamKey key;
         private final VideoSegmentAssembler assembler = new VideoSegmentAssembler();
         private final Queue<VideoSegmentAssembler.CompletedSegment> ready = new ArrayDeque<VideoSegmentAssembler.CompletedSegment>();
@@ -117,19 +119,27 @@ final class LegacyVideoClientState {
         private VideoPackets.SegmentManifest manifest;
         private long requestId;
         private int requestedSegment = -1, currentWindowEnd, totalChunks;
+        private int deferredSegment = -1;
         StreamState(StreamKey key) { this.key = key; }
         void session(VideoPackets.SessionState value) { session = value; }
         VideoPackets.SessionState session() { return session; }
         StreamKey key() { return key; }
         void manifest(VideoPackets.SegmentManifest value) {
             if (!key.sessionId.equals(value.sessionId()) || key.generation != value.generation() || session == null) return;
+            if (sameWindow(manifest, value) && requestedSegment >= 0) { manifest = value; return; }
             boolean continuation = manifest != null && !value.segments().isEmpty() && value.segments().get(0).index() == requestedSegment + 1;
             manifest = value;
-            if (continuation) request(value.segments().get(0).index(), 0);
-            else { ready.clear(); int first = seekSegment(value, session.positionMs()); if (first >= 0) request(first, 0); }
+            if (continuation) {
+                int first = value.segments().get(0).index();
+                if (ready.size() < MAX_READY_SEGMENTS) request(first, 0); else deferredSegment = first;
+            } else {
+                ready.clear(); deferredSegment = -1;
+                int first = seekSegment(value, session.positionMs()); if (first >= 0) request(first, 0);
+            }
         }
         void chunk(VideoPackets.SegmentChunk value) {
-            if (manifest == null || value.segmentIndex() != requestedSegment || value.totalChunks() < 1) return;
+            if (manifest == null || value.requestId() != requestId
+                    || value.segmentIndex() != requestedSegment || value.totalChunks() < 1) return;
             if (totalChunks == 0) { totalChunks = value.totalChunks(); assembler.begin(value.sessionId(), value.generation(), value.requestId(),
                     value.segmentIndex(), value.totalChunks(), value.segmentSha256(), value.presentationTimeMs(), value.keyframe()); }
             Optional<VideoSegmentAssembler.CompletedSegment> completed = assembler.accept(value.sessionId(), value.generation(), value.requestId(),
@@ -139,25 +149,51 @@ final class LegacyVideoClientState {
                         new VideoPackets.SegmentAcknowledgement(value.sessionId(), value.generation(), value.requestId(), value.segmentIndex(),
                                 value.totalChunks() - 1, bufferedMs()));
                 int local = descriptorIndex(value.segmentIndex());
-                if (local >= 0 && local + 1 < manifest.segments().size()) request(manifest.segments().get(local + 1).index(), 0);
+                if (local >= 0 && local + 1 < manifest.segments().size()) {
+                    int next = manifest.segments().get(local + 1).index();
+                    if (ready.size() < MAX_READY_SEGMENTS) request(next, 0); else deferredSegment = next;
+                }
                 else if (manifest.hasMore()) LegacyNetwork.sendToServer(LegacyPacketTypes.VIDEO_MANIFEST_REQUEST,
                         new VideoPackets.SegmentManifestRequest(key.sessionId, key.generation, value.segmentIndex() + 1));
             } else if (value.chunkIndex() + 1 >= currentWindowEnd && currentWindowEnd < totalChunks) request(value.segmentIndex(), currentWindowEnd);
         }
         private void request(int segment, int firstChunk) {
-            if (manifest == null || descriptorIndex(segment) < 0) return;
-            requestedSegment = segment; if (firstChunk == 0) { totalChunks = 0; requestId++; } currentWindowEnd = firstChunk + 8;
+            int descriptor = descriptorIndex(segment); if (manifest == null || descriptor < 0) return;
+            long targetMs = LegacyVideoPlayback.authoritativePositionMs(session,
+                    LegacyClientState.INSTANCE.serverEpoch(System.currentTimeMillis()));
+            if (firstChunk == 0 && !withinPrefetchLead(
+                    manifest.segments().get(descriptor).presentationTimeMs(), targetMs)) {
+                deferredSegment = segment; return;
+            }
+            deferredSegment = -1; requestedSegment = segment;
+            if (firstChunk == 0) { totalChunks = 0; requestId++; } currentWindowEnd = firstChunk + 8;
             LegacyNetwork.sendToServer(LegacyPacketTypes.VIDEO_SEGMENT_REQUEST,
                     new VideoPackets.SegmentRequest(key.sessionId, key.generation, requestId, segment, firstChunk, 8));
         }
+        static boolean withinPrefetchLead(long segmentPresentationTimeMs, long playbackPositionMs) {
+            return segmentPresentationTimeMs <= playbackPositionMs + ProtocolLimits.CLIENT_VIDEO_PREFETCH_LEAD_MS;
+        }
         private int descriptorIndex(int segment) { if (manifest == null) return -1; for (int index = 0; index < manifest.segments().size(); index++) if (manifest.segments().get(index).index() == segment) return index; return -1; }
+        private static boolean sameWindow(VideoPackets.SegmentManifest left, VideoPackets.SegmentManifest right) {
+            if (left == null || right == null || left.segments().size() != right.segments().size()) return false;
+            if (left.segments().isEmpty()) return true;
+            return left.segments().get(0).index() == right.segments().get(0).index()
+                    && left.segments().get(left.segments().size() - 1).index()
+                    == right.segments().get(right.segments().size() - 1).index();
+        }
         private static int seekSegment(VideoPackets.SegmentManifest manifest, long position) {
             int result = manifest.segments().isEmpty() ? -1 : manifest.segments().get(0).index();
             for (VideoPackets.SegmentDescriptor descriptor : manifest.segments()) { if (descriptor.presentationTimeMs() > position) break; if (descriptor.keyframe()) result = descriptor.index(); }
             return result;
         }
         private long bufferedMs() { long total = 0; for (VideoSegmentAssembler.CompletedSegment segment : ready) { int index = descriptorIndex(segment.segmentIndex()); if (index >= 0) total += manifest.segments().get(index).durationMs(); } return total; }
-        void reset() { assembler.reset(); ready.clear(); manifest = null; requestedSegment = -1; currentWindowEnd = totalChunks = 0; }
-        VideoSegmentAssembler.CompletedSegment pollSegment() { return ready.poll(); }
+        void reset() { assembler.reset(); ready.clear(); manifest = null; requestedSegment = -1;
+            currentWindowEnd = totalChunks = 0; deferredSegment = -1; }
+        VideoSegmentAssembler.CompletedSegment pollSegment() {
+            if (deferredSegment >= 0 && ready.size() < MAX_READY_SEGMENTS) request(deferredSegment, 0);
+            VideoSegmentAssembler.CompletedSegment value = ready.poll();
+            if (deferredSegment >= 0 && ready.size() < MAX_READY_SEGMENTS) request(deferredSegment, 0);
+            return value;
+        }
     }
 }

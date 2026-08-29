@@ -6,6 +6,7 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import stonytark.cinemarr.core.platform.CinemarrSettings;
+import stonytark.cinemarr.core.platform.VideoDecoderBackend;
 
 /** Local settings exposed by NeoForge's Mod List before joining a server. */
 public final class CinemarrClientConfigScreen extends Screen {
@@ -25,8 +26,14 @@ public final class CinemarrClientConfigScreen extends Screen {
             rebuildWidgets();
         }).bounds(center - 100, height / 2 - 28, 200, 20).build());
         addRenderableWidget(new VolumeSlider(center - 100, height / 2, 200, 20));
+        addRenderableWidget(Button.builder(decoderLabel(), button -> {
+            VideoDecoderBackend next = CinemarrSettings.videoDecoderBackend().next();
+            CinemarrSettings.videoDecoderBackend(next);
+            CinemarrSettings.saveVideoDecoder();
+            rebuildWidgets();
+        }).bounds(center - 100, height / 2 + 28, 200, 20).build());
         addRenderableWidget(Button.builder(Component.translatable("cinemarr.config.done"), button -> onClose())
-                .bounds(center - 100, height / 2 + 38, 200, 20).build());
+                .bounds(center - 100, height / 2 + 58, 200, 20).build());
     }
 
     @Override public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
@@ -34,6 +41,10 @@ public final class CinemarrClientConfigScreen extends Screen {
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
         graphics.centeredText(font, title, width / 2, height / 2 - 62, 0xFFFFFF);
         graphics.centeredText(font, Component.translatable("cinemarr.config.local_only"), width / 2, height / 2 - 46, 0xA0D8FF);
+        if (CinemarrSettings.videoDecoderBackend() != VideoDecoderBackend.SOFTWARE) {
+            graphics.centeredText(font, Component.translatable("cinemarr.config.video_decoder_warning"),
+                    width / 2, height / 2 + 84, 0xFFB060);
+        }
     }
 
     @Override public void onClose() { minecraft.setScreen(parent); }
@@ -41,6 +52,11 @@ public final class CinemarrClientConfigScreen extends Screen {
 
     private static Component listeningLabel() {
         return Component.translatable("cinemarr.config.listening", Component.translatable(CinemarrSettings.enabled() ? "cinemarr.config.on" : "cinemarr.config.off"));
+    }
+
+    private static Component decoderLabel() {
+        return Component.translatable("cinemarr.config.video_decoder",
+                CinemarrSettings.videoDecoderBackend().configValue());
     }
 
     private static final class VolumeSlider extends AbstractSliderButton {

@@ -21,10 +21,12 @@ import java.util.UUID;
 final class LegacyVideoAudio {
     private static final long START_BUFFER_US = 700_000L;
     private static final long SCHEDULE_LEAD_US = 2_000_000L;
-    private static final long SCHEDULE_QUANTUM_US = 1_000_000L;
+    private static final long SCHEDULE_QUANTUM_US = 50_000L;
     private static final long SOURCE_PREROLL_US = 2_000_000L;
     private static final long SOURCE_START_CONFIRM_US = 250_000L;
     private static final long SOURCE_START_TIMEOUT_US = 5_000_000L;
+    private static final long REBUFFER_DRIFT_US = 150_000L;
+    private static final int REBUFFER_DRIFT_TICKS = 5;
     // Paulscode's raw-stream adapter can auto-restart an OpenAL source when a
     // late feed arrives after the last queued buffer was consumed. Keep a
     // materially larger runway than the modern streaming-source adapter so
@@ -47,9 +49,11 @@ final class LegacyVideoAudio {
     private long queuedProgramUntilUs;
     private long scheduledStartUs;
     private long programOffsetUs;
+    private long mediaBoundaryLocalUs;
     private long sourceRequestedAtUs;
     private long sourcePausedAtUs;
     private int underruns;
+    private int driftTicks;
     private boolean prepared;
     private boolean started;
     private boolean sourcePaused;
@@ -64,6 +68,11 @@ final class LegacyVideoAudio {
         long targetUs = LegacyVideoPlayback.authoritativePositionMs(session,
                 LegacyClientState.INSTANCE.serverEpoch(System.currentTimeMillis())) * 1_000L;
         LegacyDecodedAudioFrame frame;
+        // A follower can finish decoding its first few segments before its
+        // server clock is ready. Do not let those now-stale frames permanently
+        // fill the bounded queue and prevent later, schedulable audio from
+        // flowing through once clock synchronization completes.
+        while (!pending.isEmpty() && endUs(pending.peek()) < targetUs - 100_000L) pending.poll();
         while (pending.size() < MAX_PENDING_FRAMES && (frame = playback.pollAudio()) != null) {
             if (endUs(frame) >= targetUs - 100_000L) pending.add(frame);
         }
@@ -98,7 +107,9 @@ final class LegacyVideoAudio {
             long nowUs = System.currentTimeMillis() * 1_000L;
             if (sourcePaused) {
                 soundSystem.play(source); sourcePaused = false;
-                queuedUntilLocalUs += Math.max(0L, nowUs - sourcePausedAtUs);
+                long pausedUs = Math.max(0L, nowUs - sourcePausedAtUs);
+                queuedUntilLocalUs += pausedUs;
+                mediaBoundaryLocalUs += pausedUs;
                 sourcePausedAtUs = 0L;
             }
             if (!soundSystem.playing(source)) {
@@ -106,15 +117,32 @@ final class LegacyVideoAudio {
                 return;
             }
             feed(nowUs);
-            if (targetUs >= scheduledStartUs) stableTicks++;
+            long audioMediaUs = wallClockAudioMediaUs(scheduledStartUs, mediaBoundaryLocalUs, nowUs);
+            long driftUs = audioMediaUs - targetUs;
+            if (targetUs >= scheduledStartUs) {
+                if (Math.abs(driftUs) > REBUFFER_DRIFT_US) {
+                    stableTicks = 0;
+                    if (++driftTicks >= REBUFFER_DRIFT_TICKS) {
+                        rebuffer(targetUs, audioMediaUs, "timeline-drift");
+                        return;
+                    }
+                } else {
+                    driftTicks = 0;
+                    stableTicks++;
+                }
+            }
             if (pending.isEmpty() && nowUs > queuedUntilLocalUs + 250_000L && !soundSystem.playing(source)) { underruns++; stopSource(); }
         }
         if (ProtocolLimits.videoProbeEnabled() && System.currentTimeMillis() - lastAcceptanceLogMs >= 1_000L) {
             lastAcceptanceLogMs = System.currentTimeMillis();
+            long nowUs = System.currentTimeMillis() * 1_000L;
             long backendPlayedUs = backendPlayedUs();
-            long audioMediaUs = audioMediaUs(scheduledStartUs, programOffsetUs, backendPlayedUs);
-            Cinemarr.LOGGER.info("Acceptance legacy video audio timeline: targetMs={} scheduledMs={} backendPlayedMs={} audioMediaMs={} driftMs={} started={} stableTicks={} pendingFrames={} underruns={}",
-                    targetUs / 1_000L, scheduledStartUs / 1_000L, backendPlayedUs / 1_000L, audioMediaUs / 1_000L,
+            long backendMediaUs = started ? backendAudioMediaUs(scheduledStartUs, programOffsetUs, backendPlayedUs) : 0L;
+            long audioMediaUs = started ? wallClockAudioMediaUs(scheduledStartUs, mediaBoundaryLocalUs,
+                    sourcePaused ? sourcePausedAtUs : nowUs) : 0L;
+            Cinemarr.LOGGER.info("Acceptance legacy video audio timeline: targetMs={} videoMs={} scheduledMs={} backendPlayedMs={} backendMediaMs={} audioMediaMs={} driftMs={} started={} stableTicks={} pendingFrames={} underruns={}",
+                    targetUs / 1_000L, playback.lastPresentedUs() / 1_000L, scheduledStartUs / 1_000L,
+                    backendPlayedUs / 1_000L, backendMediaUs / 1_000L, audioMediaUs / 1_000L,
                     (audioMediaUs - targetUs) / 1_000L, started, stableTicks, pending.size(), underruns);
         }
     }
@@ -139,7 +167,7 @@ final class LegacyVideoAudio {
 
     private void scheduleAfterSourceStart(long targetUs, long nowUs) {
         long playedUs = Math.max(0L, (long) (soundSystem.millisecondsPlayed(source) * 1_000.0F));
-        long boundaryUs = roundUp(targetUs + SCHEDULE_LEAD_US, SCHEDULE_QUANTUM_US);
+        long boundaryUs = scheduledStartUs(targetUs);
         while (!pending.isEmpty() && endUs(pending.peek()) <= boundaryUs) pending.poll();
         if (pending.isEmpty()) { stopSource(); return; }
         LegacyDecodedAudioFrame first = pending.peek(), last = first; for (LegacyDecodedAudioFrame value : pending) last = value;
@@ -149,6 +177,12 @@ final class LegacyVideoAudio {
         long additionalSilenceUs = additionalSilenceUs(targetUs, scheduledStartUs, preparedDurationUs, playedUs);
         preparedDurationUs += queueSilence(additionalSilenceUs);
         programOffsetUs = preparedDurationUs;
+        // Paulscode's streaming cursor drops the duration of all but one
+        // processed buffer when a feed call unqueues several at once. Use it
+        // only to locate the initial physical boundary, then advance the
+        // trusted media timeline from that wall-clock anchor as modern clients
+        // do. Source stop/starvation checks still guard actual backend health.
+        mediaBoundaryLocalUs = nowUs + Math.max(0L, programOffsetUs - playedUs);
         long preparedContentUs = 0L;
         while (preparedContentUs < TARGET_QUEUE_US && !pending.isEmpty()) {
             long queuedUs = queueBatch();
@@ -157,7 +191,7 @@ final class LegacyVideoAudio {
             preparedDurationUs += queuedUs; preparedContentUs += queuedUs;
         }
         queuedUntilLocalUs = nowUs + Math.max(0L, preparedDurationUs - playedUs);
-        started = true; stableTicks = targetUs >= scheduledStartUs ? 1 : 0;
+        started = true; driftTicks = 0; stableTicks = targetUs >= scheduledStartUs ? 1 : 0;
         if (ProtocolLimits.videoProbeEnabled()) Cinemarr.LOGGER.info(
                 "Acceptance legacy video audio scheduled: framePtsMs={} targetMs={} leadMs={} backendPlayedMs={} extraSilenceMs={} queuedMs={}",
                 scheduledStartUs / 1_000L, targetUs / 1_000L, Math.max(0L, scheduledStartUs - targetUs) / 1_000L,
@@ -249,8 +283,14 @@ final class LegacyVideoAudio {
         long remainingPrerollUs = Math.max(0L, queuedPrerollUs - Math.max(0L, playedUs));
         return Math.max(0L, scheduledStartUs - targetUs - remainingPrerollUs);
     }
-    static long audioMediaUs(long scheduledStartUs, long programOffsetUs, long backendPlayedUs) {
+    static long backendAudioMediaUs(long scheduledStartUs, long programOffsetUs, long backendPlayedUs) {
         return scheduledStartUs + Math.max(0L, backendPlayedUs - programOffsetUs);
+    }
+    static long wallClockAudioMediaUs(long scheduledStartUs, long mediaBoundaryLocalUs, long nowUs) {
+        return scheduledStartUs + Math.max(0L, nowUs - mediaBoundaryLocalUs);
+    }
+    static long scheduledStartUs(long targetUs) {
+        return roundUp(targetUs + SCHEDULE_LEAD_US, SCHEDULE_QUANTUM_US);
     }
     private static long roundUp(long value, long quantum) { return ((value + quantum - 1L) / quantum) * quantum; }
     private static long endUs(LegacyDecodedAudioFrame frame) {
@@ -284,10 +324,11 @@ final class LegacyVideoAudio {
     boolean ready() { return started && soundSystem != null && stableTicks >= 10; }
     void audioEngineReloaded() { stopSource(); }
     void reset() { stopSource(); pending.clear(); sessionId = null; generation = -1; underruns = 0;
-        stableTicks = 0; lastAcceptanceLogMs = 0L; }
+        driftTicks = stableTicks = 0; lastAcceptanceLogMs = 0L; }
     private void stopSource() {
         SoundSystem previous = soundSystem; soundSystem = null; format = null; prepared = false; started = false;
-        sourcePaused = false; queuedUntilLocalUs = preparedDurationUs = queuedProgramUntilUs = scheduledStartUs = programOffsetUs = sourceRequestedAtUs = sourcePausedAtUs = 0L; stableTicks = 0;
+        sourcePaused = false; queuedUntilLocalUs = preparedDurationUs = queuedProgramUntilUs = scheduledStartUs = programOffsetUs = mediaBoundaryLocalUs = sourceRequestedAtUs = sourcePausedAtUs = 0L;
+        driftTicks = stableTicks = 0;
         if (previous != null) {
             try { previous.stop(source); previous.flush(source); previous.removeSource(source); }
             catch (RuntimeException ignored) { }

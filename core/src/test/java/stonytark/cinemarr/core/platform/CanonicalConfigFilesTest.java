@@ -104,15 +104,33 @@ class CanonicalConfigFilesTest {
         CanonicalConfigFiles.ClientConfig config = CanonicalConfigFiles.loadClient(canonical, legacy);
         assertFalse(config.enabled());
         assertEquals(0.75, config.volume());
+        assertEquals(VideoDecoderBackend.SOFTWARE, config.videoDecoderBackend());
+        assertEquals("", config.videoDecoderDevice());
         assertEquals(legacy, config.importedFrom());
 
         config.enabled(true);
         config.volume(0.25);
+        config.videoDecoderBackend(VideoDecoderBackend.VAAPI);
+        config.videoDecoderDevice("/dev/dri/renderD129");
         config.saveVolume();
         CanonicalConfigFiles.ClientConfig restored = CanonicalConfigFiles.loadClient(canonical, legacy);
         assertTrue(restored.enabled());
         assertEquals(0.25, restored.volume());
+        assertEquals(VideoDecoderBackend.VAAPI, restored.videoDecoderBackend());
+        assertEquals("/dev/dri/renderD129", restored.videoDecoderDevice());
         assertNull(restored.importedFrom());
+    }
+
+    @Test void invalidClientDecoderBackendFallsBackToSoftware() throws Exception {
+        String[] unavailable = {"not-a-backend", "qsv", "cuda", "d3d11va", "dxva2"};
+        for (int index = 0; index < unavailable.length; index++) {
+            Path canonical = temporary.resolve("config-" + index + "/cinemarr-client.toml");
+            Files.createDirectories(canonical.getParent());
+            Files.write(canonical, ("videoDecoderBackend = \"" + unavailable[index] + "\"\n")
+                    .getBytes(StandardCharsets.UTF_8));
+            CanonicalConfigFiles.ClientConfig config = CanonicalConfigFiles.loadClient(canonical, (Path) null);
+            assertEquals(VideoDecoderBackend.SOFTWARE, config.videoDecoderBackend(), unavailable[index]);
+        }
     }
 
     @Test void quickTvKitsCanBeDisabledGloballyOrByResolution() throws Exception {

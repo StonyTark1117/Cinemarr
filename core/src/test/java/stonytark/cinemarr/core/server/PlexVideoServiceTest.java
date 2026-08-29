@@ -29,6 +29,8 @@ class PlexVideoServiceTest {
     private String baseUrl;
     private final AtomicBoolean stopped = new AtomicBoolean();
     private final AtomicReference<String> transcodeQuery = new AtomicReference<>();
+    private final AtomicReference<String> transcodePlaylist = new AtomicReference<>(
+            "#EXTM3U\n#EXT-X-VERSION:3\n#EXTINF:2.0,\nsegment0.ts\n");
 
     @BeforeEach void start() throws Exception {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -46,8 +48,23 @@ class PlexVideoServiceTest {
         server.createContext("/library/metadata/13", exchange -> json(exchange, metadataWithSelected("0")));
         server.createContext("/library/metadata/99/allLeaves",exchange->json(exchange,"{\"MediaContainer\":{\"Metadata\":[{\"type\":\"episode\",\"ratingKey\":\"21\",\"title\":\"Second\",\"grandparentTitle\":\"Show\",\"grandparentRatingKey\":\"99\",\"parentIndex\":1,\"index\":2,\"duration\":30000},{\"type\":\"episode\",\"ratingKey\":\"20\",\"title\":\"First\",\"grandparentTitle\":\"Show\",\"grandparentRatingKey\":\"99\",\"parentIndex\":1,\"index\":1,\"duration\":30000}]}}"));
         server.createContext("/video/:/transcode/universal/start.m3u8", exchange -> {transcodeQuery.set(exchange.getRequestURI().getRawQuery());bytes(exchange,
-                "#EXTM3U\n#EXT-X-VERSION:3\n#EXTINF:2.0,\nsegment0.ts\n".getBytes(StandardCharsets.UTF_8));});
-        server.createContext("/video/:/transcode/universal/segment0.ts", exchange -> bytes(exchange, new byte[]{1, 2, 3}));
+                transcodePlaylist.get().getBytes(StandardCharsets.UTF_8));});
+        server.createContext("/video/:/transcode/universal/segment0.ts", exchange -> {
+            assertEquals("secret-token", exchange.getRequestHeaders().getFirst("X-Plex-Token"));
+            bytes(exchange, new byte[]{1, 2, 3});
+        });
+        server.createContext("/video/:/transcode/universal/nested/master.m3u8", exchange -> {
+            assertEquals("secret-token", exchange.getRequestHeaders().getFirst("X-Plex-Token"));
+            bytes(exchange, "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=500000\nmedia.m3u8\n".getBytes(StandardCharsets.UTF_8));
+        });
+        server.createContext("/video/:/transcode/universal/nested/media.m3u8", exchange -> {
+            assertEquals("secret-token", exchange.getRequestHeaders().getFirst("X-Plex-Token"));
+            bytes(exchange, "#EXTM3U\n#EXTINF:2.0,\nsegment1.ts\n".getBytes(StandardCharsets.UTF_8));
+        });
+        server.createContext("/video/:/transcode/universal/nested/segment1.ts", exchange -> {
+            assertEquals("secret-token", exchange.getRequestHeaders().getFirst("X-Plex-Token"));
+            bytes(exchange, new byte[]{4, 5, 6});
+        });
         server.createContext("/video/:/transcode/universal/stop", exchange -> { stopped.set(true); bytes(exchange, new byte[0]); });
         server.start();
     }
@@ -65,17 +82,34 @@ class PlexVideoServiceTest {
                 RenditionPolicy.choose(4, 4, 1920, 1080, 1920, 1080), 0, null, null);
         assertTrue(session.playlist().startsWith("#EXTM3U"));
         assertFalse(session.playlist().contains("secret-token"));
-        assertArrayEquals(new byte[]{1, 2, 3}, service.fetch(session, "segment0.ts"));
+        PlexVideoService.MediaPlaylist media = service.mediaPlaylist(session, 0);
+        assertEquals(1, media.segments().size());
+        assertArrayEquals(new byte[]{1, 2, 3}, service.fetch(session, media, media.segments().get(0)));
         service.stop(session);
         assertTrue(stopped.get());
+    }
+
+    @Test void resolvesNestedMasterPlaylistsThroughTheProductionFetchPath() throws Exception {
+        transcodePlaylist.set("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=600000\nnested/master.m3u8\n");
+        PlexVideoService service = new PlexVideoService(baseUrl, "secret-token");
+        VideoMediaItem movie = new VideoMediaItem(MediaKind.MOVIE, "10", "Allowed", "", "PG", 0, 60_000);
+        PlexVideoService.VideoSession session = service.start(movie,
+                RenditionPolicy.choose(4, 4, 1920, 1080, 1920, 1080), 0, null, null);
+        PlexVideoService.MediaPlaylist media = service.mediaPlaylist(session, 0);
+        assertEquals(1, media.segments().size());
+        assertArrayEquals(new byte[]{4, 5, 6}, service.fetch(session, media, media.segments().get(0)));
     }
 
     @Test void rejectsCrossOriginPlaylistReferences() throws Exception {
         PlexVideoService service = new PlexVideoService(baseUrl, "secret-token");
         VideoMediaItem movie = new VideoMediaItem(MediaKind.MOVIE, "10", "Allowed", "", "PG", 0, 60_000);
-        PlexVideoService.VideoSession session = service.start(movie,
+        PlexVideoService.VideoSession directSession = service.start(movie,
                 RenditionPolicy.choose(4, 4, 1920, 1080, 1920, 1080), 0, null, null);
-        assertThrows(PlexException.class, () -> service.fetch(session, "https://example.invalid/segment.ts"));
+        assertThrows(PlexException.class, () -> service.fetch(directSession, "https://example.invalid/segment.ts"));
+        transcodePlaylist.set("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=600000\nhttps://example.invalid/media.m3u8\n");
+        PlexVideoService.VideoSession masterSession = service.start(movie,
+                RenditionPolicy.choose(4, 4, 1920, 1080, 1920, 1080), 0, null, null);
+        assertThrows(PlexException.class, () -> service.mediaPlaylist(masterSession, 0));
     }
 
     @Test void discoversAudioAndSubtitleStreamsAndSelectsThemWithoutExposingTheTokenInTheManifest() throws Exception {
@@ -83,6 +117,14 @@ class PlexVideoServiceTest {
         assertEquals(2,metadata.streams().size());assertEquals("English SDH",metadata.streams().get(1).label());
         PlexVideoService.VideoSession session=service.start(metadata.item(),RenditionPolicy.choose(4,4,1920,1080,1920,1080),0,101,202);
         assertTrue(transcodeQuery.get().contains("audioStreamID=101"));assertTrue(transcodeQuery.get().contains("subtitleStreamID=202"));assertFalse(session.playlist().contains("secret-token"));
+    }
+
+    @Test void sendsTheNamedQuickTvRenditionToRealPlex() throws Exception {
+        PlexVideoService service = new PlexVideoService(baseUrl, "secret-token");
+        VideoMediaItem movie = new VideoMediaItem(MediaKind.MOVIE, "10", "Allowed", "", "PG", 0, 60_000);
+        service.start(movie, RenditionPolicy.chooseForScreen(16, 9, 256, 144,
+                1920, 1080, 1920, 1080), 0, null, Integer.valueOf(0));
+        assertTrue(transcodeQuery.get().contains("videoResolution=256x144"));
     }
 
     @Test void acceptsBooleanAndNumericSelectedStreamFlags() throws Exception {

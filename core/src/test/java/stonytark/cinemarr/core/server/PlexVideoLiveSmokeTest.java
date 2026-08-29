@@ -6,7 +6,6 @@ import stonytark.cinemarr.core.library.VideoMediaItem;
 import stonytark.cinemarr.core.library.VideoStreamOption;
 import stonytark.cinemarr.core.video.RenditionPolicy;
 
-import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -31,32 +30,14 @@ class PlexVideoLiveSmokeTest {
         try {
             session = service.start(item, RenditionPolicy.choose(320, 180, 1920, 1080, 640, 360), 0,
                     selectedStream(metadata, VideoStreamOption.Kind.AUDIO), selectedStream(metadata, VideoStreamOption.Kind.SUBTITLE));
-            String reference = firstReference(session.playlist());
-            byte[] fetched = service.fetch(session, reference);
-            if (reference.contains(".m3u8")) {
-                String mediaPlaylist = new String(fetched, StandardCharsets.UTF_8);
-                assertTrue(firstDuration(mediaPlaylist) > 0, "Plex returned a non-positive media segment duration");
-                fetched = service.fetch(session, reference, firstReference(mediaPlaylist));
-            }
+            PlexVideoService.MediaPlaylist media = service.mediaPlaylist(session, 0);
+            assertFalse(media.segments().isEmpty(), "Plex returned no playable media segments");
+            assertTrue(media.segments().get(0).durationMs() > 0, "Plex returned a non-positive media segment duration");
+            byte[] fetched = service.fetch(session, media, media.segments().get(0));
             assertTrue(fetched.length > 0, "Plex returned an empty first media segment");
         } finally {
             if (session != null) service.stop(session);
         }
-    }
-
-    private static String firstReference(String playlist) {
-        for (String line : playlist.split("\\r?\\n")) {
-            String value = line.trim();
-            if (!value.isEmpty() && !value.startsWith("#")) return value;
-        }
-        throw new IllegalArgumentException("Playlist contained no media reference");
-    }
-    private static long firstDuration(String playlist) {
-        for (String line : playlist.split("\\r?\\n")) {
-            String value = line.trim();
-            if (value.startsWith("#EXTINF:")) return HlsPlaylist.durationMillis(value);
-        }
-        throw new IllegalArgumentException("Playlist contained no media duration");
     }
     private static Integer selectedStream(PlexVideoService.PlaybackMetadata metadata, VideoStreamOption.Kind kind) {
         for (VideoStreamOption stream : metadata.streams()) {

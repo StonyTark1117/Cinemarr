@@ -23,6 +23,11 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
 final class LegacyClientState implements LegacyNetwork.ClientListener {
+    private static final int STARTUP_CLOCK_MIN_SAMPLES = 8;
+    private static final int STARTUP_CLOCK_MAX_SAMPLES = 16;
+    private static final long STARTUP_CLOCK_MAX_ROUND_TRIP_MS = 50L;
+    private static final long STARTUP_CLOCK_SYNC_INTERVAL_MS = 250L;
+    private static final long STEADY_CLOCK_SYNC_INTERVAL_MS = 10_000L;
     static final LegacyClientState INSTANCE = new LegacyClientState();
     private static final int PAGE_SIZE = 20;
     private final ClockSynchronizer clock = new ClockSynchronizer();
@@ -78,10 +83,6 @@ final class LegacyClientState implements LegacyNetwork.ClientListener {
         } else if (type == LegacyPacketTypes.PLAYBACK_STATE) {
             playback = (StatePackets.PlaybackState) message;
             logAcceptancePlayback(playback);
-            if (playback.serverEpochMs() > 0L && !clock.initialized()) {
-                long now = System.currentTimeMillis();
-                clock.accept(now, playback.serverEpochMs(), now);
-            }
             refreshQueueBrowse(); screenChanged();
         } else if (type == LegacyPacketTypes.STATION_STATE) {
             station = (StatePackets.StationState) message;
@@ -123,7 +124,8 @@ final class LegacyClientState implements LegacyNetwork.ClientListener {
         runAcceptanceControl();
         logAcceptanceAudioState();
         long now = System.currentTimeMillis();
-        long timeSyncInterval = ProtocolLimits.videoProbeEnabled() && clock.sampleCount() < 4 ? 250L : 10_000L;
+        long timeSyncInterval = mediaClockReady()
+                ? STEADY_CLOCK_SYNC_INTERVAL_MS : STARTUP_CLOCK_SYNC_INTERVAL_MS;
         if (now - lastTimeSync >= timeSyncInterval) requestTimeSync();
         audio.tick();
         LegacyVideoRuntime.INSTANCE.tick();
@@ -330,7 +332,10 @@ final class LegacyClientState implements LegacyNetwork.ClientListener {
     }
 
     long serverEpoch(long localEpochMs) { return clock.initialized() ? clock.toServerTime(localEpochMs) : localEpochMs; }
-    boolean mediaClockReady() { return clock.initialized() && (!ProtocolLimits.videoProbeEnabled() || clock.sampleCount() >= 3); }
+    boolean mediaClockReady() {
+        return clock.ready(STARTUP_CLOCK_MIN_SAMPLES, STARTUP_CLOCK_MAX_SAMPLES,
+                STARTUP_CLOCK_MAX_ROUND_TRIP_MS);
+    }
 
     private LegacyScreen screen() {
         return Minecraft.getMinecraft().currentScreen instanceof LegacyScreen

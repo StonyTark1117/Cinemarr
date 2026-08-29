@@ -78,7 +78,6 @@ public final class CinemarrClientState {
         } else if (payload instanceof CinemarrPayloads.PlaybackState value) {
             playback = value;
             logAcceptancePlayback(value);
-            if (value.serverEpochMs() > 0 && !clock.initialized()) clock.accept(System.currentTimeMillis(), value.serverEpochMs(), System.currentTimeMillis());
             boolean queueBrowseChanged = refreshQueueBrowse();
             if (minecraft.screen instanceof CinemarrScreen screen) {
                 screen.playbackChanged();

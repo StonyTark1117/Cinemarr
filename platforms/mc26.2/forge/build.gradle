@@ -6,7 +6,7 @@ plugins {
 apply from: file('../../../gradle/mc26-recipe-resources.gradle')
 
 group = 'stonytark'
-version = '1.0.0'
+version = '1.0.1'
 def artifactVersion = version.toString()
 def expectedReleaseName = "cinemarr-${artifactVersion}+mc26.2-forge.jar"
 
@@ -181,7 +181,8 @@ tasks.named('jarJar') { archiveFileName = expectedReleaseName }
 tasks.named('build') { dependsOn(tasks.named('jarJar')) }
 
 def releaseArchive = tasks.named('jarJar').flatMap { it.archiveFile }
-def releaseEntries = ['META-INF/jarjar/stonytark.cinemarr.core-1.0.0.jar', 'META-INF/jarjar/jlayer-1.0.1.jar',
+def coreReleaseEntry = "META-INF/jarjar/stonytark.cinemarr.core-${version}.jar".toString()
+def releaseEntries = [coreReleaseEntry, 'META-INF/jarjar/jlayer-1.0.1.jar',
                       'META-INF/jarjar/jump3r-1.0.5.jar', 'META-INF/jarjar/metadata.json',
                       'org/bytedeco/javacv/FFmpegFrameGrabber.class', 'org/bytedeco/javacv/Frame.class',
                       'META-INF/LICENSE-Cinemarr-CC0-1.0.txt', 'META-INF/LICENSE-LGPL-2.1-or-later.txt',
@@ -189,6 +190,7 @@ def releaseEntries = ['META-INF/jarjar/stonytark.cinemarr.core-1.0.0.jar', 'META
                       'cinemarr.png', 'pack.mcmeta', 'assets/cinemarr/lang/en_us.json', 'stonytark/cinemarr/Cinemarr.class',
                       'stonytark/cinemarr/client/CinemarrClient.class', 'stonytark/cinemarr/network/CinemarrNetwork.class',
                       'stonytark/cinemarr/network/VideoPayloads.class', 'stonytark/cinemarr/client/FfmpegVideoDecoder.class',
+                      'stonytark/cinemarr/client/FfmpegHardwareVideoDecoder.class',
                       'stonytark/cinemarr/registry/CinemarrBlocks.class',
                       'stonytark/cinemarr/mixin/client/ForgeLevelRendererMixin.class']
 
@@ -214,7 +216,7 @@ tasks.register('verifyRelease') {
             if (platformMajor != 69) throw new GradleException("Forge platform classes are not Java 25 bytecode: class major ${platformMajor}")
             def manifest = new java.util.jar.Manifest(zip.getInputStream(zip.getEntry('META-INF/MANIFEST.MF')))
             if (manifest.mainAttributes.getValue('MixinConfigs') != 'cinemarr.mixins.json') throw new GradleException('Forge artifact does not declare its Mixin config')
-            new java.util.zip.ZipInputStream(zip.getInputStream(zip.getEntry('META-INF/jarjar/stonytark.cinemarr.core-1.0.0.jar'))).withCloseable { nested ->
+            new java.util.zip.ZipInputStream(zip.getInputStream(zip.getEntry(coreReleaseEntry))).withCloseable { nested ->
                 boolean foundCoreClass = false
                 for (def entry = nested.nextEntry; entry != null; entry = nested.nextEntry) {
                     if (entry.name == 'stonytark/cinemarr/core/server/ChunkTransferPolicy.class') {

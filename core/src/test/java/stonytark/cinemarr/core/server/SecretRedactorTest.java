@@ -12,4 +12,20 @@ class SecretRedactorTest {
         assertFalse(redacted.contains(secret)); assertFalse(redacted.contains("a%2Bb%2Fc%3D"));
         assertTrue(redacted.contains("<redacted>"));
     }
+
+    @Test void redactsConfiguredPlexEndpointAndHostFromNestedFailures() {
+        String endpoint = "http://PRIVATE-PLEX.example:32400";
+        RuntimeException wrapped = new RuntimeException("outer",
+                new java.net.UnknownHostException("private-plex.example"));
+        String redacted = SecretRedactor.message(wrapped, "secret-token", endpoint);
+        assertFalse(redacted.contains(endpoint));
+        assertFalse(redacted.contains("private-plex.example"));
+        assertTrue(redacted.contains("<redacted>"));
+    }
+
+    @Test void redactsUnexpectedHttpEndpointsEvenWithoutAConfiguredMatch() {
+        String redacted = SecretRedactor.redact("request failed at https://other.example/path?value=1", "secret-token");
+        assertFalse(redacted.contains("other.example"));
+        assertTrue(redacted.contains("<redacted-endpoint>"));
+    }
 }

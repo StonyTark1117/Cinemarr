@@ -11,10 +11,11 @@ import re
 import struct
 import sys
 import zipfile
+import base64
 from pathlib import Path, PurePosixPath
 
 
-PRODUCT_VERSION = "1.0.0"
+PRODUCT_VERSION = "1.0.1"
 PROTOCOL_VERSION = 8
 TARGETS = (
     ("1.7.10", "forge", 8, 52),
@@ -39,6 +40,7 @@ COMMON_ENTRIES = {
     "META-INF/LICENSE-LGPL-2.1-or-later.txt",
     "META-INF/THIRD_PARTY_NOTICES.md",
     "assets/cinemarr/lang/en_us.json",
+    "assets/cinemarr/decoder/h264-high-aac.ts.b64",
     "cinemarr.png",
     "stonytark/cinemarr/Cinemarr.class",
 }
@@ -221,6 +223,18 @@ def verify_png(data: bytes, filename: str) -> None:
         fail(f"{filename} icon must be at least 16x16 and include an alpha channel")
 
 
+def verify_decoder_probe_fixture(archive: zipfile.ZipFile, filename: str) -> None:
+    encoded = archive.read("assets/cinemarr/decoder/h264-high-aac.ts.b64")
+    try:
+        fixture = base64.b64decode(encoded, validate=False)
+    except ValueError as error:
+        fail(f"{filename} has invalid decoder probe base64: {error}")
+    if len(fixture) != 9400 or any(fixture[offset] != 0x47 for offset in range(0, len(fixture), 188)):
+        fail(f"{filename} decoder probe is not the expected MPEG-TS fixture")
+    if hashlib.sha256(fixture).hexdigest() != "b4b91341f7e0bfb2a7deb9a226493f2e2376f61139ee3fcc756adc3562c9e1d9":
+        fail(f"{filename} decoder probe fixture digest changed unexpectedly")
+
+
 def verify_texture_png(data: bytes, label: str) -> None:
     if len(data) < 33 or data[:8] != b"\x89PNG\r\n\x1a\n" or data[12:16] != b"IHDR":
         fail(f"{label} is not a valid PNG texture")
@@ -319,7 +333,7 @@ def verify_metadata(archive: zipfile.ZipFile, names: set[str], minecraft: str, l
             if not required_quilt_hooks.issubset(names):
                 fail(f"{filename} is missing its guarded Quilt 26.x compatibility hooks")
         expected_jars = {
-            "META-INF/jars/core-1.0.0.jar",
+            f"META-INF/jars/core-{PRODUCT_VERSION}.jar",
             "META-INF/jars/jlayer-1.0.1.jar",
             "META-INF/jars/jump3r-1.0.5.jar",
             "META-INF/jars/javacpp-1.5.14.jar",
@@ -379,6 +393,7 @@ def verify_jar(path: Path, minecraft: str, loader: str, java: int, expected_majo
         json.loads(archive.read("assets/cinemarr/lang/en_us.json"))
         verify_remappable_keybinding(archive, minecraft, loader, filename)
         verify_png(archive.read("cinemarr.png"), filename)
+        verify_decoder_probe_fixture(archive, filename)
         verify_tv_components(archive, names, minecraft, filename)
         quick_assets = {
             entry
@@ -411,6 +426,9 @@ def verify_jar(path: Path, minecraft: str, loader: str, java: int, expected_majo
                 "stonytark/cinemarr/network/LegacyNetwork.class",
                 "stonytark/cinemarr/server/LegacyGlobalPlayer.class",
                 "stonytark/cinemarr/client/LegacyAudioPlayer.class",
+                "stonytark/cinemarr/client/LegacyMediaSegmentDecoder.class",
+                "stonytark/cinemarr/client/LegacyFfmpegVideoDecoder.class",
+                "stonytark/cinemarr/client/FfmpegHardwareVideoDecoder.class",
                 "stonytark/cinemarr/client/LegacyScreen.class",
                 "stonytark/cinemarr/server/LegacySavedData.class",
                 "stonytark/cinemarr/screen/LegacyQuickTvBlock.class",
@@ -446,6 +464,9 @@ def verify_jar(path: Path, minecraft: str, loader: str, java: int, expected_majo
             required_modern = {
                 "stonytark/cinemarr/screen/QuickTvBlock.class",
                 "stonytark/cinemarr/client/CinemarrVideoAudio.class",
+                "stonytark/cinemarr/client/MediaSegmentDecoder.class",
+                "stonytark/cinemarr/client/FfmpegVideoDecoder.class",
+                "stonytark/cinemarr/client/FfmpegHardwareVideoDecoder.class",
                 "stonytark/cinemarr/mixin/client/ChannelAccessor.class",
             }
             if required_modern - names:
@@ -490,10 +511,10 @@ def verify_jar(path: Path, minecraft: str, loader: str, java: int, expected_majo
                 }
                 if core_identifiers != {("stonytark.cinemarr", "core")}:
                     fail(f"{filename} does not isolate Cinemarr's private core coordinate")
-            expected_core = (f"{nested_prefix}/core-1.0.0.jar" if loader == "fabric"
-                             else f"{nested_prefix}/stonytark.cinemarr.core-1.0.0.jar")
+            expected_core = (f"{nested_prefix}/core-{PRODUCT_VERSION}.jar" if loader == "fabric"
+                             else f"{nested_prefix}/stonytark.cinemarr.core-{PRODUCT_VERSION}.jar")
             core_candidates = sorted(name for name in names if name.startswith(f"{nested_prefix}/")
-                                     and name.endswith("core-1.0.0.jar"))
+                                     and name.endswith(f"core-{PRODUCT_VERSION}.jar"))
             if core_candidates != [expected_core]:
                 fail(f"{filename} must bundle its isolated shared core JAR, found {core_candidates}")
             for core_entry in (

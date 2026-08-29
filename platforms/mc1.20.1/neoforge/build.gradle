@@ -4,7 +4,7 @@ plugins {
 }
 
 group = 'stonytark'
-version = '1.0.0'
+version = '1.0.1'
 def artifactVersion = version.toString()
 def expectedReleaseName = "cinemarr-${artifactVersion}+mc1.20.1-neoforge.jar"
 base { archivesName = "cinemarr-${artifactVersion}+mc1.20.1-neoforge" }
@@ -72,7 +72,7 @@ dependencies {
     def javaCppVersion='1.5.14',ffmpegVersion='8.1.2-1.5.14',javaCvVersion='1.5.14'
     minecraft "net.neoforged:forge:${libs.versions.minecraft.get()}-${libs.versions.neoforge.loader.get()}"
     implementation project(':core')
-    jarJar(project(':core')) { dependency -> jarJar.ranged(dependency, '[1.0.0,1.0.1)') }
+    jarJar(project(':core')) { dependency -> jarJar.ranged(dependency, '[1.0.1,1.0.2)') }
     implementation libs.jlayer
     minecraftLibrary libs.jlayer
     jarJar(libs.jlayer) { dependency -> jarJar.ranged(dependency, '[1.0.1,1.0.2)') }
@@ -183,7 +183,8 @@ tasks.named('jarJar') {
 tasks.named('build') { dependsOn(tasks.named('jarJar')) }
 
 def releaseArchive = tasks.named('jarJar').flatMap { it.archiveFile }
-def releaseEntries = ['META-INF/jarjar/stonytark.cinemarr.core-1.0.0.jar', 'META-INF/jarjar/jlayer-1.0.1.jar',
+def coreReleaseEntry = "META-INF/jarjar/stonytark.cinemarr.core-${version}.jar".toString()
+def releaseEntries = [coreReleaseEntry, 'META-INF/jarjar/jlayer-1.0.1.jar',
                       'META-INF/jarjar/jump3r-1.0.5.jar', 'META-INF/jarjar/metadata.json',
                       'org/bytedeco/javacv/FFmpegFrameGrabber.class', 'org/bytedeco/javacv/Frame.class',
                       'META-INF/LICENSE-Cinemarr-CC0-1.0.txt', 'META-INF/LICENSE-LGPL-2.1-or-later.txt',
@@ -191,7 +192,7 @@ def releaseEntries = ['META-INF/jarjar/stonytark.cinemarr.core-1.0.0.jar', 'META
                       'cinemarr.png', 'pack.mcmeta', 'assets/cinemarr/lang/en_us.json',
                       'stonytark/cinemarr/Cinemarr.class', 'stonytark/cinemarr/client/CinemarrClient.class',
                       'stonytark/cinemarr/network/CinemarrNetwork.class', 'stonytark/cinemarr/network/VideoPayloads.class',
-                      'stonytark/cinemarr/client/FfmpegVideoDecoder.class',
+                      'stonytark/cinemarr/client/FfmpegVideoDecoder.class', 'stonytark/cinemarr/client/FfmpegHardwareVideoDecoder.class',
                       'stonytark/cinemarr/registry/CinemarrBlocks.class']
 
 tasks.register('verifyRelease') {
@@ -213,7 +214,7 @@ tasks.register('verifyRelease') {
             if (!zip.getInputStream(zip.getEntry('cinemarr.mixins.json')).getText('UTF-8').contains('"JAVA_17"')) {
                 throw new GradleException('NeoForge 1.20.1 mixin metadata does not target Java 17')
             }
-            new java.util.zip.ZipInputStream(zip.getInputStream(zip.getEntry('META-INF/jarjar/stonytark.cinemarr.core-1.0.0.jar'))).withCloseable { nested ->
+            new java.util.zip.ZipInputStream(zip.getInputStream(zip.getEntry(coreReleaseEntry))).withCloseable { nested ->
                 boolean foundCoreClass = false
                 for (def entry = nested.nextEntry; entry != null; entry = nested.nextEntry) {
                     if (entry.name == 'stonytark/cinemarr/core/server/ChunkTransferPolicy.class') {

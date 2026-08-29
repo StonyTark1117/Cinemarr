@@ -12,6 +12,8 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LegacyVideoTimelineTest {
     @Test
@@ -43,9 +45,39 @@ class LegacyVideoTimelineTest {
     }
 
     @Test
-    void backendCursorMapsToTheScheduledMediaTimeline() {
-        assertEquals(5_000_000L, LegacyVideoAudio.audioMediaUs(5_000_000L, 2_250_000L, 1_750_000L));
-        assertEquals(5_500_000L, LegacyVideoAudio.audioMediaUs(5_000_000L, 2_250_000L, 2_750_000L));
+    void backendCursorRemainsAvailableAsAStartupDiagnostic() {
+        assertEquals(5_000_000L, LegacyVideoAudio.backendAudioMediaUs(5_000_000L, 2_250_000L, 1_750_000L));
+        assertEquals(5_500_000L, LegacyVideoAudio.backendAudioMediaUs(5_000_000L, 2_250_000L, 2_750_000L));
+    }
+
+    @Test
+    void scheduledPhysicalBoundaryAnchorsTheReliableAudioTimeline() {
+        assertEquals(5_000_000L, LegacyVideoAudio.wallClockAudioMediaUs(5_000_000L, 10_000_000L, 9_900_000L));
+        assertEquals(5_500_000L, LegacyVideoAudio.wallClockAudioMediaUs(5_000_000L, 10_000_000L, 10_500_000L));
+    }
+
+    @Test
+    void nearbyClientsDoNotAmplifyStartupSkewToAWholeSecond() {
+        long first = LegacyVideoAudio.scheduledStartUs(961_000L);
+        long second = LegacyVideoAudio.scheduledStartUs(1_065_000L);
+
+        assertEquals(3_000_000L, first);
+        assertEquals(3_100_000L, second);
+        assertTrue(second - first <= 150_000L);
+    }
+
+    @Test
+    void healthSeparatesFutureBufferRunwayFromPresentedFrameDrift() {
+        long targetUs = 25_000_000L;
+        assertEquals(9_000L, LegacyVideoPlayback.bufferedMs(targetUs, 34_000_000L));
+        assertEquals(200L, LegacyVideoPlayback.presentedDriftMs(targetUs, 25_200_000L));
+        assertEquals(-250L, LegacyVideoPlayback.presentedDriftMs(targetUs, 24_750_000L));
+    }
+
+    @Test
+    void legacyTransportDefersSegmentsOutsideTheClientPrefetchWindow() {
+        assertTrue(LegacyVideoClientState.StreamState.withinPrefetchLead(16_000L, 10_000L));
+        assertFalse(LegacyVideoClientState.StreamState.withinPrefetchLead(16_001L, 10_000L));
     }
 
     private static VideoPackets.SessionState state(boolean paused, long position, long epoch) {

@@ -1,12 +1,33 @@
 # Release acceptance
 
-All 16 artifacts have completed the recorded release gates. All 21 runtime
-profiles passed the deterministic real two-client A/V gate, including
-consecutive fresh Forge 1.7.10 runs, and the shared server core passed the
-credentialed live Plex H.264/AAC start, fetch, and clean-stop smoke. A successful
-Gradle build alone remains insufficient.
+**The local 1.0.1 candidate is release-ready but has not been published.** The
+deleted v1.0.0 release failed against real Plex before playback began. GitHub
+issue #1 proved that the controller path parsed Plex stream metadata differently
+from the fake fixture, while the old credentialed smoke skipped
+`metadataDetails()` and therefore skipped the failing path.
 
-Required checks:
+The replacement fixes boolean and numeric Plex `selected` stream flags and has
+passed the shared production metadata, master/media playlist, segment-fetch,
+and native H.264/AAC decoder path. On 2026-08-28, the decisive 1.21.1 NeoForge
+gate used the in-game controller UI against the operator's real Plex server.
+Both real clients rendered identifiable program video and reached a common
+rendered-frame hash. Their 7.95-second physical audio captures correlated at
+0.704172 with 0 ms measured lag; final decoder drift was 26 ms and 30 ms, with
+zero fallbacks, recoveries, dropped frames, or audio underruns. Teardown removed
+the clients, server, ports, Plex sessions/transcodes, and credential residue.
+
+After the live run, the final 1.0.1 regression pass rebuilt and verified all 21
+runtime profiles, passed all 10 GameTests, indexed the 16 canonical artifacts,
+and byte-inspected every JAR for metadata, bytecode, libraries, assets, notices,
+credentials, and checksums. `inspectReleaseArtifacts` completed successfully in
+6 minutes 57 seconds under Java 21. The exact final 1.0.1 NeoForge JAR then
+passed the deterministic two-client runtime gate with a common rendered-frame
+hash, 0.990893 physical-audio correlation at -10 ms measured lag, zero decoder
+fallbacks/recoveries/drops/underruns, and clean process/port teardown. The
+existing `v1.0.0` tag points to older code, so any authorized publication must
+use 1.0.1 rather than repurposing that tag.
+
+Satisfied release checks:
 
 * `./gradlew test` and `./gradlew verifyRelease` pass.
 * `./scripts/run-dedicated-server-gate.sh 1.21.1-neoforge` passes and leaves
@@ -28,18 +49,33 @@ Required checks:
 * A credentialed live Plex server creates and cleanly terminates a compatible
   H.264/AAC session without exposing its URL or token.
 
-## Recorded live Plex evidence
+The decisive credentialed gate is opt-in and accepts exactly one runtime target:
 
-On 2026-08-27, `PlexVideoLiveSmokeTest` ran against the operator-supplied LAN
-Plex server with its credential handed directly into the process environment.
-It resolved the real `Movies` library, selected a media item, created a 640x360
-H.264/AAC universal-transcode session, fetched the referenced playlist media,
-and completed the clean-stop request without error. The final JUnit report recorded one
-executed test in 0.783 seconds with zero skips, failures, or errors and empty
-stdout/stderr. The process exited, the worktree remained clean, and a post-run
-byte scan found zero credential residue in the checkout or Gradle daemon logs.
+```bash
+CINEMARR_VIDEO_CLIENT_GATE=true \
+CINEMARR_LIVE_PLEX_GATE=true \
+CINEMARR_PLEX_URL='http://plex.example.invalid:32400' \
+CINEMARR_PLEX_TOKEN='...' \
+CINEMARR_LIVE_VIDEO_SECTION_ID='1' \
+./scripts/run-dedicated-server-gate.sh 1.21.1-neoforge
+```
 
-## Recorded two-client evidence
+It uses the in-game controller to browse and select live media, requires both
+clients to render a common decoded frame and save screenshots, captures audible
+program audio from both clients, compares their broadband envelopes within the
+same 150 ms limit as the deterministic gate, and rejects evidence containing
+the Plex URL or token.
+
+## Historical invalidated live Plex evidence
+
+The 2026-08-27 `PlexVideoLiveSmokeTest` result is not valid release evidence. It
+proved that Plex could start and stop a transcode and return non-empty bytes,
+but it selected a browse result directly. It did not call `metadataDetails()`,
+did not exercise boolean `selected` stream flags, did not resolve HLS through
+the production server-manager path, and did not decode the fetched segment.
+Issue #1 then reproduced the omitted metadata failure on every tested video.
+
+## Historical fake-Plex two-client regression evidence
 
 ### 2026-08-27 Quick TV placement matrix
 
@@ -140,14 +176,38 @@ and the audio envelopes measured 0.988031 correlation at 50 ms lag. Fake Plex
 served the master playlist, media playlist, and MPEG-TS segments, and the gate
 left no game process or port behind.
 
-### Windows decoder smoke
+### Hardware-decoder experiment
 
-The repository's `FfmpegVideoDecoder` was run under Wine 11.15 with an x64
-Windows Eclipse Temurin 21.0.12.1 JVM and the release JavaCV 1.5.14 / FFmpeg
-8.1.2 Windows classifiers. It loaded the Windows native libraries and decoded
-three video frames plus 30 audio frames from the deterministic fixture. This is
-a native decoder loading/decoding smoke only; it does not certify a complete
-Windows Minecraft client or its OpenGL/audio integration.
+On 2026-08-28, the standalone schema-3 benchmark exercised the realistic 144p
+through 4K range with two warmups and five measured samples per backend. Linux
+software/auto client gates then passed all 21 maintained runtime profiles with
+the existing two-client identifiable-frame, screenshot, PCM synchronization,
+and clean-teardown requirements. The packaged Linux ARM64 classifier also
+passed software decoding and unsupported-hardware fallback using an actual
+ARM64 JVM and JavaCPP runtime under QEMU.
+
+Native Windows 11 testing used a Quadro P600 passed through to a disposable
+Q35/OVMF VM, NVIDIA driver 576.02, Temurin 21.0.12.1, and the packaged
+JavaCV 1.5.14 / FFmpeg 8.1.2 Windows-x86_64 classifier. Software and the
+internal D3D11VA, DXVA2, and CUDA candidates plus `auto` each completed all 35
+measured samples from 144p through 4K with SSIM at least 0.999754, matching
+timestamps, and zero fallback. The evaluator kept `software` as the default
+because D3D11VA increased median decoder-thread CPU
+by about 41% at 1080p and 32% at 4K, while low-resolution wall time regressed by
+42% to 170%.
+
+The native Windows Minecraft-client gate also reached acceptance on Forge
+1.7.10. With `auto` and no explicit device selector, the client selected
+D3D11VA (`deviceType=default`), rendered frame SHA-256
+`12a15e93bbd8e954fcea6c69fc615a6cd808679ee902c4ef3407ac00e9c56294`,
+saved a non-empty 854x480 in-game screenshot, established AAC audio, and
+reported zero fallbacks, recoveries, video drops, and audio underruns. The
+original PowerShell gate rejected this otherwise valid result because it
+incorrectly expected the device-selector diagnostic to equal the backend name;
+that assertion was fixed but was not rerun to a formal green result. Native
+Windows Minecraft-client behavior remains untested for 1.21.1 NeoForge and
+26.2 Fabric. Linux ARM64 hardware decoding, macOS, AMD Windows, Intel Windows,
+and other GPU/driver combinations are also untested.
 
 On 2026-08-26, two consecutive fresh invocations of
 `CINEMARR_VIDEO_CLIENT_GATE=true ./scripts/run-dedicated-server-gate.sh
@@ -254,8 +314,9 @@ two-client evidence above. The 1.21.1 Quilt, Fabric, and Forge profiles have the
 additional two-client evidence recorded above.
 NeoForge, Fabric, Quilt, and Forge on every modern target from 1.20.1 through
 26.2 have passed the deterministic two-client A/V gate, as has Forge 1.7.10.
-All 16 artifacts now meet the recorded release-gate criteria. Publication is a
-separate operator decision and is not implied by this repository certification.
+These historical fake-Plex gates do not satisfy the replacement-release gate.
+No artifact is release-certified until real-Plex controller playback and the
+full post-fix build/runtime matrix are freshly verified.
 
 Keep logs, JAR listings, checksums, and process/port evidence for each release.
 Credentials are process-environment-only and must never appear in retained

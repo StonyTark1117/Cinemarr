@@ -5,7 +5,7 @@ plugins {
 apply from: file('../../../gradle/mc26-recipe-resources.gradle')
 
 group = 'stonytark'
-version = '1.0.0'
+version = '1.0.1'
 def artifactVersion = version.toString()
 def expectedReleaseName = "cinemarr-${artifactVersion}+mc26.2-neoforge.jar"
 
@@ -150,6 +150,7 @@ def releaseEntries = [coreJarEntry, 'META-INF/jarjar/jlayer-1.0.1.jar', 'META-IN
                       'cinemarr.png', 'pack.mcmeta', 'assets/cinemarr/lang/en_us.json', 'stonytark/cinemarr/Cinemarr.class',
                       'stonytark/cinemarr/client/CinemarrClient.class', 'stonytark/cinemarr/network/CinemarrNetwork.class',
                       'stonytark/cinemarr/network/VideoPayloads.class', 'stonytark/cinemarr/client/FfmpegVideoDecoder.class',
+                      'stonytark/cinemarr/client/FfmpegHardwareVideoDecoder.class',
                       'stonytark/cinemarr/registry/CinemarrBlocks.class']
 
 tasks.register('verifyRelease') {

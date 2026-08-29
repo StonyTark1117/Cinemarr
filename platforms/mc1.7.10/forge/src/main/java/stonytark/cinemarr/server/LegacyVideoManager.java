@@ -30,7 +30,6 @@ import stonytark.cinemarr.screen.LegacyBlocks;
 import stonytark.cinemarr.screen.LegacyWorldScreens;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -149,7 +148,8 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
                 for (String name : names) persist(sessions.snapshotIfPresent(name, now));
             }
         } catch (IOException failure) {
-            Cinemarr.LOGGER.warn("Unable to stop inactive Plex video session: {}", SecretRedactor.message(failure, CinemarrSettings.plexToken()));
+            Cinemarr.LOGGER.warn("Unable to stop inactive Plex video session: {}", SecretRedactor.message(failure,
+                    CinemarrSettings.plexToken(), CinemarrSettings.plexUrl()));
         }
     }
 
@@ -208,6 +208,14 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
         long controller = LegacyBlockPos.pack(controllerX, controllerY, controllerZ);
         LegacyWorldScreens screens = LegacyWorldScreens.get(world);
         if (screens.television(controller) == null && "CinemarrVideoA".equals(player.getCommandSenderName())) {
+            // The acceptance television is deliberately built at a fixed location so
+            // screenshots from both clients are comparable. A newly generated 1.7.10
+            // world can spawn far enough away that its two footprint chunks have not
+            // been loaded yet, causing the normal Quick TV preflight to reject an
+            // otherwise valid construction. Load only the footprint here; production
+            // placement continues to require player-loaded chunks.
+            world.getChunkFromChunkCoords(-1, 0);
+            world.getChunkFromChunkCoords(0, 0);
             for (int x = -8; x <= 7; x++) for (int y = 100; y <= 108; y++) {
                 world.setBlockToAir(x, y, 0);
             }
@@ -438,7 +446,7 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
             } catch (IOException failure) { throw new WrappedFailure(failure); }
         }, workers).whenComplete((state, failure) -> mainThreadActions.add(() -> {
             advancingSessions.remove(expected.id());
-            if (failure != null) { if (requester != null) failure(requester, failure); else Cinemarr.LOGGER.warn("Unable to advance video queue: {}", SecretRedactor.message(failure, CinemarrSettings.plexToken())); return; }
+            if (failure != null) { if (requester != null) failure(requester, failure); else Cinemarr.LOGGER.warn("Unable to advance video queue: {}", SecretRedactor.message(failure, CinemarrSettings.plexToken(), CinemarrSettings.plexUrl())); return; }
             if (!current(state)) return;
             List<QueuedVideo> current = queues.get(expected.id()); if (current != null) { current.remove(next); if (current.isEmpty()) queues.remove(expected.id()); }
             persist(state); publishSession(state, "Playing next queued video", true, requester);
@@ -551,7 +559,7 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
         }, workers).whenComplete((state, failure) -> mainThreadActions.add(() -> {
             restartingSessions.remove(expected.id());
             if (failure != null) { Cinemarr.LOGGER.warn("Unable to resume saved video session {}: {}", name,
-                    SecretRedactor.message(failure, CinemarrSettings.plexToken())); return; }
+                    SecretRedactor.message(failure, CinemarrSettings.plexToken(), CinemarrSettings.plexUrl())); return; }
             if (!current(state)) return; persist(state); publishSession(state, state.paused() ? "Paused" : "Playing", true, null);
         }));
     }
@@ -592,7 +600,7 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
         }
         try { sessions.untune(televisionId); }
         catch (IOException failure) { Cinemarr.LOGGER.warn("Unable to stop removed TV session: {}",
-                SecretRedactor.message(failure, CinemarrSettings.plexToken())); }
+                SecretRedactor.message(failure, CinemarrSettings.plexToken(), CinemarrSettings.plexUrl())); }
         if (state != null && state.televisions().size() == 1) {
             playbackLibraries.remove(state.id()); playbackOptions.remove(state.id()); queues.remove(state.id());
             restartingSessions.remove(state.id()); advancingSessions.remove(state.id());
@@ -629,10 +637,10 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
         final PlexVideoService.VideoSession plexSession = plex.start(item, dimensions, offset,
                 selection.audioId < 0 ? null : selection.audioId, selection.subtitleId < 0 ? Integer.valueOf(0) : selection.subtitleId);
         try {
-            String variant = reference(plexSession.playlist()); byte[] mediaPlaylist = plex.fetch(plexSession, variant);
-            List<SegmentReference> references = parsePlaylist(new String(mediaPlaylist, StandardCharsets.UTF_8), offset);
+            PlexVideoService.MediaPlaylist playlist = plex.mediaPlaylist(plexSession, offset);
+            List<SegmentReference> references = parsePlaylist(playlist);
             final String key = key(sessionId, generation);
-            active.put(key, new ActiveMedia(plex, plexSession, variant, references, dimensions, item.durationMs(),
+            active.put(key, new ActiveMedia(plex, plexSession, playlist, references, dimensions, item.durationMs(),
                     selection.options, selection.audioId, selection.subtitleId));
             return () -> { active.remove(key); plex.stop(plexSession); };
         } catch (IOException failure) { try { plex.stop(plexSession); } catch (IOException ignored) {} throw failure; }
@@ -713,7 +721,7 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
     private void failure(EntityPlayerMP player, Throwable failure) {
         Throwable value = failure instanceof java.util.concurrent.CompletionException && failure.getCause() != null ? failure.getCause() : failure;
         if (value instanceof WrappedFailure && value.getCause() != null) value = value.getCause();
-        String message = SecretRedactor.message(value, CinemarrSettings.plexToken());
+        String message = SecretRedactor.message(value, CinemarrSettings.plexToken(), CinemarrSettings.plexUrl());
         Cinemarr.LOGGER.warn("Cinemarr video request failed: {}", message); error(player, message);
     }
     private List<EntityPlayerMP> players() {
@@ -724,15 +732,16 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
     private static <T> void send(EntityPlayerMP player, LegacyPacketTypes.Type<T> type, T message) { LegacyNetwork.sendToPlayer(player, type, message); }
 
     private static String key(UUID session, long generation) { return session + ":" + generation; }
-    private static String reference(String playlist) {
-        for (String line : playlist.split("\\r?\\n")) { String value = line.trim(); if (!value.isEmpty() && !value.startsWith("#")) return value; }
-        throw new IllegalArgumentException("Plex playlist has no media rendition");
+    static List<SegmentReference> parsePlaylist(PlexVideoService.MediaPlaylist playlist) {
+        List<SegmentReference> values = new ArrayList<SegmentReference>();
+        for (HlsPlaylist.MediaSegment value : playlist.segments()) values.add(new SegmentReference(value));
+        return values;
     }
     static List<SegmentReference> parsePlaylist(String playlist, long basePts) {
         List<SegmentReference> values = new ArrayList<SegmentReference>();
-        for (HlsPlaylist.MediaSegment value : HlsPlaylist.mediaSegments(playlist, basePts))
-            values.add(new SegmentReference(value.uri(), value.presentationTimeMs(), value.durationMs()));
-        if (values.isEmpty()) throw new IllegalArgumentException("Plex media playlist has no segments at the requested offset"); return values;
+        for (HlsPlaylist.MediaSegment value : HlsPlaylist.mediaSegments(playlist, basePts)) values.add(new SegmentReference(value));
+        if (values.isEmpty()) throw new IllegalArgumentException("Plex media playlist has no segments at the requested offset");
+        return values;
     }
     private static StreamSelection selection(List<VideoStreamOption> options, int requestedAudio, int requestedSubtitle,
                                              boolean defaults) throws IOException {
@@ -750,23 +759,23 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
     @Override public void close() {
         TelevisionLifecycle.listener(null);
         long now = System.currentTimeMillis(); for (String name : sessions.sessionNames()) persist(sessions.snapshotIfPresent(name, now));
-        try { sessions.close(); } catch (IOException failure) { Cinemarr.LOGGER.warn("Unable to close Plex video sessions: {}", SecretRedactor.message(failure, CinemarrSettings.plexToken())); }
+        try { sessions.close(); } catch (IOException failure) { Cinemarr.LOGGER.warn("Unable to close Plex video sessions: {}", SecretRedactor.message(failure, CinemarrSettings.plexToken(), CinemarrSettings.plexUrl())); }
         workers.shutdownNow(); active.clear(); startingOptions.remove(); playbackOptions.clear(); playbackLibraries.clear();
         queues.clear(); clientHealth.clear(); transferGrants.clear(); restartingSessions.clear(); advancingSessions.clear();
         viewingSessions.clear(); visibleTelevisions.clear(); mainThreadActions.clear(); LegacyNetwork.setServerListener(null);
     }
 
-    static final class SegmentReference { final String uri; final long pts, duration; SegmentReference(String uri, long pts, long duration) { this.uri = uri; this.pts = pts; this.duration = duration; } }
+    static final class SegmentReference { final HlsPlaylist.MediaSegment source; final String uri; final long pts, duration; SegmentReference(HlsPlaylist.MediaSegment source) { this.source = source; this.uri = source.uri(); this.pts = source.presentationTimeMs(); this.duration = source.durationMs(); } }
     private static final class SegmentData { final SegmentReference reference; final byte[] bytes; final String sha; SegmentData(SegmentReference reference, byte[] bytes) { this.reference = reference; this.bytes = bytes; sha = Hashing.sha256(bytes); } }
     private static final class ActiveMedia {
-        final PlexVideoService plex; final PlexVideoService.VideoSession session; final String variant; final List<SegmentReference> segments;
+        final PlexVideoService plex; final PlexVideoService.VideoSession session; final PlexVideoService.MediaPlaylist playlist; final List<SegmentReference> segments;
         final RenditionPolicy.Dimensions dimensions; final long durationMs; final List<VideoStreamOption> options; final int audioId, subtitleId;
         final Map<Integer, SegmentData> cache = new LinkedHashMap<Integer, SegmentData>(16, 0.75F, true) {
             @Override protected boolean removeEldestEntry(Map.Entry<Integer, SegmentData> eldest) { return size() > 16; }
         };
-        ActiveMedia(PlexVideoService plex, PlexVideoService.VideoSession session, String variant, List<SegmentReference> segments,
+        ActiveMedia(PlexVideoService plex, PlexVideoService.VideoSession session, PlexVideoService.MediaPlaylist playlist, List<SegmentReference> segments,
                     RenditionPolicy.Dimensions dimensions, long durationMs, List<VideoStreamOption> options, int audioId, int subtitleId) {
-            this.plex = plex; this.session = session; this.variant = variant; this.segments = segments; this.dimensions = dimensions;
+            this.plex = plex; this.session = session; this.playlist = playlist; this.segments = segments; this.dimensions = dimensions;
             this.durationMs = durationMs; this.options = Collections.unmodifiableList(new ArrayList<VideoStreamOption>(options));
             this.audioId = audioId; this.subtitleId = subtitleId;
         }
@@ -782,7 +791,7 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
         }
         synchronized SegmentData segment(int index) throws IOException {
             SegmentData value = cache.get(index); if (value == null) { SegmentReference reference = segments.get(index);
-                value = new SegmentData(reference, plex.fetch(session, variant, reference.uri)); cache.put(index, value); } return value;
+                value = new SegmentData(reference, plex.fetch(session, playlist, reference.source)); cache.put(index, value); } return value;
         }
     }
     private static final class TransferGrant {

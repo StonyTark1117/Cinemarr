@@ -37,6 +37,11 @@ public final class CinemarrSettings {
         double volume();
         void volume(double value);
         void saveVolume();
+        default VideoDecoderBackend videoDecoderBackend() { return VideoDecoderBackend.SOFTWARE; }
+        default void videoDecoderBackend(VideoDecoderBackend value) {}
+        default String videoDecoderDevice() { return ""; }
+        default void videoDecoderDevice(String value) {}
+        default void saveVideoDecoder() {}
     }
 
     private static volatile ServerValues server = new DefaultServerValues();
@@ -88,6 +93,16 @@ public final class CinemarrSettings {
     public static double volume() { return clamp(client.volume(), 0.0, 1.0); }
     public static void volume(double value) { client.volume(clamp(value, 0.0, 1.0)); }
     public static void saveVolume() { client.saveVolume(); }
+    public static VideoDecoderBackend videoDecoderBackend() {
+        VideoDecoderBackend value = client.videoDecoderBackend();
+        return value == null ? VideoDecoderBackend.SOFTWARE : value;
+    }
+    public static void videoDecoderBackend(VideoDecoderBackend value) {
+        client.videoDecoderBackend(value == null ? VideoDecoderBackend.SOFTWARE : value);
+    }
+    public static String videoDecoderDevice() { return safe(client.videoDecoderDevice(), "").trim(); }
+    public static void videoDecoderDevice(String value) { client.videoDecoderDevice(safe(value, "").trim()); }
+    public static void saveVideoDecoder() { client.saveVideoDecoder(); }
 
     private static String safe(String value, String fallback) { return value == null ? fallback : value; }
     private static int clamp(int value, int minimum, int maximum) { return Math.max(minimum, Math.min(maximum, value)); }
@@ -110,12 +125,18 @@ public final class CinemarrSettings {
     private static final class DefaultClientValues implements ClientValues {
         private boolean enabled = true;
         private double volume = 1.0;
+        private VideoDecoderBackend videoDecoderBackend = VideoDecoderBackend.SOFTWARE;
+        private String videoDecoderDevice = "";
         @Override public boolean enabled() { return enabled; }
         @Override public void enabled(boolean value) { enabled = value; }
         @Override public void saveEnabled() {}
         @Override public double volume() { return volume; }
         @Override public void volume(double value) { volume = value; }
         @Override public void saveVolume() {}
+        @Override public VideoDecoderBackend videoDecoderBackend() { return videoDecoderBackend; }
+        @Override public void videoDecoderBackend(VideoDecoderBackend value) { videoDecoderBackend = value; }
+        @Override public String videoDecoderDevice() { return videoDecoderDevice; }
+        @Override public void videoDecoderDevice(String value) { videoDecoderDevice = value; }
     }
 
     private CinemarrSettings() {}

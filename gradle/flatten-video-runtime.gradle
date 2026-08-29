@@ -7,6 +7,7 @@
 
 def javaCppVersion = '1.5.14'
 def ffmpegVersion = '8.1.2-1.5.14'
+def productVersion = project.version.toString()
 def bundledVideoRuntime = configurations.maybeCreate('bundledVideoRuntime')
 
 dependencies {
@@ -56,16 +57,16 @@ releaseTask.configure {
 
                 // NeoForge 20.2 extracts nested dependencies by their physical
                 // filename before applying Maven-coordinate selection. A
-                // generic core-1.0.0.jar therefore collides with Jammarr's
+                // generic core-${productVersion}.jar therefore collides with Jammarr's
                 // private core even though the declared groups differ.
-                def genericCore = jarJarRoot.resolve('core-1.0.0.jar')
-                def isolatedCore = jarJarRoot.resolve('stonytark.cinemarr.core-1.0.0.jar')
+                def genericCore = jarJarRoot.resolve("core-${productVersion}.jar")
+                def isolatedCore = jarJarRoot.resolve("stonytark.cinemarr.core-${productVersion}.jar")
                 if (java.nio.file.Files.exists(genericCore)) {
                     java.nio.file.Files.move(genericCore, isolatedCore)
                     def metadataPath = jarJarRoot.resolve('metadata.json')
                     def metadata = java.nio.file.Files.readString(metadataPath)
-                    metadata = metadata.replace('META-INF/jarjar/core-1.0.0.jar',
-                            'META-INF/jarjar/stonytark.cinemarr.core-1.0.0.jar')
+                    metadata = metadata.replace("META-INF/jarjar/core-${productVersion}.jar",
+                            "META-INF/jarjar/stonytark.cinemarr.core-${productVersion}.jar")
                     java.nio.file.Files.writeString(metadataPath, metadata)
                 }
             }
@@ -78,6 +79,8 @@ def verifyFlattenedVideoRuntime = tasks.register('verifyFlattenedVideoRuntime') 
     dependsOn(releaseTask)
     inputs.file(releaseTask.flatMap { it.archiveFile })
     doLast {
+        String isolatedCoreEntry = "META-INF/jarjar/stonytark.cinemarr.core-${productVersion}.jar"
+        String genericCoreEntry = "META-INF/jarjar/core-${productVersion}.jar"
         def required = [
                 'org/bytedeco/javacpp/Loader.class',
                 'org/bytedeco/ffmpeg/global/avcodec.class',
@@ -87,7 +90,7 @@ def verifyFlattenedVideoRuntime = tasks.register('verifyFlattenedVideoRuntime') 
                 'org/bytedeco/ffmpeg/linux-x86_64/libjniavutil.so',
                 'org/bytedeco/ffmpeg/linux-arm64/libjniavutil.so',
                 'org/bytedeco/ffmpeg/windows-x86_64/avcodec-62.dll',
-                'META-INF/jarjar/stonytark.cinemarr.core-1.0.0.jar'
+                isolatedCoreEntry
         ]
         new java.util.zip.ZipFile(inputs.files.singleFile).withCloseable { zip ->
             def found = zip.entries().collect { it.name } as Set
@@ -97,7 +100,7 @@ def verifyFlattenedVideoRuntime = tasks.register('verifyFlattenedVideoRuntime') 
             if (found.any { it.startsWith('META-INF/jarjar/javacpp-') || it.startsWith('META-INF/jarjar/ffmpeg-') }) {
                 throw new GradleException('Release archive still contains module-path JavaCPP/FFmpeg jars')
             }
-            if (found.contains('META-INF/jarjar/core-1.0.0.jar')) {
+            if (found.contains(genericCoreEntry)) {
                 throw new GradleException('Release archive still contains the collision-prone generic private core filename')
             }
             if (found.contains('module-info.class') || found.any { it.matches('META-INF/versions/.*/module-info\\.class') }) {

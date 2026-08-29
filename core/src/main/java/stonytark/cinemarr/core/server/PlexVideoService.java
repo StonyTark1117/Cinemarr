@@ -138,7 +138,7 @@ public final class PlexVideoService {
         parameter(query, "X-Plex-Device-Name", "Minecraft Server");
         parameter(query, "X-Plex-Product", "Cinemarr");
         parameter(query, "X-Plex-Platform", "Java");
-        parameter(query, "X-Plex-Version", "1.0.0");
+        parameter(query, "X-Plex-Version", "1.0.1");
         parameter(query, "X-Plex-Provides", "player");
         parameter(query, "X-Plex-Client-Profile-Name", "Generic");
         parameter(query, "X-Plex-Client-Profile-Extra", profile);
@@ -158,6 +158,54 @@ public final class PlexVideoService {
         URL resolved = new URL(session.playlistUrl, reference);
         if (!sameOrigin(session.playlistUrl, resolved)) throw new PlexException(PlexException.Kind.INVALID_RESPONSE,
                 "Plex playlist referenced a different origin");
+        return bounded("GET", resolved, Collections.<String, String>emptyMap(), MAX_SEGMENT_BYTES,
+                "Plex video segment exceeds the safety limit");
+    }
+
+    /**
+     * Resolves Plex's universal-transcode response through any master playlist
+     * layers and returns the exact media playlist consumed by server managers.
+     */
+    public MediaPlaylist mediaPlaylist(VideoSession session, long offsetMs) throws IOException {
+        if (session == null) throw new IllegalArgumentException("Session required");
+        URL currentUrl = session.playlistUrl;
+        String current = session.playlist;
+        for (int hop = 0; hop <= 4; hop++) {
+            if (HlsPlaylist.isMediaPlaylist(current)) {
+                List<HlsPlaylist.MediaSegment> segments;
+                try {
+                    segments = HlsPlaylist.mediaSegments(current, offsetMs);
+                } catch (IllegalArgumentException malformed) {
+                    throw new PlexException(PlexException.Kind.INVALID_RESPONSE,
+                            "Plex returned a malformed HLS media playlist", malformed);
+                }
+                if (segments.isEmpty()) throw new PlexException(PlexException.Kind.INVALID_RESPONSE,
+                        "Plex HLS media playlist has no playable segments");
+                return new MediaPlaylist(session.id, currentUrl, segments);
+            }
+            String reference;
+            if (hop == 4) break;
+            try {
+                reference = HlsPlaylist.firstVariantReference(current);
+            } catch (IllegalArgumentException malformed) {
+                throw new PlexException(PlexException.Kind.INVALID_RESPONSE,
+                        "Plex returned an HLS playlist without a playable media variant", malformed);
+            }
+            currentUrl = sameOriginUrl(session.playlistUrl, currentUrl, reference);
+            byte[] bytes = bounded("GET", currentUrl, Collections.<String, String>emptyMap(), MAX_PLAYLIST_BYTES,
+                    "Plex video playlist exceeds the safety limit");
+            current = new String(bytes, StandardCharsets.UTF_8);
+            if (!current.startsWith("#EXTM3U")) throw new PlexException(PlexException.Kind.INVALID_RESPONSE,
+                    "Plex returned a malformed video playlist");
+        }
+        throw new PlexException(PlexException.Kind.INVALID_RESPONSE, "Plex HLS playlist nesting exceeds the safety limit");
+    }
+
+    /** Fetches one segment from a media playlist resolved by {@link #mediaPlaylist(VideoSession, long)}. */
+    public byte[] fetch(VideoSession session, MediaPlaylist playlist, HlsPlaylist.MediaSegment segment) throws IOException {
+        if (session == null || playlist == null || segment == null || !session.id.equals(playlist.sessionId)
+                || !playlist.segments.contains(segment)) throw new IllegalArgumentException("Resolved session segment required");
+        URL resolved = sameOriginUrl(session.playlistUrl, playlist.playlistUrl, segment.uri());
         return bounded("GET", resolved, Collections.<String, String>emptyMap(), MAX_SEGMENT_BYTES,
                 "Plex video segment exceeds the safety limit");
     }
@@ -206,16 +254,17 @@ public final class PlexVideoService {
     }
 
     private HttpTransport.Response open(String method, URL url, Map<String, String> supplied) throws IOException {
-        Map<String, String> headers = new LinkedHashMap<String, String>(supplied);
+        Map<String, String> requestHeaders = new LinkedHashMap<String, String>(supplied);
         String query = url.getQuery();
-        if (!headers.containsKey("X-Plex-Token") && (query == null || !query.contains("X-Plex-Token="))) headers.putAll(headers());
-        return http.open(method, url, headers, timeoutMs, timeoutMs);
+        if (!requestHeaders.containsKey("X-Plex-Token")
+                && (query == null || !query.contains("X-Plex-Token="))) requestHeaders.putAll(headers());
+        return http.open(method, url, requestHeaders, timeoutMs, timeoutMs);
     }
     private Map<String, String> headers() {
         Map<String, String> headers = new LinkedHashMap<String, String>();
         headers.put("X-Plex-Token", token);
         headers.put("X-Plex-Product", "Cinemarr");
-        headers.put("X-Plex-Version", "1.0.0");
+        headers.put("X-Plex-Version", "1.0.1");
         headers.put("X-Plex-Client-Identifier", CLIENT_ID);
         return headers;
     }
@@ -245,6 +294,12 @@ public final class PlexVideoService {
         int secondPort = second.getPort() < 0 ? second.getDefaultPort() : second.getPort();
         return first.getProtocol().equalsIgnoreCase(second.getProtocol()) && first.getHost().equalsIgnoreCase(second.getHost())
                 && firstPort == secondPort;
+    }
+    private static URL sameOriginUrl(URL sessionUrl, URL parentUrl, String reference) throws IOException {
+        URL resolved = new URL(parentUrl, reference);
+        if (!sameOrigin(sessionUrl, resolved)) throw new PlexException(PlexException.Kind.INVALID_RESPONSE,
+                "Plex playlist referenced a different origin");
+        return resolved;
     }
     private static String validatedBaseUrl(String value) throws PlexException {
         try {
@@ -331,5 +386,18 @@ public final class PlexVideoService {
         public UUID id() { return id; }
         public String playlist() { return playlist; }
         public long durationMs() { return durationMs; }
+    }
+    public static final class MediaPlaylist {
+        private final UUID sessionId;
+        private final URL playlistUrl;
+        private final List<HlsPlaylist.MediaSegment> segments;
+
+        MediaPlaylist(UUID sessionId, URL playlistUrl, List<HlsPlaylist.MediaSegment> segments) {
+            this.sessionId = sessionId;
+            this.playlistUrl = playlistUrl;
+            this.segments = immutable(segments);
+        }
+
+        public List<HlsPlaylist.MediaSegment> segments() { return segments; }
     }
 }

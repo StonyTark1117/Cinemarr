@@ -17,6 +17,7 @@ fake_plex_audio="$output_root/fake-plex-tone.mp3"
 fake_plex_video_dir=""
 fake_plex_state="$output_root/fake-plex.state"
 fake_audio_duration_seconds=${CINEMARR_GATE_AUDIO_DURATION_SECONDS:-600}
+fake_video_duration_seconds=${CINEMARR_GATE_VIDEO_DURATION_SECONDS:-60}
 fake_plex_pid=""
 active_client_pid=""
 active_server_pid=""
@@ -75,8 +76,74 @@ audio_client_gate=${CINEMARR_AUDIO_CLIENT_GATE:-false}
 audio_scenario_gate=${CINEMARR_AUDIO_SCENARIO_GATE:-false}
 video_client_gate=${CINEMARR_VIDEO_CLIENT_GATE:-false}
 video_follower_first_gate=${CINEMARR_VIDEO_FOLLOWER_FIRST_GATE:-false}
+external_video_client_gate=${CINEMARR_EXTERNAL_VIDEO_CLIENT_GATE:-false}
+live_plex_gate=${CINEMARR_LIVE_PLEX_GATE:-false}
+video_decoder_backend=${CINEMARR_VIDEO_DECODER_BACKEND:-software}
+video_decoder_device=${CINEMARR_VIDEO_DECODER_DEVICE:-}
+video_decoder_expected_effective=${CINEMARR_VIDEO_DECODER_EXPECTED_EFFECTIVE:-$video_decoder_backend}
+video_decoder_expect_fallback=${CINEMARR_VIDEO_DECODER_EXPECT_FALLBACK:-false}
 fabric_loader_version=${CINEMARR_FABRIC_LOADER_VERSION:-}
 quilt_modmenu_gate=${CINEMARR_QUILT_MODMENU_GATE:-false}
+
+case "$video_decoder_backend" in
+  software|auto|vaapi|qsv|cuda|d3d11va|dxva2) ;;
+  *) echo "Unsupported CINEMARR_VIDEO_DECODER_BACKEND '$video_decoder_backend'" >&2; exit 2 ;;
+esac
+case "$video_decoder_expected_effective" in
+  software|vaapi|qsv|cuda|d3d11va|dxva2) ;;
+  *) echo "Unsupported CINEMARR_VIDEO_DECODER_EXPECTED_EFFECTIVE '$video_decoder_expected_effective'" >&2; exit 2 ;;
+esac
+if [[ "$video_decoder_device" == *$'\n'* || "$video_decoder_device" == *$'\r'* || "$video_decoder_device" == *'"'* ]]; then
+  echo "CINEMARR_VIDEO_DECODER_DEVICE contains an unsafe TOML character" >&2
+  exit 2
+fi
+if [[ "$video_decoder_expect_fallback" != true && "$video_decoder_expect_fallback" != false ]]; then
+  echo "CINEMARR_VIDEO_DECODER_EXPECT_FALLBACK must be true or false" >&2
+  exit 2
+fi
+if [[ "$external_video_client_gate" != true && "$external_video_client_gate" != false ]]; then
+  echo "CINEMARR_EXTERNAL_VIDEO_CLIENT_GATE must be true or false" >&2
+  exit 2
+fi
+if [[ "$external_video_client_gate" == true && "$video_client_gate" != true ]]; then
+  echo "CINEMARR_EXTERNAL_VIDEO_CLIENT_GATE requires CINEMARR_VIDEO_CLIENT_GATE=true" >&2
+  exit 2
+fi
+if [[ "$external_video_client_gate" == true && -z "${CINEMARR_GATE_VIDEO_DURATION_SECONDS+x}" ]]; then
+  # A cold native Windows JVM may spend close to a minute loading FFmpeg,
+  # probing the GPU, and preparing an older Minecraft workspace. Keep the
+  # deterministic program alive long enough to assess steady playback.
+  fake_video_duration_seconds=600
+fi
+if [[ "$live_plex_gate" != true && "$live_plex_gate" != false ]]; then
+  echo "CINEMARR_LIVE_PLEX_GATE must be true or false" >&2
+  exit 2
+fi
+if [[ "$live_plex_gate" == true ]]; then
+  if [[ "$video_client_gate" != true ]]; then
+    echo "CINEMARR_LIVE_PLEX_GATE requires CINEMARR_VIDEO_CLIENT_GATE=true" >&2
+    exit 2
+  fi
+  if [[ "$requested" == all ]]; then
+    echo "CINEMARR_LIVE_PLEX_GATE requires one explicit runtime target" >&2
+    exit 2
+  fi
+  if [[ ! "${CINEMARR_PLEX_URL:-}" =~ ^https?:// ]] \
+      || [[ "${CINEMARR_PLEX_URL:-}" == *$'\n'* \
+      || "${CINEMARR_PLEX_URL:-}" == *$'\r'* \
+      || "${CINEMARR_PLEX_URL:-}" == *'"'* ]]; then
+    echo "CINEMARR_LIVE_PLEX_GATE requires a safe CINEMARR_PLEX_URL" >&2
+    exit 2
+  fi
+  if [[ -z "${CINEMARR_PLEX_TOKEN:-}" ]]; then
+    echo "CINEMARR_LIVE_PLEX_GATE requires CINEMARR_PLEX_TOKEN" >&2
+    exit 2
+  fi
+  if [[ ! "${CINEMARR_LIVE_VIDEO_SECTION_ID:-}" =~ ^[0-9]+$ ]]; then
+    echo "CINEMARR_LIVE_PLEX_GATE requires a numeric CINEMARR_LIVE_VIDEO_SECTION_ID" >&2
+    exit 2
+  fi
+fi
 
 restore_server_config() {
   if [[ -z "$active_config" ]]; then return; fi
@@ -217,6 +284,12 @@ trap 'exit 130' INT TERM
 
 start_fake_plex() {
   rm -f -- "$fake_plex_port_file"
+  if [[ "$live_plex_gate" == true ]]; then
+    : > "$fake_plex_request_log"
+    printf 'online\n' > "$fake_plex_state"
+    printf '0\n' > "$fake_plex_port_file"
+    return 0
+  fi
   local -a audio_args=()
   local -a video_args=()
   if [[ "$audio_client_gate" == "true" ]]; then
@@ -242,17 +315,23 @@ start_fake_plex() {
       echo "Two-client video acceptance requires ffmpeg, pactl, and parec" >&2
       return 1
     fi
+    if [[ ! "$fake_video_duration_seconds" =~ ^[0-9]+$ ]] \
+        || (( fake_video_duration_seconds < 60 )); then
+      echo "CINEMARR_GATE_VIDEO_DURATION_SECONDS must be an integer of at least 60" >&2
+      return 1
+    fi
     fake_plex_video_dir=$(mktemp -d "$output_root/fake-plex-video.XXXXXX")
     ffmpeg -hide_banner -loglevel error -y \
-      -f lavfi -i 'testsrc2=size=160x90:rate=5:duration=18' \
-      -f lavfi -i 'sine=frequency=997:sample_rate=48000:duration=18' \
+      -f lavfi -i "testsrc2=size=160x90:rate=5:duration=${fake_video_duration_seconds}" \
+      -f lavfi -i "sine=frequency=997:sample_rate=48000:duration=${fake_video_duration_seconds}" \
       -filter_complex "[1:a]volume='if(lt(mod(t,3),2.25),1.4,0.3)':eval=frame[a]" \
       -map 0:v -map '[a]' -c:v libx264 -preset ultrafast -tune zerolatency \
       -profile:v baseline -pix_fmt yuv420p -g 5 -keyint_min 5 -sc_threshold 0 \
       -c:a aac -b:a 128k -ac 2 -ar 48000 -f hls -hls_time 1 -hls_playlist_type vod \
       -hls_segment_filename "$fake_plex_video_dir/segment%03d.ts" \
       "$fake_plex_video_dir/media.m3u8" || return 1
-    video_args+=(--video-directory "$fake_plex_video_dir" --track-duration-ms 600000)
+    video_args+=(--video-directory "$fake_plex_video_dir" \
+      --track-duration-ms "$((fake_video_duration_seconds * 1000))")
   fi
   python3 "$repo_root/scripts/fake-plex-server.py" \
     --port-file "$fake_plex_port_file" --request-log "$fake_plex_request_log" \
@@ -273,6 +352,7 @@ start_fake_plex() {
 }
 
 fake_plex_requests_complete() {
+  if [[ "$live_plex_gate" == true ]]; then return 0; fi
   local first_line=$1
   awk -F '\t' -v first="$first_line" -v token="$fake_plex_token" '
     NR > first && $3 == token && $2 == "/library/sections" { sections = 1 }
@@ -581,6 +661,8 @@ run_command_client() {
     result=1
   fi
   if grep -Fq "$fake_plex_token" "$diagnostics" \
+      || { [[ "$live_plex_gate" == true ]] \
+        && grep -Fq "$CINEMARR_PLEX_TOKEN" "$diagnostics"; } \
       || grep -Eq 'https?://|127\.0\.0\.1|localhost|X-Plex-Token' "$diagnostics"; then
     echo "$label: player/operator diagnostics exposed a credential or server address" >&2
     result=1
@@ -647,7 +729,9 @@ start_audio_client() {
     'soundCategory_master:1.0' \
     'soundCategory_music:1.0' > "$client_dir/options.txt"
   printf '%s\n' '# Generated by the two-client audio acceptance gate.' \
-    'enabled = true' 'volume = 1.0' > "$client_dir/config/cinemarr-client.toml"
+    'enabled = true' 'volume = 1.0' \
+    "videoDecoderBackend = \"$video_decoder_backend\"" \
+    "videoDecoderDevice = \"$video_decoder_device\"" > "$client_dir/config/cinemarr-client.toml"
   case "$pcm_type" in
     pipewire)
       printf '%s\n' \
@@ -762,6 +846,11 @@ wait_for_video_audio_pair_stable() {
       echo "$label: a video client exited while its audio backend was stabilizing" >&2
       return 1
     fi
+    if grep -Eq 'Video segment request exceeds playback lead limit|Cinemarr rejected video segment' \
+        "$leader_log" "$follower_log" 2>/dev/null; then
+      echo "$label: a video client hit a rejected segment request during A/V stabilization" >&2
+      return 1
+    fi
     leader_event=$(grep -nE "$event_pattern" "$leader_log" 2>/dev/null | tail -n 1)
     follower_event=$(grep -nE "$event_pattern" "$follower_log" 2>/dev/null | tail -n 1)
     signature="$leader_event|$follower_event"
@@ -774,14 +863,31 @@ wait_for_video_audio_pair_stable() {
     if [[ "$leader_event" == *'audio scheduled:'* && "$follower_event" == *'audio scheduled:'* \
         && "$leader_timeline" == *'underruns=0'* && "$follower_timeline" == *'underruns=0'* \
         && "$leader_timeline" =~ $buffer_pattern \
-        && "$follower_timeline" =~ $buffer_pattern \
-        && $((SECONDS - stable_since)) -ge 8 ]]; then
-      return 0
+        && "$follower_timeline" =~ $buffer_pattern ]] \
+        && video_audio_timeline_within_bounds "$leader_timeline" \
+        && video_audio_timeline_within_bounds "$follower_timeline"; then
+      if (( SECONDS - stable_since >= 8 )); then return 0; fi
+    else
+      stable_since=$SECONDS
     fi
     sleep 1
   done
-  echo "$label: video audio did not remain rebuffer-free on both real clients for 8 seconds" >&2
+  echo "$label: video audio did not remain rebuffer-free and within A/V timeline bounds on both real clients for 8 seconds" >&2
+  [[ -n "$leader_timeline" ]] && echo "$label: latest leader timeline: $leader_timeline" >&2
+  [[ -n "$follower_timeline" ]] && echo "$label: latest follower timeline: $follower_timeline" >&2
   return 1
+}
+
+video_audio_timeline_within_bounds() {
+  local timeline=$1
+  local target_ms video_ms audio_drift_ms video_drift_ms
+  if [[ "$timeline" =~ targetMs=(-?[0-9]+) ]]; then target_ms=${BASH_REMATCH[1]}; else return 1; fi
+  if [[ "$timeline" =~ videoMs=(-?[0-9]+) ]]; then video_ms=${BASH_REMATCH[1]}; else return 1; fi
+  if [[ "$timeline" =~ driftMs=(-?[0-9]+) ]]; then audio_drift_ms=${BASH_REMATCH[1]}; else return 1; fi
+  (( video_ms > 0 )) || return 1
+  video_drift_ms=$((video_ms - target_ms))
+  (( audio_drift_ms >= -150 && audio_drift_ms <= 150 \
+      && video_drift_ms >= -250 && video_drift_ms <= 250 ))
 }
 
 launch_audio_client() {
@@ -825,15 +931,26 @@ audio_capture_is_audible() {
   local raw=$1
   local metrics=$2
   local mean samples
-  ffmpeg -hide_banner -loglevel info -f s16le -ar 48000 -ac 2 -i "$raw" \
-    -af 'highpass=f=970,lowpass=f=1025,silenceremove=start_periods=1:start_duration=1:start_threshold=-55dB:stop_periods=-1:stop_duration=1:stop_threshold=-55dB,volumedetect' \
-    -f null - > /dev/null 2> "$metrics" || return 1
+  if [[ "$live_plex_gate" == true ]]; then
+    ffmpeg -hide_banner -loglevel info -f s16le -ar 48000 -ac 2 -i "$raw" \
+      -af 'silenceremove=start_periods=1:start_duration=0.5:start_threshold=-55dB:stop_periods=-1:stop_duration=1:stop_threshold=-55dB,volumedetect' \
+      -f null - > /dev/null 2> "$metrics" || return 1
+  else
+    ffmpeg -hide_banner -loglevel info -f s16le -ar 48000 -ac 2 -i "$raw" \
+      -af 'highpass=f=970,lowpass=f=1025,silenceremove=start_periods=1:start_duration=1:start_threshold=-55dB:stop_periods=-1:stop_duration=1:stop_threshold=-55dB,volumedetect' \
+      -f null - > /dev/null 2> "$metrics" || return 1
+  fi
   mean=$(sed -n 's/.*mean_volume: \([^ ]*\) dB.*/\1/p' "$metrics" | tail -n 1)
   samples=$(sed -n 's/.*n_samples: \([0-9][0-9]*\).*/\1/p' "$metrics" | tail -n 1)
   if [[ -z "$mean" || "$mean" == "-inf" ]]; then return 1; fi
   if [[ -z "$samples" ]]; then return 1; fi
-  awk -v value="$mean" -v samples="$samples" \
-    'BEGIN { exit !(value > -45.0 && samples >= 192000) }'
+  if [[ "$live_plex_gate" == true ]]; then
+    awk -v value="$mean" -v samples="$samples" \
+      'BEGIN { exit !(value > -50.0 && samples >= 96000) }'
+  else
+    awk -v value="$mean" -v samples="$samples" \
+      'BEGIN { exit !(value > -45.0 && samples >= 192000) }'
+  fi
 }
 
 audio_capture_is_silent() {
@@ -1285,6 +1402,10 @@ run_two_client_video() {
   local follower_shot="$output_root/$label.audio-follower/screenshots/cinemarr-video-acceptance.png"
   local server_log="$output_root/$label.console.log"
   local module leader_pid follower_pid recorder_leader recorder_follower common_frame result=0 clients_ready=0
+  local sync_script="$repo_root/scripts/compare-pcm-sync.py"
+  if [[ "$live_plex_gate" == true ]]; then
+    sync_script="$repo_root/scripts/compare-live-pcm-sync.py"
+  fi
 
   module=$(pactl load-module module-null-sink sink_name="$sink_leader" rate=48000 channels=2) || return 1
   active_audio_modules+=("$module")
@@ -1338,6 +1459,26 @@ run_two_client_video() {
   fi
 
   if (( result == 0 )); then
+    if [[ "$video_decoder_expect_fallback" == true ]]; then
+      if ! grep -Fq "video decoder requested=$video_decoder_backend" "$leader_log" \
+          || ! grep -Fq 'fell back permanently to software:' "$leader_log" \
+          || ! grep -Fq "video decoder requested=$video_decoder_backend" "$follower_log" \
+          || ! grep -Fq 'fell back permanently to software:' "$follower_log"; then
+        echo "$label: expected decoder fallback was not logged by both clients" >&2
+        result=1
+      fi
+    elif ! grep -Fq "video decoder requested=$video_decoder_backend effective=$video_decoder_expected_effective" "$leader_log" \
+        || ! grep -Fq "video decoder requested=$video_decoder_backend effective=$video_decoder_expected_effective" "$follower_log"; then
+      echo "$label: clients did not select expected decoder backend $video_decoder_expected_effective" >&2
+      result=1
+    elif grep -Fq 'fell back permanently to software:' "$leader_log" \
+        || grep -Fq 'fell back permanently to software:' "$follower_log"; then
+      echo "$label: unexpected decoder fallback was logged" >&2
+      result=1
+    fi
+  fi
+
+  if (( result == 0 )); then
     sleep 1
     : > "$raw_leader"
     : > "$raw_follower"
@@ -1352,15 +1493,19 @@ run_two_client_video() {
     active_audio_recorder_pids=()
   fi
 
+  if (( result == 0 )); then
+    wait_for_video_audio_pair_stable "$label" "$leader_pid" "$follower_pid" || result=1
+  fi
+
   if (( result == 0 )) && ! audio_capture_is_audible "$raw_leader" "$metrics_leader"; then
-    echo "$label: leader video client did not emit audible 997 Hz program audio" >&2
+    echo "$label: leader video client did not emit audible program audio" >&2
     result=1
   fi
   if (( result == 0 )) && ! audio_capture_is_audible "$raw_follower" "$metrics_follower"; then
-    echo "$label: follower video client did not emit audible 997 Hz program audio" >&2
+    echo "$label: follower video client did not emit audible program audio" >&2
     result=1
   fi
-  if (( result == 0 )) && ! python3 "$repo_root/scripts/compare-pcm-sync.py" \
+  if (( result == 0 )) && ! python3 "$sync_script" \
       "$raw_leader" "$raw_follower" > "$sync_evidence"; then
     echo "$label: client video-program audio captures were not synchronized; see $sync_evidence" >&2
     result=1
@@ -1379,7 +1524,7 @@ run_two_client_video() {
     echo "$label: one or both real clients did not save the rendered-TV screenshot" >&2
     result=1
   fi
-  if (( result == 0 )) && ! awk -F '\t' '
+  if (( result == 0 )) && [[ "$live_plex_gate" != true ]] && ! awk -F '\t' '
       $2 == "/video/:/transcode/universal/start.m3u8" { start = 1 }
       $2 == "/video/:/transcode/universal/media.m3u8" { manifest = 1 }
       $2 ~ /^\/video\/:\/transcode\/universal\/segment[0-9]+\.ts$/ { segment = 1 }
@@ -1395,7 +1540,17 @@ run_two_client_video() {
       printf 'Leader screenshot SHA-256: '; sha256sum "$leader_shot" | awk '{print $1}'
       printf 'Follower screenshot SHA-256: '; sha256sum "$follower_shot" | awk '{print $1}'
       cat "$sync_evidence"
-      printf 'Fake Plex served master playlist, media playlist, and MPEG-TS program segments.\n'
+      printf 'Decoder requested=%s expectedEffective=%s expectedFallback=%s\n' \
+        "$video_decoder_backend" "$video_decoder_expected_effective" "$video_decoder_expect_fallback"
+      grep -E 'Cinemarr (legacy )?video decoder requested=' "$leader_log" | tail -n 1 || true
+      grep -E 'Cinemarr (legacy )?video decoder requested=' "$follower_log" | tail -n 1 || true
+      grep -F 'Acceptance decoder metrics:' "$leader_log" | tail -n 1 || true
+      grep -F 'Acceptance decoder metrics:' "$follower_log" | tail -n 1 || true
+      if [[ "$live_plex_gate" == true ]]; then
+        printf 'Credentialed live Plex served controller-selected HLS video and audio to both clients.\n'
+      else
+        printf 'Fake Plex served master playlist, media playlist, and MPEG-TS program segments.\n'
+      fi
     } > "$evidence"
   fi
   cleanup_audio_processes
@@ -1422,27 +1577,51 @@ install_fake_plex_config() {
     cp -- "$active_libraries" "$active_libraries_backup"
     active_libraries_existed=1
   fi
-  printf '%s\n' \
-    '# Generated temporarily by the Cinemarr dedicated-server gate.' \
-    "plexUrl = \"http://127.0.0.1:${fake_plex_port}\"" \
-    'plexToken = ""' \
-    'musicLibrary = "Music"' \
-    'restartMode = "RESTART_TRACK"' \
-    'pauseWhenNoPlayers = true' \
-    'operatorPermissionLevel = 2' \
-    'queueLimit = 500' \
-    'audioBitrateKbps = 160' \
-    'cacheSizeMiB = 1024' \
-    'stationMetadataFallbackEnabled = false' > "$active_config"
-  printf '%s\n' \
-    '# Generated temporarily by the Cinemarr dedicated-server gate.' \
-    '[[libraries]]' \
-    'id = "gate_movies"' \
-    'section = "Movies"' \
-    'displayName = "Gate Movies"' \
-    'allowMovies = true' \
-    'allowShows = false' \
-    'permissionLevel = 0' > "$active_libraries"
+  if [[ "$live_plex_gate" == true ]]; then
+    printf '%s\n' \
+      '# Generated temporarily by the credentialed Cinemarr live-Plex gate.' \
+      "plexUrl = \"${CINEMARR_PLEX_URL}\"" \
+      'plexToken = ""' \
+      'musicLibrary = ""' \
+      'restartMode = "RESTART_TRACK"' \
+      'pauseWhenNoPlayers = true' \
+      'operatorPermissionLevel = 2' \
+      'queueLimit = 500' \
+      'audioBitrateKbps = 160' \
+      'cacheSizeMiB = 1024' \
+      'stationMetadataFallbackEnabled = false' > "$active_config"
+    printf '%s\n' \
+      '# Generated temporarily by the credentialed Cinemarr live-Plex gate.' \
+      '[[libraries]]' \
+      'id = "live_video"' \
+      "section = \"${CINEMARR_LIVE_VIDEO_SECTION_ID}\"" \
+      'displayName = "Live Video"' \
+      'allowMovies = true' \
+      'allowShows = true' \
+      'permissionLevel = 0' > "$active_libraries"
+  else
+    printf '%s\n' \
+      '# Generated temporarily by the Cinemarr dedicated-server gate.' \
+      "plexUrl = \"http://127.0.0.1:${fake_plex_port}\"" \
+      'plexToken = ""' \
+      'musicLibrary = "Music"' \
+      'restartMode = "RESTART_TRACK"' \
+      'pauseWhenNoPlayers = true' \
+      'operatorPermissionLevel = 2' \
+      'queueLimit = 500' \
+      'audioBitrateKbps = 160' \
+      'cacheSizeMiB = 1024' \
+      'stationMetadataFallbackEnabled = false' > "$active_config"
+    printf '%s\n' \
+      '# Generated temporarily by the Cinemarr dedicated-server gate.' \
+      '[[libraries]]' \
+      'id = "gate_movies"' \
+      'section = "Movies"' \
+      'displayName = "Gate Movies"' \
+      'allowMovies = true' \
+      'allowShows = false' \
+      'permissionLevel = 0' > "$active_libraries"
+  fi
 }
 
 install_invalid_config() {
@@ -1693,6 +1872,39 @@ backup_server_properties() {
   cp -- "$active_properties" "$active_properties_backup"
 }
 
+wait_for_external_video_client() {
+  local label=$1
+  local server_pid=$2
+  local server_log=$3
+  local marker="$output_root/$label.external-client.result"
+  local deadline=$((SECONDS + 3600))
+  rm -f -- "$marker"
+  printf '%s\n' "$label: waiting for an externally launched native client; write pass or fail to $marker"
+  while [[ ! -s "$marker" ]]; do
+    if ! kill -0 "$server_pid" 2>/dev/null; then
+      echo "$label: server exited while waiting for the external client" >&2
+      return 1
+    fi
+    if (( SECONDS >= deadline )); then
+      echo "$label: external native-client result did not arrive within 3600 seconds" >&2
+      return 1
+    fi
+    sleep 2
+  done
+  local result
+  result=$(tr -d '[:space:]' < "$marker")
+  if [[ "$result" != pass ]]; then
+    echo "$label: external native-client gate reported failure" >&2
+    return 1
+  fi
+  if ! grep -Fq 'CinemarrVideoA joined the game' "$server_log" \
+      || ! grep -Fq 'Acceptance Quick TV: controller=-3996 preset=144p dimensions=16x9 rendition=256x144 owner=CinemarrVideoA' "$server_log"; then
+    echo "$label: external client did not prove login and Quick TV construction" >&2
+    return 1
+  fi
+  return 0
+}
+
 run_target() {
   local label=$1
   local relative_dir=$2
@@ -1703,9 +1915,11 @@ run_target() {
   [[ "$label" == *-quilt ]] && run_dir="$target_dir/run-quilt"
   local latest_log="$run_dir/logs/latest.log"
   local console_log="$output_root/$label.console.log"
-  local fifo_dir fifo fifo_fd pid server_pid server_group port rcon_port rcon_password result=0
+  local fifo_dir fifo fifo_fd port rcon_port rcon_password result=0
+  local pid="" server_pid="" server_group=""
   local fake_plex_port fake_request_start plex_deadline level_name probe_output
   local server_java_options=""
+  local plex_runtime_token="$fake_plex_token"
   local -a probe_args=()
   local -a cache_args=()
   local -a runtime_args=(-PcinemarrServerGameDir="$run_dir")
@@ -1713,6 +1927,9 @@ run_target() {
   [[ "$label" == *-fabric && -n "$fabric_loader_version" ]] && runtime_args+=(-PcinemarrFabricLoaderVersion="$fabric_loader_version")
   if [[ "$video_client_gate" == "true" ]]; then
     server_java_options='-Dcinemarr.acceptance.enabled=true -Dcinemarr.acceptance.videoProbe=true'
+  fi
+  if [[ "$live_plex_gate" == true ]]; then
+    plex_runtime_token="$CINEMARR_PLEX_TOKEN"
   fi
 
   # Every target must start from a healthy fake Plex service. In particular,
@@ -1806,8 +2023,8 @@ run_target() {
   echo "$label: starting on port $port"
   (
     cd "$target_dir" || exit 1
+    export CINEMARR_PLEX_TOKEN="$plex_runtime_token"
     exec setsid env JAVA_HOME="$java_home" PATH="$java_home/bin:$PATH" \
-      CINEMARR_PLEX_TOKEN="$fake_plex_token" \
       JAVA_TOOL_OPTIONS="$server_java_options" \
       ./gradlew runServer --no-daemon --max-workers=1 --console=plain "${cache_args[@]}" \
       "${runtime_args[@]}" \
@@ -1876,11 +2093,14 @@ run_target() {
   fi
 
   if (( result == 0 )) && [[ "$video_client_gate" == "true" ]]; then
-    if ! run_two_client_video "$label" "$target_dir" "$java_home" "$port"; then
+    if [[ "$external_video_client_gate" == true ]]; then
+      wait_for_external_video_client "$label" "$pid" "$console_log" || result=1
+    elif ! run_two_client_video "$label" "$target_dir" "$java_home" "$port"; then
       result=1
-    elif ! grep -Fq 'Acceptance Quick TV: controller=-3996 preset=144p dimensions=16x9 rendition=256x144 owner=CinemarrVideoA' \
+    fi
+    if (( result == 0 )) && ! grep -Fq 'Acceptance Quick TV: controller=-3996 preset=144p dimensions=16x9 rendition=256x144 owner=CinemarrVideoA' \
         "$console_log"; then
-      echo "$label: two-client scene did not prove actual 144p Quick TV construction and persistence" >&2
+      echo "$label: client scene did not prove actual 144p Quick TV construction and persistence" >&2
       result=1
     fi
   elif (( result == 0 )) && [[ "$audio_client_gate" == "true" ]]; then
@@ -1986,7 +2206,7 @@ run_target() {
     result=1
   fi
   if [[ "$label" == "1.7.10-forge" ]]; then
-    if ! grep -q 'Initializing Cinemarr 1.0.0 for Forge 1.7.10 protocol 8' "$run_dir/logs/fml-server-latest.log"; then
+    if ! grep -q 'Initializing Cinemarr 1.0.1 for Forge 1.7.10 protocol 8' "$run_dir/logs/fml-server-latest.log"; then
       echo "$label: FML log does not prove Cinemarr initialized" >&2
       result=1
     fi
@@ -2034,6 +2254,16 @@ for target in "${targets[@]}"; do
   matched=1
   run_target "$label" "$relative_dir" "$java_home" "$port" || failed=1
 done
+
+if [[ "$live_plex_gate" == true ]]; then
+  if grep -rIlF --exclude='*.s16le' --exclude='*.png' -- "$CINEMARR_PLEX_TOKEN" "$output_root" \
+      > /dev/null 2>&1 \
+      || grep -rIlF --exclude='*.s16le' --exclude='*.png' -- "$CINEMARR_PLEX_URL" "$output_root" \
+      > /dev/null 2>&1; then
+    echo "Credentialed live-Plex gate evidence exposed a credential or server address" >&2
+    failed=1
+  fi
+fi
 
 if (( matched == 0 )); then
   echo "Unknown target '$requested'" >&2
