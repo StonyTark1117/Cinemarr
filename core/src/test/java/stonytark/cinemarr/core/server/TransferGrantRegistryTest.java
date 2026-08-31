@@ -33,6 +33,22 @@ final class TransferGrantRegistryTest {
         assertEquals(0, registry.size());
     }
 
+    @Test void eachLargeSegmentWindowNeedsItsOwnBoundedAcknowledgement() {
+        TransferGrantRegistry registry = new TransferGrantRegistry(1_000);
+        UUID client = UUID.randomUUID(), session = UUID.randomUUID();
+        VideoPackets.SegmentRequest first = new VideoPackets.SegmentRequest(session, 3, 9, 0, 0, 8);
+        VideoPackets.SegmentRequest second = new VideoPackets.SegmentRequest(session, 3, 9, 0, 8, 8);
+        assertTrue(registry.tryAcquire(client, first, 100));
+        assertFalse(registry.acknowledge(client,
+                new VideoPackets.SegmentAcknowledgement(session, 3, 9, 0, 15, 0), 101));
+        assertTrue(registry.acknowledge(client,
+                new VideoPackets.SegmentAcknowledgement(session, 3, 9, 0, 7, 0), 102));
+        assertTrue(registry.tryAcquire(client, second, 103));
+        assertFalse(registry.owns(client, first, 104));
+        assertTrue(registry.acknowledge(client,
+                new VideoPackets.SegmentAcknowledgement(session, 3, 9, 0, 15, 0), 105));
+    }
+
     private static VideoPackets.SegmentRequest request(UUID session, long generation, long request, int segment) {
         return new VideoPackets.SegmentRequest(session, generation, request, segment, 0, 4);
     }

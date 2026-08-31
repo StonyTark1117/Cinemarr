@@ -72,22 +72,27 @@ public final class TransferGrantRegistry {
         private final long generation;
         private final long requestId;
         private final int segment;
+        private final int firstChunk;
+        private final int lastRequestedChunk;
         private final long createdAtMs;
 
         private Grant(VideoPackets.SegmentRequest value, long createdAtMs) {
             session = value.sessionId(); generation = value.generation(); requestId = value.requestId();
-            segment = value.segmentIndex(); this.createdAtMs = createdAtMs;
+            segment = value.segmentIndex(); firstChunk = value.firstChunk();
+            lastRequestedChunk = firstChunk + value.chunkCount() - 1; this.createdAtMs = createdAtMs;
         }
 
         private boolean expired(long nowMs, long timeoutMs) { return nowMs - createdAtMs >= timeoutMs; }
         private boolean matches(VideoPackets.SegmentRequest value) {
             return session.equals(value.sessionId()) && generation == value.generation()
-                    && requestId == value.requestId() && segment == value.segmentIndex();
+                    && requestId == value.requestId() && segment == value.segmentIndex()
+                    && firstChunk == value.firstChunk() && lastRequestedChunk == firstChunk + value.chunkCount() - 1;
         }
         private boolean matches(VideoPackets.SegmentAcknowledgement value) {
             return session.equals(value.sessionId()) && generation == value.generation()
                     && requestId == value.requestId() && segment == value.segmentIndex()
-                    && value.receivedThroughChunk() >= 0;
+                    && value.receivedThroughChunk() >= firstChunk
+                    && value.receivedThroughChunk() <= lastRequestedChunk;
         }
     }
 }

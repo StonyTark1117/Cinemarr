@@ -213,6 +213,12 @@ jammarr_content=$(jq -r '.content' <<<"$jammarr_response")
 for role in leader follower; do
   client_mod_dir="$repo_root/build/discopanel-real-plex/$label/$label.audio-$role/mods"
   mkdir -p "$client_mod_dir"
+  # These game directories are deliberately retained as evidence between
+  # runs. Remove the prior Jammarr candidate before installing the single
+  # server-matched artifact, otherwise legacy Forge rejects duplicate mod IDs
+  # before either acceptance client can initialize.
+  find "$client_mod_dir" -maxdepth 1 -type f \
+    \( -iname 'jammarr-*.jar' -o -iname 'jammarr-*.jar.production-reference' \) -delete
   base64 -d <<<"$jammarr_content" > "$client_mod_dir/$jammarr_name"
 done
 leader_jammarr_sha=$(sha256sum "$repo_root/build/discopanel-real-plex/$label/$label.audio-leader/mods/$jammarr_name" | awk '{print $1}')
