@@ -114,10 +114,16 @@ do
     backup_id=$(jq -r --arg name "$backup" '.mods[]|select(.fileName==$name)|.id' <<<"$mods")
   else
     echo "$server_name: uploading rollback $backup"
-    session=$(upload_file "$old_file" "$backup")
-    api_call discopanel.v1.ModService/ImportUploadedMod \
+    if ! session=$(upload_file "$old_file" "$backup"); then
+      echo "$server_name rollback upload failed; canonical artifact was not changed" >&2
+      exit 1
+    fi
+    if ! api_call discopanel.v1.ModService/ImportUploadedMod \
       "$(jq -cn --arg sid "$server_id" --arg upload "$session" --arg display "$backup_display" \
-        '{serverId:$sid,uploadSessionId:$upload,displayName:$display,description:"Rollback of immediately preceding Cinemarr acceptance artifact"}')" >/dev/null
+        '{serverId:$sid,uploadSessionId:$upload,displayName:$display,description:"Rollback of immediately preceding Cinemarr acceptance artifact"}')" >/dev/null; then
+      echo "$server_name rollback import failed; canonical artifact was not changed" >&2
+      exit 1
+    fi
     mods=$(get_mods "$server_id")
     backup_id=$(jq -r --arg name "$backup" '.mods[]|select(.fileName==$name)|.id' <<<"$mods")
   fi
@@ -132,10 +138,16 @@ do
   api_call discopanel.v1.ModService/DeleteMod \
     "$(jq -cn --arg sid "$server_id" --arg mid "$active_id" '{serverId:$sid,modId:$mid}')" >/dev/null
   trap 'restore_backup_if_needed "$server_id" "$backup_id" "$backup_display"; cleanup' ERR
-  session=$(upload_file "$local_jar" "$canonical")
-  api_call discopanel.v1.ModService/ImportUploadedMod \
+  if ! session=$(upload_file "$local_jar" "$canonical"); then
+    echo "$server_name canonical upload failed; restoring verified rollback" >&2
+    false
+  fi
+  if ! api_call discopanel.v1.ModService/ImportUploadedMod \
     "$(jq -cn --arg sid "$server_id" --arg upload "$session" --arg display "$active_display" \
-      '{serverId:$sid,uploadSessionId:$upload,displayName:$display,description:"Exact indexed 1.0 acceptance artifact"}')" >/dev/null
+      '{serverId:$sid,uploadSessionId:$upload,displayName:$display,description:"Exact indexed 1.0 acceptance artifact"}')" >/dev/null; then
+    echo "$server_name canonical import failed; restoring verified rollback" >&2
+    false
+  fi
   mods=$(get_mods "$server_id")
   new_id=$(jq -r --arg name "$canonical" '.mods[]|select(.fileName==$name)|.id' <<<"$mods")
   [[ -n "$new_id" ]] || { echo "$server_name imported artifact is missing" >&2; false; }
