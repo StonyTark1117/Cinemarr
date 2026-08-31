@@ -44,7 +44,7 @@ class TargetMatrixTests(unittest.TestCase):
         self.assertEqual("1.20.1-quilt", matrix["quilt"])
         self.assertEqual(2, len(target_matrix.runtime_entries(manifest)))
         self.assertEqual("runClient", target_matrix.runtime_entries(manifest)[0]["clientTask"])
-        self.assertEqual("platforms/fabric/build/libs/cinemarr-*+mc1.20.1-fabric.jar", matrix["artifact"])
+        self.assertEqual("platforms/fabric/build/libs/cinemarr-1.0.0+mc1.20.1-fabric.jar", matrix["artifact"])
 
     def test_duplicate_target_artifact_runtime_and_port_fail_closed(self) -> None:
         for mutation, message in (

@@ -108,16 +108,12 @@ def artifact_path(entry: dict[str, Any]) -> str:
     return f"{prefix}build/libs/{entry['artifact']}"
 
 
-def artifact_glob(entry: dict[str, Any]) -> str:
-    return artifact_path(entry).replace("1.0.0", "*")
-
-
 def artifact_matrix(manifest: dict[str, Any]) -> dict[str, Any]:
     return {"include": [
         {
             "name": entry["name"],
             "task": entry["task"],
-            "artifact": artifact_glob(entry),
+            "artifact": artifact_path(entry),
             "runtime": entry["runtime"]["name"],
             "quilt": entry.get("quiltRuntime", {}).get("name", ""),
             "game_tests": entry["gameTests"],
