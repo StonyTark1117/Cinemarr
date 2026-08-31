@@ -18,8 +18,7 @@ import java.util.concurrent.atomic.AtomicLong;
 /** Client connection clock and television payload dispatcher. */
 public final class CinemarrClientState {
     private static final int STARTUP_CLOCK_MIN_SAMPLES = 8;
-    private static final int STARTUP_CLOCK_MAX_SAMPLES = 16;
-    private static final long STARTUP_CLOCK_MAX_ROUND_TRIP_MS = 50;
+    private static final long STARTUP_CLOCK_MAX_ROUND_TRIP_MS = 150;
     private static final long STARTUP_CLOCK_SYNC_INTERVAL_MS = 250;
     private static final long STEADY_CLOCK_SYNC_INTERVAL_MS = 10_000;
     public static final CinemarrClientState INSTANCE = new CinemarrClientState();
@@ -80,7 +79,7 @@ public final class CinemarrClientState {
 
     public long serverToLocalEpoch(long serverEpochMs) { return clock.initialized() ? clock.toLocalTime(serverEpochMs) : serverEpochMs; }
     public boolean mediaClockReady() {
-        return clock.ready(STARTUP_CLOCK_MIN_SAMPLES, STARTUP_CLOCK_MAX_SAMPLES, STARTUP_CLOCK_MAX_ROUND_TRIP_MS);
+        return clock.qualityReady(STARTUP_CLOCK_MIN_SAMPLES, STARTUP_CLOCK_MAX_ROUND_TRIP_MS);
     }
 
     public void stop() {

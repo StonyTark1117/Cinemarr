@@ -17,8 +17,7 @@ import java.util.concurrent.atomic.AtomicLong;
 /** Client media clock and television payload dispatcher for Forge 1.7.10. */
 final class LegacyClientState implements LegacyNetwork.ClientListener {
     private static final int STARTUP_CLOCK_MIN_SAMPLES = 8;
-    private static final int STARTUP_CLOCK_MAX_SAMPLES = 16;
-    private static final long STARTUP_CLOCK_MAX_ROUND_TRIP_MS = 50L;
+    private static final long STARTUP_CLOCK_MAX_ROUND_TRIP_MS = 150L;
     private static final long STARTUP_CLOCK_SYNC_INTERVAL_MS = 250L;
     private static final long STEADY_CLOCK_SYNC_INTERVAL_MS = 10_000L;
     static final LegacyClientState INSTANCE = new LegacyClientState();
@@ -98,7 +97,7 @@ final class LegacyClientState implements LegacyNetwork.ClientListener {
     }
 
     long serverEpoch(long localEpochMs) { return clock.initialized() ? clock.toServerTime(localEpochMs) : localEpochMs; }
-    boolean mediaClockReady() { return clock.ready(STARTUP_CLOCK_MIN_SAMPLES, STARTUP_CLOCK_MAX_SAMPLES, STARTUP_CLOCK_MAX_ROUND_TRIP_MS); }
+    boolean mediaClockReady() { return clock.qualityReady(STARTUP_CLOCK_MIN_SAMPLES, STARTUP_CLOCK_MAX_ROUND_TRIP_MS); }
 
     void operatorCommandProbe() {
         if (!ProtocolLimits.commandProbeEnabled() || operatorProbeSent || Minecraft.getMinecraft().thePlayer == null) return;

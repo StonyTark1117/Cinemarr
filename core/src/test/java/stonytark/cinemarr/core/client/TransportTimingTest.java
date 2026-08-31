@@ -38,4 +38,16 @@ class TransportTimingTest {
         assertTrue(highLatency.ready(8, 16, 50));
     }
 
+    @Test void synchronizedMediaClockNeverFallsBackToAnImpreciseSample() {
+        ClockSynchronizer clock = new ClockSynchronizer();
+        for (int sample = 0; sample < 32; sample++) {
+            long sent = 40_000L + sample * 1_000L;
+            clock.accept(sent, sent + 100L, sent + 200L);
+        }
+        assertFalse(clock.qualityReady(8, 150));
+
+        clock.accept(80_000L, 80_030L, 80_060L);
+        assertTrue(clock.qualityReady(8, 150));
+    }
+
 }
