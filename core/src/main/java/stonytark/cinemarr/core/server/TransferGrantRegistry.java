@@ -24,6 +24,10 @@ public final class TransferGrantRegistry {
         while (true) {
             Grant existing = grants.putIfAbsent(client, replacement);
             if (existing == null) return true;
+            if (existing.supersededBy(request)) {
+                if (grants.replace(client, existing, replacement)) return true;
+                continue;
+            }
             if (!existing.expired(nowMs, timeoutMs)) return false;
             if (grants.replace(client, existing, replacement)) return true;
         }
@@ -83,6 +87,9 @@ public final class TransferGrantRegistry {
         }
 
         private boolean expired(long nowMs, long timeoutMs) { return nowMs - createdAtMs >= timeoutMs; }
+        private boolean supersededBy(VideoPackets.SegmentRequest value) {
+            return session.equals(value.sessionId()) && value.generation() > generation;
+        }
         private boolean matches(VideoPackets.SegmentRequest value) {
             return session.equals(value.sessionId()) && generation == value.generation()
                     && requestId == value.requestId() && segment == value.segmentIndex()
