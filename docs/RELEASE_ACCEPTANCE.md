@@ -11,7 +11,7 @@ Status: **1.0 prerelease under hardening; not release-candidate ready**. This ch
 - [x] No JAR contains the removed music/station runtime, JLayer, or Jump3r.
 - [x] SHA-256 digests are recorded for every artifact.
 
-Historical builds satisfied these checks. They must be repeated against the final hardening commit before the boxes above may be checked.
+The checks above were repeated for code commit `1cbd341b88023bffce340963f1890428f5be9712` locally and in GitHub Actions run `33392358275`. Later commits `63e0150` and `9adb3c4` change only release operations and CI, not packaged inputs. The final documentation SHA still needs its own green CI run and hosted-bundle parity check.
 
 ## Runtime matrix
 
@@ -59,6 +59,12 @@ CINEMARR_LIVE_VIDEO_SECTION_ID='1' \
 Fake-Plex gates are regression evidence only. Publication must use the final artifact hashes tied to this completed checklist.
 
 ## Current regression evidence
+
+On 2026-08-31, code commit `1cbd341b88023bffce340963f1890428f5be9712` passed all 16 local artifact verification targets, all 10 required GameTests, and the complete 21-runtime/two-client matrix using private Xvfb displays. Final Forge 1.7.10 and NeoForge 1.21.1 adverse-network runs passed slow delivery, transient recovery, bounded exhaustion, redacted failure, same-session recovery, and cleanup. GitHub Actions run `33392358275` passed manifest validation, all 16 artifact/runtime jobs, byte-identical rebuilds, and the non-skipped aggregate `1.0 release gate`. The hosted 16-JAR bundle passed deep inspection and `SHA256SUMS`, and `build/releases` was indexed from and compared byte-for-byte with that bundle. Exact representative hashes are `d36fd1799feff72df36f59df39c086765afb27c8e3e23f1554cb6215538e4565` (Forge 1.7.10), `05cb545a741223fdcbe2b8affc3b5c42e671cd6429a55e3d2500e6610bb48350` (Fabric/Quilt 1.20.1), `ab22be1f8cf1498556414859803ebee49acf6776d17a7adfc5fa5b5018944f92` (NeoForge 1.21.1), and `87587a77f2c8361b5ee049c2c33699934334a647617b084333834836c6e3a7f3` (Fabric 26.2).
+
+The exact hosted bundle was staged for the four stopped, autostart-disabled DiscPanel representatives. The first three replacements retained disabled, hash-verified rollback copies. The 26.2 rollback upload returned HTTP 500, and the subsequent 1.7.10 acceptance preparation could not update server state after five retries, so no client GUI was opened and no exact-byte external box is checked. Commit `63e0150` makes rollback and canonical upload/import failures explicit fatal boundaries so that this partial state cannot be reported as a successful deployment again. The DiscPanel credential-holder process exited with the failed workflow; current remote state must be re-audited read-only before any retry. The candidate and previously native-certified artifacts contain the same decoder classes and all 618 identical native entries, but exact-candidate real-Plex, recovery, lifecycle, configured-secret, and packaged-native boxes remain unchecked.
+
+The same day, a real-Plex Forge 1.7.10 diagnostic exposed and then verified the fix for a multi-window video-transfer deadlock. Both clients rendered matching program video with audible synchronized audio and passed controls, reconnect, and cleanup. The server used the preceding candidate during that diagnostic, so this is regression evidence only and does not check the decisive exact-byte boxes.
 
 On 2026-08-30, the protocol-10 hardening working tree passed the complete 21-runtime manifest matrix with private per-client Xvfb displays, identifiable video, correlated audible output, controls, protocol/command probes, and residue-free teardown. The finalized Forge 1.7.10 and NeoForge 1.21.1 adverse-network profiles then passed sustained 100 ms-per-segment latency, transient 503 recovery, bounded exhaustion, redacted diagnostics, same-session recovery, and clean teardown. All 16 artifacts passed deep inspection and checksum verification; forced rebuild evidence was byte-identical, including the four Forge-family archives whose local extended timestamps were normalized. This is precommit regression evidence only and does not check the remaining real-Plex or pushed-SHA boxes.
 
