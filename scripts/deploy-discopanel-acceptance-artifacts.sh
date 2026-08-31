@@ -10,7 +10,7 @@ for tool in curl jq base64 sha256sum; do command -v "$tool" >/dev/null || { echo
 
 tmpdir=$(mktemp -d /tmp/cinemarr-acceptance-deploy.XXXXXX)
 cleanup() {
-  local status=$?
+  local status=${1:-$?}
   trap - EXIT
   find "$tmpdir" -maxdepth 1 -type f -delete 2>/dev/null || true
   rmdir "$tmpdir" 2>/dev/null || true
@@ -64,15 +64,47 @@ set_mod_enabled() {
       '{serverId:$sid,modId:$mid,enabled:$enabled,displayName:$display,description:$description}')" >/dev/null
 }
 
-restore_backup_if_needed() {
-  local server_id=$1 backup_id=$2 backup_display=$3 mods enabled_count
-  mods=$(get_mods "$server_id") || return 0
-  enabled_count=$(jq '[.mods[]|select(.enabled==true and (.fileName|ascii_downcase|startswith("cinemarr-") and endswith(".jar")))]|length' <<<"$mods")
-  if [[ "$enabled_count" == 0 && -n "$backup_id" ]]; then
-    set_mod_enabled "$server_id" "$backup_id" true "$backup_display" \
-      'Automatic rollback after failed acceptance-artifact deployment' || true
-    echo 'Rollback artifact re-enabled after deployment failure.' >&2
+restore_verified_backup() {
+  local server_id=$1 backup_id=$2 backup_display=$3 failed_display=$4
+  local mods mod_id enabled_count enabled_id
+  mods=$(get_mods "$server_id") || return 1
+  while IFS= read -r mod_id; do
+    [[ -n "$mod_id" && "$mod_id" != "$backup_id" ]] || continue
+    set_mod_enabled "$server_id" "$mod_id" false "$failed_display" \
+      'Disabled after failed acceptance-artifact deployment' || return 1
+  done < <(jq -r '.mods[]
+    | select(.enabled == true)
+    | select((.fileName | ascii_downcase | startswith("cinemarr-"))
+        and (.fileName | ascii_downcase | endswith(".jar")))
+    | .id
+  ' <<<"$mods")
+  set_mod_enabled "$server_id" "$backup_id" true "$backup_display" \
+    'Automatic rollback after failed acceptance-artifact deployment' || return 1
+  mods=$(get_mods "$server_id") || return 1
+  enabled_count=$(jq '[.mods[]
+    | select(.enabled == true)
+    | select((.fileName | ascii_downcase | startswith("cinemarr-"))
+        and (.fileName | ascii_downcase | endswith(".jar")))
+  ] | length' <<<"$mods")
+  enabled_id=$(jq -r '.mods[]
+    | select(.enabled == true)
+    | select((.fileName | ascii_downcase | startswith("cinemarr-"))
+        and (.fileName | ascii_downcase | endswith(".jar")))
+    | .id
+  ' <<<"$mods")
+  [[ "$enabled_count" == 1 && "$enabled_id" == "$backup_id" ]] || return 1
+  echo 'Verified rollback artifact re-enabled after deployment failure.' >&2
+}
+
+rollback_after_error() {
+  local status=${1:-$?}
+  (( status != 0 )) || status=1
+  trap - ERR
+  set +e
+  if ! restore_verified_backup "$server_id" "$backup_id" "$backup_display" "$active_display"; then
+    echo "$server_name failed to restore its verified rollback; manual recovery is required" >&2
   fi
+  cleanup "$status"
 }
 
 servers=$(api_call discopanel.v1.ServerService/ListServers '{}')
@@ -168,29 +200,35 @@ do
   echo "$server_name: replacing canonical artifact"
   api_call discopanel.v1.ModService/DeleteMod \
     "$(jq -cn --arg sid "$server_id" --arg mid "$active_id" '{serverId:$sid,modId:$mid}')" >/dev/null
-  trap 'restore_backup_if_needed "$server_id" "$backup_id" "$backup_display"; cleanup' ERR
+  trap 'rollback_after_error $?' ERR
   if ! session=$(upload_file "$local_jar" "$canonical"); then
     echo "$server_name canonical upload failed; restoring verified rollback" >&2
-    false
+    rollback_after_error 1
   fi
   if ! api_call discopanel.v1.ModService/ImportUploadedMod \
     "$(jq -cn --arg sid "$server_id" --arg upload "$session" --arg display "$active_display" \
       '{serverId:$sid,uploadSessionId:$upload,displayName:$display,description:"Exact indexed 1.0 acceptance artifact"}')" >/dev/null; then
     echo "$server_name canonical import failed; restoring verified rollback" >&2
-    false
+    rollback_after_error 1
   fi
   mods=$(get_mods "$server_id")
   new_id=$(jq -r --arg name "$canonical" '.mods[]|select(.fileName==$name)|.id' <<<"$mods")
-  [[ -n "$new_id" ]] || { echo "$server_name imported artifact is missing" >&2; false; }
+  if [[ -z "$new_id" ]]; then
+    echo "$server_name imported artifact is missing" >&2
+    rollback_after_error 1
+  fi
   set_mod_enabled "$server_id" "$new_id" true "$active_display" \
     "Exact indexed 1.0 acceptance artifact; SHA-256 $new_sha"
 
   mods=$(get_mods "$server_id")
   enabled_count=$(jq '[.mods[]|select(.enabled==true and (.fileName|ascii_downcase|startswith("cinemarr-") and endswith(".jar")))]|length' <<<"$mods")
-  [[ "$enabled_count" == 1 \
-     && $(jq -r '.mods[]|select(.enabled==true and (.fileName|ascii_downcase|startswith("cinemarr-") and endswith(".jar")))|.fileName' <<<"$mods") == "$canonical" \
-     && $(file_sha "$server_id" "$canonical") == "$new_sha" ]] \
-    || { echo "$server_name final artifact verification failed" >&2; false; }
+  if [[ "$enabled_count" != 1 \
+     || $(jq -r '.mods[]|select(.enabled==true and (.fileName|ascii_downcase|startswith("cinemarr-") and endswith(".jar")))|.fileName' <<<"$mods") != "$canonical" \
+     || $(file_sha "$server_id" "$canonical") != "$new_sha" ]]; then
+    echo "$server_name final artifact verification failed" >&2
+    rollback_after_error 1
+  fi
+  trap - ERR
   trap cleanup EXIT
   printf '%s: active %s %s; disabled rollback %s %s\n' \
     "$server_name" "$canonical" "$new_sha" "$backup" "$old_sha"
