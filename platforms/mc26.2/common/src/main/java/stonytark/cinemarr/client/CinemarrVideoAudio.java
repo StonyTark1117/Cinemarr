@@ -234,25 +234,30 @@ public final class CinemarrVideoAudio {
                 return;
             }
             int source = ((ChannelAccessor) value).cinemarr$source();
-            long playedUs;
+            long backendOffsetUs;
             long outputLatencyUs = 0L;
             boolean measuredOutputLatency = AL.getCapabilities().AL_SOFT_source_latency;
             if (measuredOutputLatency) {
                 double[] timing = new double[2];
                 SOFTSourceLatency.alGetSourcedvSOFT(source, SOFTSourceLatency.AL_SEC_OFFSET_LATENCY_SOFT, timing);
-                playedUs = secondsToMicros(timing[0]);
+                backendOffsetUs = secondsToMicros(timing[0]);
                 outputLatencyUs = secondsToMicros(timing[1]);
-                if (playedUs < 0L || outputLatencyUs < 0L || outputLatencyUs > SOURCE_START_TIMEOUT_NANOS / 1_000L) {
+                if (backendOffsetUs < 0L || outputLatencyUs < 0L || outputLatencyUs > SOURCE_START_TIMEOUT_NANOS / 1_000L) {
                     measuredOutputLatency = false;
                 }
             } else {
-                playedUs = 0L;
+                backendOffsetUs = 0L;
             }
             if (!measuredOutputLatency) {
                 int sampleOffset = AL10.alGetSourcei(source, AL11.AL_SAMPLE_OFFSET);
-                playedUs = sampleOffset * 1_000_000L / Math.max(1, sourceStartSampleRate);
+                backendOffsetUs = sampleOffset * 1_000_000L / Math.max(1, sourceStartSampleRate);
                 outputLatencyUs = 0L;
             }
+            long sourceElapsedUs = Math.max(0L, System.nanoTime() - sourceStartRequestedNanos) / 1_000L;
+            // OpenAL's streaming-source offset is relative to the buffers still
+            // queued and can move backward when the engine unqueues processed
+            // buffers. Wall time since alSourcePlay is monotonic across that.
+            long playedUs = totalSourcePlayedUs(sourceElapsedUs, backendOffsetUs);
             if (playedUs > 0) {
                 long remainingPrerollUs = Math.max(0L, sourceStartSilenceUs - playedUs);
                 // Map the server-owned media boundary directly to local wall
@@ -302,8 +307,9 @@ public final class CinemarrVideoAudio {
                                 sourceStartSilenceUs + additionalSilenceUs, playedUs, outputLatencyUs) * 1_000L;
                 sourceStartPending = false;
                 if (ProtocolLimits.videoProbeEnabled()) Cinemarr.LOGGER.info(
-                        "Acceptance video audio source started: backendPlayedMs={} outputLatencyMs={} prerollMs={} additionalSilenceMs={} runwayBuffers={} latencyMeasured={}",
-                        playedUs / 1_000L, outputLatencyUs / 1_000L, sourceStartSilenceUs / 1_000L,
+                        "Acceptance video audio source started: playedMs={} backendOffsetMs={} sourceElapsedMs={} outputLatencyMs={} prerollMs={} additionalSilenceMs={} runwayBuffers={} latencyMeasured={}",
+                        playedUs / 1_000L, backendOffsetUs / 1_000L, sourceElapsedUs / 1_000L,
+                        outputLatencyUs / 1_000L, sourceStartSilenceUs / 1_000L,
                         additionalSilenceUs / 1_000L, runwayBuffers, measuredOutputLatency);
             }
             sourceStartProbeQueued = false;
@@ -318,6 +324,10 @@ public final class CinemarrVideoAudio {
     private static long secondsToMicros(double seconds) {
         if (!Double.isFinite(seconds) || seconds < 0.0 || seconds > Long.MAX_VALUE / 1_000_000.0) return -1L;
         return Math.round(seconds * 1_000_000.0);
+    }
+
+    static long totalSourcePlayedUs(long sourceElapsedUs, long backendOffsetUs) {
+        return Math.max(Math.max(0L, sourceElapsedUs), Math.max(0L, backendOffsetUs));
     }
 
     private static long roundUp(long value, long quantum) {
