@@ -24,7 +24,6 @@ public final class LegacyClientConfigScreen extends GuiScreen {
         if (button.id == 0) { mc.displayGuiScreen(parent); return; }
         if (button.id == 1) {
             CinemarrSettings.enabled(!CinemarrSettings.enabled()); CinemarrSettings.saveEnabled();
-            LegacyClientState.INSTANCE.listeningChanged();
         } else if (button.id == 2 || button.id == 3) {
             CinemarrSettings.volume(CinemarrSettings.volume() + (button.id == 3 ? 0.1 : -0.1));
             CinemarrSettings.saveVolume();

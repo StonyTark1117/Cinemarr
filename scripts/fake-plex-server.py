@@ -5,6 +5,8 @@ import argparse
 import json
 import os
 import signal
+import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -62,7 +64,11 @@ def main() -> None:
         "contentRating": "G", "duration": args.track_duration_ms,
         "Media": [{"Part": [{"Stream": [
             {"streamType": 2, "id": 101, "language": "English", "languageCode": "eng",
-             "codec": "aac", "selected": 1}
+             "codec": "aac", "selected": 1},
+            {"streamType": 2, "id": 102, "language": "Commentary", "languageCode": "eng",
+             "codec": "aac", "selected": 0},
+            {"streamType": 3, "id": 202, "language": "English SDH", "languageCode": "eng",
+             "codec": "srt", "selected": 0}
         ]}]}],
     }
     tracks = [
@@ -76,6 +82,8 @@ def main() -> None:
         for key in range(42, 50)
     ]
     tracks_by_key = {track["ratingKey"]: track for track in tracks}
+    segment_attempts: dict[tuple[str, str], int] = {}
+    segment_attempts_lock = threading.Lock()
 
     port_file = Path(args.port_file)
     request_log = Path(args.request_log)
@@ -90,8 +98,8 @@ def main() -> None:
             token = self.headers.get("X-Plex-Token", "")
             if not token:
                 token = parse_qs(request.query).get("X-Plex-Token", [""])[0]
-            state = "offline" if state_file is not None and state_file.exists() \
-                and state_file.read_text(encoding="utf-8").strip() == "offline" else "online"
+            state = state_file.read_text(encoding="utf-8").strip() \
+                if state_file is not None and state_file.exists() else "online"
             with request_log.open("a", encoding="utf-8") as stream:
                 stream.write(f"GET\t{request.path}\t{token}\t{state}\n")
             if token != args.token:
@@ -166,6 +174,20 @@ def main() -> None:
                 if candidate.parent != video_directory or not candidate.is_file():
                     self.respond(404, {})
                     return
+                if candidate.suffix == ".ts":
+                    if state.startswith("segments-offline"):
+                        self.respond(503, {})
+                        return
+                    if state.startswith("segments-transient"):
+                        key = (state, name)
+                        with segment_attempts_lock:
+                            attempt = segment_attempts.get(key, 0) + 1
+                            segment_attempts[key] = attempt
+                        if attempt <= 2:
+                            self.respond(503, {})
+                            return
+                    if state.startswith("segments-slow"):
+                        time.sleep(2.0)
                 content_type = "application/vnd.apple.mpegurl" if candidate.suffix == ".m3u8" else "video/mp2t"
                 self.respond_bytes(200, candidate.read_bytes(), content_type)
                 return

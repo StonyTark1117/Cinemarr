@@ -11,8 +11,6 @@ forge-jarjar = "0.2.3"
 forge-loader = "48.1.0"
 neoforge-loader = "20.2.93"
 neogradle = "7.1.38"
-jlayer = "1.0.1"
-jump3r = "1.0.5"
 junit = "5.10.2"
 
 [plugins]
@@ -28,8 +26,6 @@ fabric-api = { module = "net.fabricmc.fabric-api:fabric-api", version.ref = "fab
 modmenu = { module = "com.terraformersmc:modmenu", version.ref = "modmenu" }
 forge = { module = "net.minecraftforge:forge", version.ref = "forge-loader" }
 neoforge = { module = "net.neoforged:neoforge", version.ref = "neoforge-loader" }
-jlayer = { module = "javazoom:jlayer", version.ref = "jlayer" }
-jump3r = { module = "de.sciss:jump3r", version.ref = "jump3r" }
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
 junit-launcher = { module = "org.junit.platform:junit-platform-launcher" }

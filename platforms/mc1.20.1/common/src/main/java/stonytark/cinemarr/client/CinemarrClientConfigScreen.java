@@ -22,7 +22,6 @@ public final class CinemarrClientConfigScreen extends Screen {
         addRenderableWidget(Button.builder(listeningLabel(), button -> {
             CinemarrSettings.enabled(!CinemarrSettings.enabled());
             CinemarrSettings.saveEnabled();
-            CinemarrClientState.INSTANCE.listeningChanged();
             rebuildWidgets();
         }).bounds(center - 100, height / 2 - 28, 200, 20).build());
         addRenderableWidget(new VolumeSlider(center - 100, height / 2, 200, 20));

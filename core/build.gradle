@@ -21,7 +21,9 @@ tasks.withType(JavaCompile).configureEach {
 tasks.named('jar', Jar) {
     manifest.attributes(
             'FMLModType': 'GAMELIBRARY',
-            'Automatic-Module-Name': 'stonytark.cinemarr.core'
+            'Automatic-Module-Name': 'stonytark.cinemarr.core',
+            'Implementation-Title': 'Cinemarr',
+            'Implementation-Version': rootProject.version
     )
 }
 
@@ -30,8 +32,6 @@ repositories {
 }
 
 dependencies {
-    implementation('javazoom:jlayer:1.0.1')
-    implementation('de.sciss:jump3r:1.0.5')
     compileOnly('com.google.code.gson:gson:2.2.4')
     testImplementation('com.google.code.gson:gson:2.2.4')
     testImplementation(platform('org.junit:junit-bom:5.10.2'))

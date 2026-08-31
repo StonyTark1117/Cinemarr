@@ -16,7 +16,20 @@ class AcceptanceControlFileTest {
     @AfterEach void clearProperties() {
         System.clearProperty(ProtocolLimits.ACCEPTANCE_ENABLED_PROPERTY);
         System.clearProperty(ProtocolLimits.ACCEPTANCE_AUDIO_PROBE_PROPERTY);
+        System.clearProperty(ProtocolLimits.ACCEPTANCE_VIDEO_PROBE_PROPERTY);
         System.clearProperty(ProtocolLimits.ACCEPTANCE_AUDIO_CONTROL_FILE_PROPERTY);
+    }
+
+    @Test void videoProbeCanUseTheSameSequenceTaggedControlChannel() throws Exception {
+        Path control = temporary.resolve("video-control.txt");
+        System.setProperty(ProtocolLimits.ACCEPTANCE_ENABLED_PROPERTY, "true");
+        System.setProperty(ProtocolLimits.ACCEPTANCE_VIDEO_PROBE_PROPERTY, "true");
+        System.setProperty(ProtocolLimits.ACCEPTANCE_AUDIO_CONTROL_FILE_PROPERTY, control.toString());
+        AcceptanceControlFile reader = new AcceptanceControlFile();
+
+        Files.write(control, "1|video:pause\n".getBytes(StandardCharsets.UTF_8));
+        assertEquals("video:pause", reader.poll());
+        assertEquals("", reader.poll());
     }
 
     @Test void sequenceTagsAllowRepeatedCommandsWithoutReplayingUnchangedContent() throws Exception {

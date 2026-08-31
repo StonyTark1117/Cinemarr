@@ -32,22 +32,37 @@ import java.util.UUID;
 
 /** Dimension-local durable index of pixels and activated televisions. */
 public final class CinemarrWorldScreens extends SavedData {
-    public static final int SCHEMA_VERSION = 2;
+    public static final int SCHEMA_VERSION = 3;
     private static final Codec<CinemarrWorldScreens> CODEC = CompoundTag.CODEC.xmap(CinemarrWorldScreens::load, CinemarrWorldScreens::saveTag);
     public static final SavedDataType<CinemarrWorldScreens> TYPE = new SavedDataType<>(
             Identifier.fromNamespaceAndPath("cinemarr", "cinemarr_screens"),
             CinemarrWorldScreens::new, CODEC, DataFixTypes.SAVED_DATA_COMMAND_STORAGE);
     private final Map<Long, Direction> pixels = new HashMap<>();
     private final Map<Long, Television> televisions = new HashMap<>();
+    private final Map<Long, Set<Long>> quickTvConstructions = new HashMap<>();
     private final transient String detachedDimension = "detached:" + UUID.randomUUID();
     private transient ServerLevel level;
     private transient boolean registrationsReconciled;
+    private transient boolean constructionsRecovered;
 
     public static CinemarrWorldScreens get(ServerLevel level) {
         CinemarrWorldScreens value = level.getDataStorage().computeIfAbsent(TYPE);
         value.level = level;
         if(!value.registrationsReconciled)value.reconcileRegistrations();
+        if(!value.constructionsRecovered)value.recoverConstructions();
         return value;
+    }
+
+    public void beginQuickTvConstruction(BlockPos controller, java.util.Collection<BlockPos> targets) {
+        Set<Long> footprint = new HashSet<>(); for (BlockPos target : targets) footprint.add(target.asLong());
+        quickTvConstructions.put(controller.asLong(), footprint); setDirty();
+    }
+    public void finishQuickTvConstruction(BlockPos controller) { if (quickTvConstructions.remove(controller.asLong()) != null) setDirty(); }
+    private void recoverConstructions() {
+        if (level == null || quickTvConstructions.isEmpty()) { constructionsRecovered = quickTvConstructions.isEmpty(); return; }
+        constructionsRecovered=true;boolean changed=false;
+        for(java.util.Iterator<Map.Entry<Long,Set<Long>>> builds=quickTvConstructions.entrySet().iterator();builds.hasNext();){Set<Long> footprint=builds.next().getValue();for(java.util.Iterator<Long> positions=footprint.iterator();positions.hasNext();){BlockPos pos=BlockPos.of(positions.next());if(!level.hasChunkAt(pos))continue;if(level.getBlockState(pos).is(stonytark.cinemarr.registry.CinemarrBlocks.screenPixel()))level.setBlockAndUpdate(pos,net.minecraft.world.level.block.Blocks.AIR.defaultBlockState());positions.remove();changed=true;}if(footprint.isEmpty())builds.remove();}
+        constructionsRecovered=quickTvConstructions.isEmpty();if(changed)setDirty();
     }
 
     public void putPixel(BlockPos pos, Direction facing) {
@@ -214,6 +229,14 @@ public final class CinemarrWorldScreens extends SavedData {
             CompoundTag value = new CompoundTag(); value.putLong("controller", entry.getKey()); entry.getValue().save(value); televisionTags.add(value);
         }
         tag.put("televisions", televisionTags);
+        ListTag constructionTags = new ListTag();
+        for (Map.Entry<Long, Set<Long>> entry : quickTvConstructions.entrySet()) {
+            CompoundTag value = new CompoundTag(); value.putLong("controller", entry.getKey());
+            long[] positions = new long[entry.getValue().size()]; int index = 0;
+            for (Long position : entry.getValue()) positions[index++] = position;
+            value.putLongArray("pixels", positions); constructionTags.add(value);
+        }
+        tag.put("quickTvConstructions", constructionTags);
         return tag;
     }
 
@@ -230,6 +253,12 @@ public final class CinemarrWorldScreens extends SavedData {
             CompoundTag value = televisionTags.getCompoundOrEmpty(index);
             Television tv = Television.load(value, value.getLongOr("controller", 0L));
             if (tv != null) data.televisions.put(value.getLongOr("controller", 0L), tv);
+        }
+        ListTag constructionTags = tag.getListOrEmpty("quickTvConstructions");
+        for (int index = 0; index < constructionTags.size(); index++) {
+            CompoundTag value = constructionTags.getCompoundOrEmpty(index); Set<Long> positions = new HashSet<>();
+            for (long position : value.getLongArray("pixels").orElseGet(() -> new long[0])) positions.add(position);
+            if (!positions.isEmpty()) data.quickTvConstructions.put(value.getLongOr("controller", 0L), positions);
         }
         return data;
     }

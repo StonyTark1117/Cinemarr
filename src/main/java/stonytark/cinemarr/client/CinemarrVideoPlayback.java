@@ -109,7 +109,7 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
         if (current != null) {
             texture.upload(current);
             lastPresentedUs = current.presentationTimeUs();
-            lastFrameSha256 = Hashing.sha256(current.rgbaView());
+            if (ProtocolLimits.videoProbeEnabled()) lastFrameSha256 = Hashing.sha256(current.rgbaView());
             if (ProtocolLimits.videoProbeEnabled()) Cinemarr.LOGGER.info(
                     "Acceptance video frame: session={} generation={} ptsUs={} sha256={} dimensions={}x{}",
                     sessionId, generation, lastPresentedUs, lastFrameSha256, current.width(), current.height());

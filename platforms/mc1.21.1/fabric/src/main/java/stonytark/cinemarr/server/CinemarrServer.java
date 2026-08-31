@@ -22,6 +22,7 @@ import stonytark.cinemarr.core.platform.CinemarrSettings;
 import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.core.protocol.VideoPackets;
 import stonytark.cinemarr.core.server.PlexVideoService;
+import stonytark.cinemarr.core.server.PlexConnectionLifecycle;
 import stonytark.cinemarr.network.CinemarrNetwork;
 import stonytark.cinemarr.network.CinemarrPayloads;
 import stonytark.cinemarr.network.VideoPayloads;
@@ -40,6 +41,7 @@ public final class CinemarrServer {
     private PlexVideoService videoService;
     private List<PlexVideoService.ResolvedLibrary> videoLibraries = Collections.emptyList();
     private ServerVideoManager videoManager;
+    private PlexConnectionLifecycle plexLifecycle;
     private long ticks;
 
     public static CinemarrServer instance() { return INSTANCE; }
@@ -64,17 +66,12 @@ public final class CinemarrServer {
                     Cinemarr.LOGGER.warn("Cinemarr has no allowed Plex video libraries; edit {} and restart", libraryFile);
                 } else if (CinemarrSettings.plexToken().isBlank()) {
                     Cinemarr.LOGGER.warn("Cinemarr video libraries are configured, but CINEMARR_PLEX_TOKEN/plexToken is empty");
-                } else {
-                    INSTANCE.videoService = new PlexVideoService(CinemarrSettings.plexUrl(), CinemarrSettings.plexToken());
-                    INSTANCE.videoLibraries = INSTANCE.videoService.resolveLibraries(rules);
-                    INSTANCE.videoManager = new ServerVideoManager(server, INSTANCE.videoService,
-                            INSTANCE.videoLibraries, CinemarrVideoSavedData.get(server));
-                    Cinemarr.LOGGER.info("Validated {} allowed Plex video libraries", INSTANCE.videoLibraries.size());
-                }
-            } catch (Exception error) { throw new IllegalStateException("Unable to initialize Cinemarr", error); }
+                } else INSTANCE.configurePlex(server, rules);
+            } catch (Exception error) { throw new IllegalStateException("Unable to initialize Cinemarr server", error); }
         });
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
             if (INSTANCE.videoManager != null) { INSTANCE.videoManager.close(); INSTANCE.videoManager = null; }
+            if (INSTANCE.plexLifecycle != null) { INSTANCE.plexLifecycle.close(); INSTANCE.plexLifecycle = null; }
             INSTANCE.videoService = null;
             INSTANCE.videoLibraries = Collections.emptyList();
             INSTANCE.helloGate.clear();
@@ -82,6 +79,7 @@ public final class CinemarrServer {
         });
         ServerTickEvents.END_SERVER_TICK.register(server -> {
             INSTANCE.ticks++;
+            if (INSTANCE.plexLifecycle != null) INSTANCE.plexLifecycle.tick(System.currentTimeMillis());
             for (UUID id : INSTANCE.helloGate.expire(INSTANCE.ticks)) {
                 ServerPlayer timedOut = server.getPlayerList().getPlayer(id);
                 if (timedOut != null) timedOut.connection.disconnect(Component.literal(
@@ -123,8 +121,11 @@ public final class CinemarrServer {
     public void videoHealth(ServerPlayer player, VideoPackets.ClientHealth value) { if (accepted(player) && videoManager != null) videoManager.health(player, value); }
     public String videoStatus() { return videoManager == null ? unavailableStatus() : videoManager.status(); }
     public String videoDiagnostics() { return videoManager == null ? unavailableDiagnostics() : videoManager.diagnostics(); }
-    private static String unavailableStatus() { return "Cinemarr video unavailable; registeredTvs="+stonytark.cinemarr.core.server.TelevisionLifecycle.count()+"; activeStreams=0/"+CinemarrSettings.maximumConcurrentStreams()+"; attachedSessions=0; dormantSessions=0"; }
-    private static String unavailableDiagnostics() { return "Plex=unavailable; registeredTvs="+stonytark.cinemarr.core.server.TelevisionLifecycle.count()+"; libraries=0; activeStreams=0/"+CinemarrSettings.maximumConcurrentStreams()+"; attachedSessions=0; dormantSessions=0"; }
+    public boolean retryPlex() { return plexLifecycle != null && plexLifecycle.retry(); }
+    private String plexState() { return plexLifecycle == null ? "disabled" : plexLifecycle.state().name().toLowerCase(java.util.Locale.ROOT); }
+    private String unavailableStatus() { return "Cinemarr video "+plexState()+"; registeredTvs="+stonytark.cinemarr.core.server.TelevisionLifecycle.count()+"; activeStreams=0/"+CinemarrSettings.maximumConcurrentStreams()+"; attachedSessions=0; dormantSessions=0"; }
+    private String unavailableDiagnostics() { return "Plex="+plexState()+"; retryInMs="+(plexLifecycle==null?0:plexLifecycle.retryInMs(System.currentTimeMillis()))+"; lastFailure="+(plexLifecycle==null||plexLifecycle.lastFailure().isEmpty()?"none":plexLifecycle.lastFailure())+"; registeredTvs="+stonytark.cinemarr.core.server.TelevisionLifecycle.count()+"; libraries=0; activeStreams=0/"+CinemarrSettings.maximumConcurrentStreams(); }
+    private void configurePlex(net.minecraft.server.MinecraftServer server,List<LibraryRule> rules){plexLifecycle=new PlexConnectionLifecycle();plexLifecycle.configure(CinemarrSettings.plexUrl(),CinemarrSettings.plexToken(),rules,server::execute,connection->{videoService=connection.service();videoLibraries=connection.libraries();videoManager=new ServerVideoManager(server,videoService,videoLibraries,CinemarrVideoSavedData.get(server));Cinemarr.LOGGER.info("Validated {} allowed Plex video libraries{}",videoLibraries.size(),connection.requested()?" after manual retry":"");},(message,delay)->Cinemarr.LOGGER.warn("Plex unavailable; Cinemarr will retry in {} seconds: {}",delay/1000,message));}
 
     private void prepareAcceptanceVideo(ServerPlayer player) {
         if (!ProtocolLimits.videoProbeEnabled() || videoManager == null) return;

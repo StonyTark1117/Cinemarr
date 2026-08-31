@@ -1,7 +1,7 @@
 package stonytark.cinemarr.core.protocol;
 
 public final class ProtocolLimits {
-    public static final int VERSION = 8;
+    public static final int VERSION = 9;
     public static final String ACCEPTANCE_ENABLED_PROPERTY = "cinemarr.acceptance.enabled";
     public static final String ACCEPTANCE_CLIENT_PROTOCOL_PROPERTY = "cinemarr.acceptance.clientProtocol";
     public static final String ACCEPTANCE_SUPPRESS_HELLO_PROPERTY = "cinemarr.acceptance.suppressClientHello";
@@ -11,6 +11,7 @@ public final class ProtocolLimits {
     public static final String ACCEPTANCE_AUDIO_CONTROL_FILE_PROPERTY = "cinemarr.acceptance.audioControlFile";
     public static final String ACCEPTANCE_VIDEO_PROBE_PROPERTY = "cinemarr.acceptance.videoProbe";
     public static final String ACCEPTANCE_VIDEO_LEADER_PROPERTY = "cinemarr.acceptance.videoLeader";
+    public static final String ACCEPTANCE_LIFECYCLE_PROBE_PROPERTY = "cinemarr.acceptance.lifecycleProbe";
     public static final int MAX_BROWSE_RESULTS = 50;
     public static final int MAX_STATION_SEEDS = 5;
     public static final int MAX_PLAYBACK_ENTRIES = 504;
@@ -65,9 +66,9 @@ public final class ProtocolLimits {
         return audioProbeEnabled() && Boolean.getBoolean(ACCEPTANCE_AUDIO_LEADER_PROPERTY);
     }
 
-    /** Returns a control file only inside the explicitly enabled audio gate. */
+    /** Returns a control file only inside an explicitly enabled real-client media gate. */
     public static String audioControlFile() {
-        if (!audioProbeEnabled()) return "";
+        if (!audioProbeEnabled() && !videoProbeEnabled()) return "";
         String configured = System.getProperty(ACCEPTANCE_AUDIO_CONTROL_FILE_PROPERTY);
         return configured == null ? "" : configured.trim();
     }
@@ -80,6 +81,12 @@ public final class ProtocolLimits {
 
     public static boolean videoProbeLeader() {
         return videoProbeEnabled() && Boolean.getBoolean(ACCEPTANCE_VIDEO_LEADER_PROPERTY);
+    }
+
+    /** Enables deterministic interruption and recovery of a production Quick TV build. */
+    public static boolean lifecycleProbeEnabled() {
+        return Boolean.getBoolean(ACCEPTANCE_ENABLED_PROPERTY)
+                && Boolean.getBoolean(ACCEPTANCE_LIFECYCLE_PROBE_PROPERTY);
     }
 
     private ProtocolLimits() {}

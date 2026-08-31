@@ -22,7 +22,7 @@ public final class CinemarrVideoScreen extends Screen {
     private final long controllerPos;
     private final CinemarrVideoClientState state;
     private final Deque<String> parents=new ArrayDeque<>();
-    private String libraryId="",parentKey="",query="",notice="";
+    private String libraryId="",parentKey="",query="",notice="",sessionDraft="";
     private EditBox search,sessionName;
     private int page,rowOffset;
     private boolean queueView;
@@ -32,6 +32,7 @@ public final class CinemarrVideoScreen extends Screen {
     }
 
     @Override protected void init(){
+        if(sessionName!=null)sessionDraft=sessionName.getValue();
         clearWidgets();int panel=Math.min(760,width-16),left=(width-panel)/2,top=36;
         int libraryWidth=Math.max(80,panel/Math.max(1,state.libraries().libraries().size()));int x=left;
         for(VideoPackets.LibrarySummary library:state.libraries().libraries()){
@@ -54,7 +55,7 @@ public final class CinemarrVideoScreen extends Screen {
         if(queueView){addQueueRows(left,top,panel);return;}
         VideoPackets.BrowseResults results=state.browse();
         if(!results.libraryId().equals(libraryId)||!results.parentKey().equals(parentKey))return;
-        int rows=Math.max(1,(height-top-82)/22);rowOffset=Math.max(0,Math.min(rowOffset,Math.max(0,results.items().size()-rows)));
+        int rows=Math.max(1,(height-top-104)/22);rowOffset=Math.max(0,Math.min(rowOffset,Math.max(0,results.items().size()-rows)));
         for(int row=0;row<rows&&row+rowOffset<results.items().size();row++){
             VideoMediaItem item=results.items().get(row+rowOffset);int y=top+row*22;
             String type=item.kind()==MediaKind.EPISODE?"E"+item.index()+" ":"";
@@ -66,6 +67,7 @@ public final class CinemarrVideoScreen extends Screen {
             if(item.kind()==MediaKind.MOVIE||item.kind()==MediaKind.EPISODE){addRenderableWidget(Button.builder(Component.translatable("cinemarr.video.play"),b->activate(item)).bounds(left+panel-actionWidth,y,52,20).build());addRenderableWidget(Button.builder(Component.literal("+ Queue"),b->queue(item)).bounds(left+panel-52,y,52,20).build());}
             else addRenderableWidget(Button.builder(Component.translatable("cinemarr.video.browse"),b->activate(item)).bounds(left+panel-actionWidth,y,actionWidth,20).build());
         }
+        int pagerY=top+rows*22;Button previous=Button.builder(Component.literal("< Prev"),b->{page=Math.max(0,page-1);rowOffset=0;request();}).bounds(left,pagerY,60,20).build();previous.active=page>0;addRenderableWidget(previous);addRenderableWidget(Button.builder(Component.literal("Page "+(page+1)),b->{}).bounds(left+64,pagerY,72,20).build());Button next=Button.builder(Component.literal("Next >"),b->{page++;rowOffset=0;request();}).bounds(left+140,pagerY,60,20).build();next.active=results.hasMore();addRenderableWidget(next);
     }
 
     private void addQueueRows(int left,int top,int panel){java.util.List<QueuedVideo> queue=state.queue(controllerPos);int rows=Math.max(1,(height-top-82)/22);rowOffset=Math.max(0,Math.min(rowOffset,Math.max(0,queue.size()-rows)));for(int row=0;row<rows&&row+rowOffset<queue.size();row++){int index=row+rowOffset;QueuedVideo entry=queue.get(index);String label=(index+1)+". "+entry.item().title()+(entry.item().parentTitle().isEmpty()?"":" — "+entry.item().parentTitle());int y=top+row*22;addRenderableWidget(Button.builder(Component.literal(trim(label,panel-70)),b->{}).bounds(left,y,panel-64,20).build());addRenderableWidget(Button.builder(Component.literal("Remove"),b->removeQueue(index)).bounds(left+panel-60,y,60,20).build());}}
@@ -86,7 +88,7 @@ public final class CinemarrVideoScreen extends Screen {
             int streamY=y-24;Button audio=Button.builder(Component.literal("Audio: "+streamLabel(playback,VideoStreamOption.Kind.AUDIO,playback.selectedAudioStreamId(),"default")),b->cycleStream(playback,VideoStreamOption.Kind.AUDIO)).bounds(left,streamY,Math.min(180,panel/2-2),20).build();audio.active=playback.streams().stream().anyMatch(value->value.kind()==VideoStreamOption.Kind.AUDIO);addRenderableWidget(audio);
             Button subtitles=Button.builder(Component.literal("Subs: "+streamLabel(playback,VideoStreamOption.Kind.SUBTITLE,playback.selectedSubtitleStreamId(),"off")),b->cycleStream(playback,VideoStreamOption.Kind.SUBTITLE)).bounds(left+Math.min(184,panel/2+2),streamY,Math.min(180,panel/2-2),20).build();subtitles.active=playback.streams().stream().anyMatch(value->value.kind()==VideoStreamOption.Kind.SUBTITLE);addRenderableWidget(subtitles);
         }
-        int sessionY=height-26;sessionName=addRenderableWidget(new EditBox(font,left,sessionY,180,20,Component.translatable("cinemarr.video.session")));sessionName.setMaxLength(64);sessionName.setHint(Component.translatable("cinemarr.video.session"));
+        int sessionY=height-26;sessionName=addRenderableWidget(new EditBox(font,left,sessionY,180,20,Component.translatable("cinemarr.video.session")));sessionName.setMaxLength(64);sessionName.setHint(Component.translatable("cinemarr.video.session"));sessionName.setValue(sessionDraft);
         addRenderableWidget(Button.builder(Component.translatable("cinemarr.video.tune"),b->command(VideoPackets.SessionAction.TUNE,"",0,mode(),generation,sessionName.getValue().trim())).bounds(left+184,sessionY,52,20).build());
         addRenderableWidget(Button.builder(Component.literal("Vol -"),b->volume(-0.1)).bounds(left+244,sessionY,52,20).build());
         addRenderableWidget(Button.builder(Component.literal((int)Math.round(CinemarrSettings.volume()*100)+"%"),b->{}).bounds(left+300,sessionY,52,20).build());
@@ -106,13 +108,14 @@ public final class CinemarrVideoScreen extends Screen {
     private void request(){if(!libraryId.isEmpty())state.browse(libraryId,parentKey,query,page);}
     private void seek(long delta){VideoPackets.SessionState value=state.session(controllerPos);if(value==null)return;command(VideoPackets.SessionAction.SEEK,"",Math.max(0,value.positionMs()+delta),mode(),value.generation());}
     private void command(VideoPackets.SessionAction action,String item,long seek,PresentationMode mode,long generation){command(action,item,seek,mode,generation,"");}
-    private void command(VideoPackets.SessionAction action,String item,long seek,PresentationMode mode,long generation,String session){state.command(new VideoPackets.SessionCommand(action,controllerPos,libraryId,item,session,mode,generation,seek,-1,-1));}
+    private void command(VideoPackets.SessionAction action,String item,long seek,PresentationMode mode,long generation,String session){VideoPackets.SessionState current=state.session(controllerPos);if(current!=null&&!current.canControl()&&action!=VideoPackets.SessionAction.TUNE){notice="You do not have permission to control this TV";rebuildWidgets();return;}sessionDraft=session;state.command(new VideoPackets.SessionCommand(action,controllerPos,libraryId,item,session,mode,generation,seek,-1,-1));}
     private void commandStreams(VideoPackets.SessionState playback,int audio,int subtitle){state.command(new VideoPackets.SessionCommand(VideoPackets.SessionAction.SET_STREAMS,controllerPos,libraryId,playback.item().key(),"",playback.presentationMode(),playback.generation(),playback.positionMs(),audio,subtitle));}
     private void cycleStream(VideoPackets.SessionState playback,VideoStreamOption.Kind kind){java.util.List<VideoStreamOption> options=playback.streams().stream().filter(value->value.kind()==kind).toList();if(options.isEmpty())return;int current=kind==VideoStreamOption.Kind.AUDIO?playback.selectedAudioStreamId():playback.selectedSubtitleStreamId();int next;if(kind==VideoStreamOption.Kind.SUBTITLE&&current<0)next=options.get(0).id();else{int index=-1;for(int i=0;i<options.size();i++)if(options.get(i).id()==current){index=i;break;}next=index+1<options.size()?options.get(index+1).id():(kind==VideoStreamOption.Kind.SUBTITLE?-1:options.get(0).id());}commandStreams(playback,kind==VideoStreamOption.Kind.AUDIO?next:playback.selectedAudioStreamId(),kind==VideoStreamOption.Kind.SUBTITLE?next:playback.selectedSubtitleStreamId());}
     private static String streamLabel(VideoPackets.SessionState playback,VideoStreamOption.Kind kind,int id,String fallback){for(VideoStreamOption value:playback.streams())if(value.kind()==kind&&value.id()==id)return value.label();return fallback;}
     private PresentationMode mode(){VideoPackets.SessionState playback=state.session(controllerPos);return playback==null?PresentationMode.FIT:playback.presentationMode();}
     void stateChanged(){
         if(libraryId.isEmpty()&&!state.libraries().libraries().isEmpty()){libraryId=state.libraries().libraries().get(0).id();request();}
+        VideoPackets.SessionState current=state.session(controllerPos);if(current!=null&&!current.message().isBlank())notice=current.message();
         if(minecraft!=null)rebuildWidgets();
     }
     @Override public boolean keyPressed(net.minecraft.client.input.KeyEvent event){if(event.key()==257&&search!=null&&search.isFocused()){query=search.getValue().trim();page=0;request();return true;}return super.keyPressed(event);}

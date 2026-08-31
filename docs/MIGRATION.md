@@ -3,12 +3,14 @@
 Back up the world and configuration before changing Minecraft versions or loaders.
 
 1. Stop the server cleanly.
-2. Install the Cinemarr artifact matching the destination Minecraft version and loader on the server and every client. On every supported Quilt target, use the destination version's `-fabric.jar` plus upstream Fabric API.
-3. Keep `world/serverconfig/cinemarr-server.toml` with the world and keep each client's `config/cinemarr-client.toml` locally.
-4. Start the server and inspect `/cinemarr diagnostics` before allowing players to queue music.
+2. Install the exact Cinemarr 1.0.0 artifact for the destination Minecraft version and loader on the server and every client. Quilt uses the matching Fabric artifact plus upstream Fabric API.
+3. Keep `world/serverconfig/cinemarr-server.toml`, `world/serverconfig/cinemarr-libraries.toml`, and the world's `cinemarr_screens` / video-session saved data. Keep each client's `config/cinemarr-client.toml` locally.
+4. Start the server, inspect `/cinemarr status` and `/cinemarr diagnostics`, then test a controller before allowing normal use.
 
-Cinemarr saved data is named `cinemarr_global_queue` and writes schema 4. Readers retain schema 1-3 queue/current/checkpoint data and schema 2-3 source, station, Adventure, autoplay, and history fields where present. Queue entries, active source, station seeds/waypoints, generation, autoplay, checkpoint, pause state, and repeat-suppression history survive supported loader migrations. Generated lookahead is intentionally rebuilt.
+Protocol 9 intentionally removes the inherited global music queue, stations, MP3 streaming, and music UI. Old music-only configuration keys are ignored and dropped when the canonical server file is rewritten. Old music saved data is not used by Cinemarr 1.0. Television geometry, ownership, presentation, rendition, named-session, and video queue/checkpoint data remain the supported persistence surface.
 
-When a canonical config is absent, Cinemarr searches the recognized PAmpMod/Cinemarr Fabric, Forge, NeoForge, and legacy filenames, preferring the active adapter's file when more than one exists. Quilt intentionally uses the Fabric adapter and therefore prefers Fabric migration filenames. It imports once, validates every recognized value, writes the canonical file, and leaves the source untouched. Malformed, unsafe, or out-of-range values reject initialization without rewriting the source or exposing its value in diagnostics. `CINEMARR_PLEX_TOKEN` always overrides a file token. Tokens, cache paths, cached media, and private Plex addresses are not stored in world saved data.
+Screen-data schema 3 includes unfinished Quick TV construction footprints. After an interrupted build, loaded generated pixels are rolled back; positions in unloaded chunks remain recorded until recovery can safely inspect those chunks.
 
-Minecraft itself controls whether a world may be upgraded between game versions. Do not use Cinemarr migration support as a promise that vanilla world downgrades are safe.
+When a canonical configuration is absent, Cinemarr searches recognized older PAmpMod/Cinemarr loader filenames, imports supported values once, writes the canonical file, and leaves the source untouched. Malformed or out-of-range values reject initialization without echoing secrets. `CINEMARR_PLEX_TOKEN` always overrides a file token.
+
+Minecraft itself controls whether a world can be upgraded between game versions. Cinemarr migration support is not a promise that vanilla downgrades are safe.

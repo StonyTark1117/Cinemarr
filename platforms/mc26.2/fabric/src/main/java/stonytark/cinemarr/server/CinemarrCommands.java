@@ -15,9 +15,10 @@ public final class CinemarrCommands {
         LiteralArgumentBuilder<CommandSourceStack> root=Commands.literal("cinemarr")
                 .executes(context->status(context.getSource()))
                 .then(Commands.literal("status").executes(context->status(context.getSource())))
-                .then(Commands.literal("diagnostics").requires(source->CinemarrPermissions.has(source,CinemarrSettings.operatorPermissionLevel())).executes(context->{context.getSource().sendSuccess(()->Component.literal(CinemarrServer.instance().videoDiagnostics()),false);return 1;})).then(CinemarrTvCommands.command());
+                .then(Commands.literal("diagnostics").requires(source->CinemarrPermissions.has(source,CinemarrSettings.operatorPermissionLevel())).executes(context->{context.getSource().sendSuccess(()->Component.literal(CinemarrServer.instance().videoDiagnostics()),false);return 1;})).then(Commands.literal("retry").requires(source->CinemarrPermissions.has(source,CinemarrSettings.operatorPermissionLevel())).executes(context->retry(context.getSource()))).then(CinemarrTvCommands.command());
         dispatcher.register(root);
     }
     private static int status(CommandSourceStack source){source.sendSuccess(()->Component.literal(CinemarrServer.instance().videoStatus()),false);return 1;}
+    private static int retry(CommandSourceStack source){boolean started=CinemarrServer.instance().retryPlex();source.sendSuccess(()->Component.literal(started?"Cinemarr Plex connection attempt started":"Cinemarr Plex is disabled or not configured"),false);return started?1:0;}
     private CinemarrCommands(){}
 }

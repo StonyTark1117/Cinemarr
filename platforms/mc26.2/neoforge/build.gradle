@@ -2,10 +2,13 @@ plugins {
     id 'java-library'
     alias(libs.plugins.moddevgradle)
 }
+allprojects { apply from: rootProject.file('../../../gradle/reproducible-archives.gradle') }
 apply from: file('../../../gradle/mc26-recipe-resources.gradle')
 
 group = 'stonytark'
-version = '1.0.1'
+def productProperties = new Properties()
+file('../../../gradle.properties').withInputStream { productProperties.load(it) }
+version = productProperties.getProperty('mod_version')
 def artifactVersion = version.toString()
 def expectedReleaseName = "cinemarr-${artifactVersion}+mc26.2-neoforge.jar"
 
@@ -60,8 +63,6 @@ dependencies {
     def javaCvVersion = '1.5.14'
     implementation project(':core')
     jarJar project(':core')
-    jarJar(implementation('javazoom:jlayer:1.0.1'))
-    jarJar(implementation('de.sciss:jump3r:1.0.5'))
     javacvFacade("org.bytedeco:javacv:${javaCvVersion}") { transitive = false }
     compileOnly("org.bytedeco:javacv:${javaCvVersion}") { transitive = false }
     jarJar(implementation("org.bytedeco:javacpp:${javaCppVersion}") { transitive = false })
@@ -84,7 +85,7 @@ sourceSets {
             exclude 'stonytark/cinemarr/Cinemarr.java'
             exclude 'stonytark/cinemarr/client/CinemarrClient.java'
             exclude 'stonytark/cinemarr/client/CinemarrClientConfigScreen.java'
-            exclude 'stonytark/cinemarr/client/CinemarrClientState.java'
+            exclude 'stonytark/cinemarr/client/CinemarrClientUi.java'
             exclude 'stonytark/cinemarr/client/CinemarrScreen.java'
             exclude 'stonytark/cinemarr/client/CinemarrVideoScreen.java'
             exclude 'stonytark/cinemarr/client/CinemarrVideoAudio.java'
@@ -143,7 +144,7 @@ tasks.named('jar', Jar) {
 
 def releaseArchive = tasks.named('jar', Jar).flatMap { it.archiveFile }
 def coreJarEntry = "META-INF/jarjar/stonytark.cinemarr.core-${artifactVersion}.jar".toString()
-def releaseEntries = [coreJarEntry, 'META-INF/jarjar/jlayer-1.0.1.jar', 'META-INF/jarjar/jump3r-1.0.5.jar', 'META-INF/jarjar/metadata.json',
+def releaseEntries = [coreJarEntry, 'META-INF/jarjar/metadata.json',
                       'org/bytedeco/javacv/FFmpegFrameGrabber.class', 'org/bytedeco/javacv/Frame.class',
                       'META-INF/LICENSE-Cinemarr-CC0-1.0.txt', 'META-INF/LICENSE-LGPL-2.1-or-later.txt',
                       'META-INF/THIRD_PARTY_NOTICES.md', 'META-INF/neoforge.mods.toml', 'cinemarr.mixins.json',

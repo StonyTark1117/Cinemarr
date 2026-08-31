@@ -8,6 +8,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.ChatComponentText;
 import stonytark.cinemarr.core.platform.CinemarrSettings;
 import stonytark.cinemarr.core.server.TelevisionLifecycle;
+import stonytark.cinemarr.Cinemarr;
 import stonytark.cinemarr.screen.LegacyWorldScreens;
 
 import java.util.ArrayList;
@@ -20,22 +21,19 @@ import java.util.UUID;
 /** Diagnostic and owner/operator TV recovery commands for Forge 1.7.10. */
 public final class LegacyVideoCommands extends CommandBase {
     private static final int PAGE_SIZE = 8;
-    private final LegacyVideoManager manager;
     private final MinecraftServer server;
-    private final String unavailable;
 
-    public LegacyVideoCommands(MinecraftServer server, LegacyVideoManager manager, String unavailable) {
-        this.server=server;this.manager=manager;this.unavailable=unavailable==null?"":unavailable;
-    }
+    public LegacyVideoCommands(MinecraftServer server) { this.server=server; }
     @Override public String getCommandName(){return "cinemarr";}
-    @Override public String getCommandUsage(ICommandSender sender){return "/cinemarr [status|diagnostics|tv list [page]|tv list all [page]|tv list owner <player> [page]|tv locate <uuid>|tv unregister <uuid>|tv prune]";}
+    @Override public String getCommandUsage(ICommandSender sender){return "/cinemarr [status|diagnostics|retry|tv list [page]|tv list all [page]|tv list owner <player> [page]|tv locate <uuid>|tv unregister <uuid>|tv prune]";}
     @Override public int getRequiredPermissionLevel(){return 0;}
     @Override public boolean canCommandSenderUseCommand(ICommandSender sender){return true;}
 
     @Override public void processCommand(ICommandSender sender,String[] arguments)throws CommandException{
         String action=arguments.length==0?"status":arguments[0].toLowerCase(Locale.ROOT);
-        if("status".equals(action)){reply(sender,manager==null?"Cinemarr video unavailable; registeredTvs="+TelevisionLifecycle.count()+"; activeStreams=0/"+CinemarrSettings.maximumConcurrentStreams()+"; attachedSessions=0; dormantSessions=0; reason="+unavailable:manager.status());return;}
-        if("diagnostics".equals(action)){requireOperator(sender);reply(sender,manager==null?"Plex=unavailable; registeredTvs="+TelevisionLifecycle.count()+"; activeStreams=0/"+CinemarrSettings.maximumConcurrentStreams()+"; attachedSessions=0; dormantSessions=0; reason="+unavailable:manager.diagnostics());return;}
+        if("status".equals(action)){reply(sender,Cinemarr.videoStatus());return;}
+        if("diagnostics".equals(action)){requireOperator(sender);reply(sender,Cinemarr.videoDiagnostics());return;}
+        if("retry".equals(action)){requireOperator(sender);boolean started=Cinemarr.retryPlex();reply(sender,started?"Plex retry started":"Plex retry is not available");return;}
         if("tv".equals(action)){television(sender,arguments);return;}
         throw new CommandException(getCommandUsage(sender));
     }
@@ -75,5 +73,5 @@ public final class LegacyVideoCommands extends CommandBase {
     private static void requireOperator(ICommandSender sender)throws CommandException{if(!isOperator(sender))throw new CommandException("Operator permission is required");}
     private static String describe(TelevisionLifecycle.Registration value){return value.id()+" dimension="+value.dimension()+" controller="+value.controllerX()+","+value.controllerY()+","+value.controllerZ()+" owner="+value.owner()+" pixels="+value.pixelCount()+" session="+(value.sessionName().isEmpty()?"idle":value.sessionName())+" validity="+value.validation().name().toLowerCase(Locale.ROOT)+" playback="+(value.attached()?"attached":"detached");}
     private static void reply(ICommandSender sender,String message){sender.addChatMessage(new ChatComponentText(message));}
-    @Override @SuppressWarnings("rawtypes") public List addTabCompletionOptions(ICommandSender sender,String[] arguments){return arguments.length==1?getListOfStringsMatchingLastWord(arguments,"status","diagnostics","tv"):arguments.length==2&&"tv".equalsIgnoreCase(arguments[0])?getListOfStringsMatchingLastWord(arguments,"list","locate","unregister","prune"):arguments.length==3&&"tv".equalsIgnoreCase(arguments[0])&&"list".equalsIgnoreCase(arguments[1])?getListOfStringsMatchingLastWord(arguments,"all","owner"):null;}
+    @Override @SuppressWarnings("rawtypes") public List addTabCompletionOptions(ICommandSender sender,String[] arguments){return arguments.length==1?getListOfStringsMatchingLastWord(arguments,"status","diagnostics","retry","tv"):arguments.length==2&&"tv".equalsIgnoreCase(arguments[0])?getListOfStringsMatchingLastWord(arguments,"list","locate","unregister","prune"):arguments.length==3&&"tv".equalsIgnoreCase(arguments[0])&&"list".equalsIgnoreCase(arguments[1])?getListOfStringsMatchingLastWord(arguments,"all","owner"):null;}
 }

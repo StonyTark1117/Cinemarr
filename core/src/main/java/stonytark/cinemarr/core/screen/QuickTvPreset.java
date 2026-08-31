@@ -1,5 +1,7 @@
 package stonytark.cinemarr.core.screen;
 
+import stonytark.cinemarr.core.platform.CinemarrSettings;
+
 import java.util.Locale;
 
 /**
@@ -40,9 +42,11 @@ public enum QuickTvPreset {
     public String id() { return id; }
     public int renditionWidth() { return renditionWidth; }
     public int renditionHeight() { return renditionHeight; }
-    public int physicalWidth() { return physicalWidth; }
-    public int physicalHeight() { return physicalHeight; }
-    public int physicalPixels() { return physicalWidth * physicalHeight; }
+    public int physicalWidth() { return CinemarrSettings.quickTvBuildMode() == QuickTvBuildMode.LITERAL ? renditionWidth : physicalWidth; }
+    public int physicalHeight() { return CinemarrSettings.quickTvBuildMode() == QuickTvBuildMode.LITERAL ? renditionHeight : physicalHeight; }
+    public int physicalPixels() { return Math.multiplyExact(physicalWidth(), physicalHeight()); }
+    public int boundedPhysicalWidth() { return physicalWidth; }
+    public int boundedPhysicalHeight() { return physicalHeight; }
     public int resourceTier() { return resourceTier; }
     public String configKey() { return "quickTv" + id.toUpperCase(Locale.ROOT).replace("P", "p") + "Enabled"; }
 

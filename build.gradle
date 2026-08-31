@@ -4,6 +4,10 @@ plugins {
     id 'net.neoforged.moddev' version '2.0.143'
 }
 
+allprojects {
+    apply from: rootProject.file('gradle/reproducible-archives.gradle')
+}
+
 import groovy.json.JsonOutput
 import java.security.MessageDigest
 
@@ -36,6 +40,10 @@ neoForge {
                 gameDirectory = file(providers.gradleProperty('cinemarrAcceptanceGameDir').get())
                 programArguments.addAll '--username', providers.gradleProperty('cinemarrAcceptanceUsername').get(),
                         '--quickPlayMultiplayer', providers.gradleProperty('cinemarrAcceptanceServer').get()
+                if (providers.gradleProperty('cinemarrAcceptanceWidth').isPresent()) {
+                    programArguments.addAll '--width', providers.gradleProperty('cinemarrAcceptanceWidth').get(),
+                            '--height', providers.gradleProperty('cinemarrAcceptanceHeight').get()
+                }
             }
         }
         server {
@@ -111,12 +119,8 @@ dependencies {
     jarJar(implementation(project(':core')))
     additionalRuntimeClasspath(project(':core'))
     neoForgeTestLibraries(project(':core'))
-    jarJar(implementation('javazoom:jlayer:1.0.1'))
-    jarJar(implementation('de.sciss:jump3r:1.0.5'))
     // NeoForge 1.21.1 does not expose ordinary Java libraries to the
     // dedicated development run unless they are added to this classpath.
-    additionalRuntimeClasspath('javazoom:jlayer:1.0.1')
-    additionalRuntimeClasspath('de.sciss:jump3r:1.0.5')
     // The ordinary (non -gpl) FFmpeg preset is LGPL. Keep every component
     // explicit so an all-platform or GPL-enabled artifact cannot enter the
     // release transitively.
@@ -218,7 +222,7 @@ tasks.named('jar', Jar) {
 
 def releaseArchive = tasks.named('jar', Jar).flatMap { it.archiveFile }
 def coreJarEntry = "META-INF/jarjar/stonytark.cinemarr.core-${mod_version}.jar".toString()
-def releaseEntries = [coreJarEntry, 'META-INF/jarjar/jlayer-1.0.1.jar', 'META-INF/jarjar/jump3r-1.0.5.jar',
+def releaseEntries = [coreJarEntry,
                       'org/bytedeco/javacv/FFmpegFrameGrabber.class', 'org/bytedeco/javacv/Frame.class',
                       'META-INF/LICENSE-Cinemarr-CC0-1.0.txt', 'META-INF/LICENSE-LGPL-2.1-or-later.txt', 'META-INF/LICENSE-Apache-2.0.txt',
                       'META-INF/THIRD_PARTY_NOTICES.md', 'META-INF/neoforge.mods.toml',
@@ -576,7 +580,7 @@ def indexRelease = tasks.register('indexReleaseArtifacts') {
         }
         if (manifestArtifacts.size() != 16) throw new GradleException("Expected 16 release artifacts, found ${manifestArtifacts.size()}")
         Map<String, Object> manifest = [schemaVersion: 2, product: 'Cinemarr', modId: mod_id,
-                                        productVersion: mod_version, protocolVersion: 8,
+                                        productVersion: mod_version, protocolVersion: 9,
                                         artifacts: manifestArtifacts]
         new File(releaseDirectory, 'manifest.json').setText(JsonOutput.prettyPrint(JsonOutput.toJson(manifest)) + '\n', 'UTF-8')
         new File(releaseDirectory, 'SHA256SUMS').setText(manifestArtifacts.collect {

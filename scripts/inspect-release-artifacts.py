@@ -15,8 +15,8 @@ import base64
 from pathlib import Path, PurePosixPath
 
 
-PRODUCT_VERSION = "1.0.1"
-PROTOCOL_VERSION = 8
+PRODUCT_VERSION = "1.0.0"
+PROTOCOL_VERSION = 9
 TARGETS = (
     ("1.7.10", "forge", 8, 52),
     ("1.20.1", "fabric", 17, 61),
@@ -50,6 +50,7 @@ TV_COMPONENT_IDS = TV_BLOCK_IDS + ("tv_remote",)
 ALL_TV_BLOCK_IDS = TV_BLOCK_IDS + tuple(f"quick_tv_{quick_id}" for quick_id in QUICK_TV_IDS)
 PRIVATE_ADDRESS = re.compile(rb"(?<![0-9])(?:10\.(?:[0-9]{1,3}\.){2}[0-9]{1,3}|192\.168\.(?:[0-9]{1,3}\.)[0-9]{1,3}|172\.(?:1[6-9]|2[0-9]|3[01])\.(?:[0-9]{1,3}\.)[0-9]{1,3})(?![0-9])")
 TEXT_SUFFIXES = (".json", ".toml", ".info", ".lang", ".md", ".txt", ".properties", ".mf")
+MAX_REPRODUCIBLE_ZIP_TIME = (1980, 2, 1, 0, 0, 0)
 
 
 def fail(message: str) -> None:
@@ -189,13 +190,17 @@ def verify_direct_interface(archive: zipfile.ZipFile, interface_name: str,
 
 
 def safe_entries(archive: zipfile.ZipFile, filename: str) -> set[str]:
-    names = [entry.filename for entry in archive.infolist()]
+    entries = archive.infolist()
+    names = [entry.filename for entry in entries]
     if len(names) != len(set(names)):
         fail(f"{filename} contains duplicate ZIP entries")
-    for name in names:
+    for entry in entries:
+        name = entry.filename
         path = PurePosixPath(name)
         if path.is_absolute() or ".." in path.parts or "\\" in name:
             fail(f"{filename} contains unsafe ZIP path {name!r}")
+        if entry.date_time > MAX_REPRODUCIBLE_ZIP_TIME:
+            fail(f"{filename}:{name} has non-reproducible ZIP timestamp {entry.date_time}")
     bad = archive.testzip()
     if bad is not None:
         fail(f"{filename} has a corrupt ZIP entry: {bad}")
@@ -334,8 +339,6 @@ def verify_metadata(archive: zipfile.ZipFile, names: set[str], minecraft: str, l
                 fail(f"{filename} is missing its guarded Quilt 26.x compatibility hooks")
         expected_jars = {
             f"META-INF/jars/core-{PRODUCT_VERSION}.jar",
-            "META-INF/jars/jlayer-1.0.1.jar",
-            "META-INF/jars/jump3r-1.0.5.jar",
             "META-INF/jars/javacpp-1.5.14.jar",
             "META-INF/jars/javacpp-1.5.14-linux-x86_64.jar",
             "META-INF/jars/javacpp-1.5.14-linux-arm64.jar",
@@ -420,21 +423,15 @@ def verify_jar(path: Path, minecraft: str, loader: str, java: int, expected_majo
             required_legacy = {
                 "assets/cinemarr/lang/en_US.lang",
                 "stonytark/cinemarr/core/server/ChunkTransferPolicy.class",
-                "stonytark/cinemarr/core/server/CoordinatorRuntime.class",
-                "stonytark/cinemarr/core/server/GlobalPlaybackCoordinator.class",
-                "stonytark/cinemarr/core/server/PlaybackStore.class",
                 "stonytark/cinemarr/network/LegacyNetwork.class",
-                "stonytark/cinemarr/server/LegacyGlobalPlayer.class",
-                "stonytark/cinemarr/client/LegacyAudioPlayer.class",
+                "stonytark/cinemarr/server/LegacyVideoManager.class",
+                "stonytark/cinemarr/server/LegacyVideoSavedData.class",
                 "stonytark/cinemarr/client/LegacyMediaSegmentDecoder.class",
                 "stonytark/cinemarr/client/LegacyFfmpegVideoDecoder.class",
                 "stonytark/cinemarr/client/FfmpegHardwareVideoDecoder.class",
-                "stonytark/cinemarr/client/LegacyScreen.class",
-                "stonytark/cinemarr/server/LegacySavedData.class",
+                "stonytark/cinemarr/client/LegacyVideoScreen.class",
                 "stonytark/cinemarr/screen/LegacyQuickTvBlock.class",
                 "stonytark/cinemarr/core/screen/QuickTvPreset.class",
-                "javazoom/jl/decoder/Decoder.class",
-                "de/sciss/jump3r/mp3/Lame.class",
             }
             if required_legacy - names:
                 fail(f"{filename} is missing legacy runtime entries: {sorted(required_legacy - names)}")
@@ -443,19 +440,7 @@ def verify_jar(path: Path, minecraft: str, loader: str, java: int, expected_majo
                     major = class_major(archive.read(name), f"{filename}:{name}")
                     if major != 52:
                         fail(f"{filename}:{name} is class major {major}, expected Java 8 major 52")
-            # The shared core is compiled against stable names while Forge 1.7.10
-            # reobfuscates Minecraft methods in adapters. Require each adapter to
-            # declare its full shared contract so an inherited MCP-named method
-            # cannot disappear from the production linkage (as markDirty once did).
             for interface_name, implementation_name in (
-                ("stonytark/cinemarr/core/server/PlaybackStore",
-                 "stonytark/cinemarr/server/LegacySavedData"),
-                ("stonytark/cinemarr/core/server/CoordinatorRuntime",
-                 "stonytark/cinemarr/server/LegacyGlobalPlayer$1"),
-                ("stonytark/cinemarr/core/platform/CoreLogger",
-                 "stonytark/cinemarr/server/LegacyGlobalPlayer$1$1"),
-                ("stonytark/cinemarr/core/server/PlexGateway",
-                 "stonytark/cinemarr/core/server/PlexService"),
                 ("stonytark/cinemarr/core/network/HttpTransport",
                  "stonytark/cinemarr/core/network/UrlConnectionHttpTransport"),
             ):
@@ -519,18 +504,25 @@ def verify_jar(path: Path, minecraft: str, loader: str, java: int, expected_majo
                 fail(f"{filename} must bundle its isolated shared core JAR, found {core_candidates}")
             for core_entry in (
                 "stonytark/cinemarr/core/server/ChunkTransferPolicy.class",
-                "stonytark/cinemarr/core/server/CoordinatorRuntime.class",
-                "stonytark/cinemarr/core/server/GlobalPlaybackCoordinator.class",
-                "stonytark/cinemarr/core/server/PlaybackStore.class",
+                "stonytark/cinemarr/core/server/PlexVideoService.class",
+                "stonytark/cinemarr/core/server/VideoSessionCoordinator.class",
                 "stonytark/cinemarr/core/screen/QuickTvPreset.class",
             ):
                 core_class = require_nested_class(archive, core_candidates[0], core_entry, filename)
                 if class_major(core_class, f"{filename}:{core_entry}") != 52:
                     fail(f"{filename} shared core is not Java 8 bytecode")
-            require_nested_class(archive, f"{nested_prefix}/jlayer-1.0.1.jar",
-                                 "javazoom/jl/decoder/Decoder.class", filename)
-            require_nested_class(archive, f"{nested_prefix}/jump3r-1.0.5.jar",
-                                 "de/sciss/jump3r/mp3/Lame.class", filename)
+
+        forbidden_music_entries = (
+            "stonytark/cinemarr/core/server/GlobalPlaybackCoordinator.class",
+            "stonytark/cinemarr/core/server/PlexService.class",
+            "stonytark/cinemarr/server/LegacyGlobalPlayer.class",
+            "stonytark/cinemarr/client/LegacyAudioPlayer.class",
+            "javazoom/jl/decoder/Decoder.class",
+            "de/sciss/jump3r/mp3/Lame.class",
+        )
+        for forbidden in forbidden_music_entries:
+            if forbidden in names:
+                fail(f"{filename} contains removed music runtime entry {forbidden}")
 
         verify_no_deployment_secrets(archive, filename)
 

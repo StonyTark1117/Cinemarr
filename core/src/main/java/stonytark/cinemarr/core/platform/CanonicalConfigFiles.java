@@ -1,6 +1,6 @@
 package stonytark.cinemarr.core.platform;
 
-import stonytark.cinemarr.core.model.RestartMode;
+import stonytark.cinemarr.core.screen.QuickTvBuildMode;
 import stonytark.cinemarr.core.screen.QuickTvPreset;
 
 import java.io.BufferedReader;
@@ -52,14 +52,8 @@ public final class CanonicalConfigFiles {
         ServerConfig config = new ServerConfig(canonical,
                 validatedUrl(string(values, "plexUrl", "http://127.0.0.1:32400", 2_048)),
                 string(values, "plexToken", "", 4_096),
-                string(values, "musicLibrary", "", 256),
-                restartMode(values, "restartMode"),
-                bool(values, "pauseWhenNoPlayers", true),
                 integer(values, "operatorPermissionLevel", 2, 0, 4),
                 integer(values, "queueLimit", 500, 1, 500),
-                integer(values, "audioBitrateKbps", 160, 64, 320),
-                integer(values, "cacheSizeMiB", 1_024, 64, 16_384),
-                bool(values, "stationMetadataFallbackEnabled", false),
                 integer(values, "minimumScreenPixels", 4, 1, 65_536),
                 integer(values, "maximumScreenPixels", 65_536, 4, 65_536),
                 integer(values, "maximumScreenDimension", 2_048, 1, 2_048),
@@ -69,6 +63,10 @@ public final class CanonicalConfigFiles {
                 integer(values, "inactiveSessionGraceSeconds", 30, 0, 600),
                 bool(values, "quickTvKitsEnabled", true),
                 quickTvPresets(values),
+                QuickTvBuildMode.parse(string(values, "quickTvBuildMode", "bounded", 32)),
+                integer(values, "maximumVideoWidth", 3_840, 2, 7_680),
+                integer(values, "maximumVideoHeight", 2_160, 2, 4_320),
+                integer(values, "maximumVideoBitrateKbps", 20_000, 128, 100_000),
                 source != null && !source.equals(canonical) ? source : null);
         config.save();
         secure(canonical);
@@ -91,14 +89,8 @@ public final class CanonicalConfigFiles {
         private final Path path;
         private final String plexUrl;
         private final String plexToken;
-        private final String musicLibrary;
-        private final RestartMode restartMode;
-        private final boolean pauseWhenEmpty;
         private final int operatorPermissionLevel;
         private final int queueLimit;
-        private final int audioBitrateKbps;
-        private final long cacheSizeMiB;
-        private final boolean stationMetadataFallbackEnabled;
         private final int minimumScreenPixels;
         private final int maximumScreenPixels;
         private final int maximumScreenDimension;
@@ -108,27 +100,25 @@ public final class CanonicalConfigFiles {
         private final int inactiveSessionGraceSeconds;
         private final boolean quickTvKitsEnabled;
         private final Set<QuickTvPreset> quickTvPresets;
+        private final QuickTvBuildMode quickTvBuildMode;
+        private final int maximumVideoWidth;
+        private final int maximumVideoHeight;
+        private final int maximumVideoBitrateKbps;
         private final Path importedFrom;
 
-        private ServerConfig(Path path, String plexUrl, String plexToken, String musicLibrary,
-                             RestartMode restartMode, boolean pauseWhenEmpty, int operatorPermissionLevel,
-                             int queueLimit, int audioBitrateKbps, long cacheSizeMiB,
-                             boolean stationMetadataFallbackEnabled, int minimumScreenPixels, int maximumScreenPixels,
+        private ServerConfig(Path path, String plexUrl, String plexToken, int operatorPermissionLevel,
+                             int queueLimit, int minimumScreenPixels, int maximumScreenPixels,
                              int maximumScreenDimension, int maximumConcurrentStreams, int maximumScreensPerOwner,
                              boolean allowIrregularScreens,
                              int inactiveSessionGraceSeconds, boolean quickTvKitsEnabled,
-                             Set<QuickTvPreset> quickTvPresets, Path importedFrom) {
+                             Set<QuickTvPreset> quickTvPresets, QuickTvBuildMode quickTvBuildMode,
+                             int maximumVideoWidth, int maximumVideoHeight, int maximumVideoBitrateKbps,
+                             Path importedFrom) {
             this.path = path;
             this.plexUrl = plexUrl;
             this.plexToken = plexToken;
-            this.musicLibrary = musicLibrary;
-            this.restartMode = restartMode;
-            this.pauseWhenEmpty = pauseWhenEmpty;
             this.operatorPermissionLevel = operatorPermissionLevel;
             this.queueLimit = queueLimit;
-            this.audioBitrateKbps = audioBitrateKbps;
-            this.cacheSizeMiB = cacheSizeMiB;
-            this.stationMetadataFallbackEnabled = stationMetadataFallbackEnabled;
             if (minimumScreenPixels > maximumScreenPixels) throw new IllegalArgumentException("minimumScreenPixels exceeds maximumScreenPixels");
             this.minimumScreenPixels = minimumScreenPixels;
             this.maximumScreenPixels = maximumScreenPixels;
@@ -139,6 +129,10 @@ public final class CanonicalConfigFiles {
             this.inactiveSessionGraceSeconds = inactiveSessionGraceSeconds;
             this.quickTvKitsEnabled = quickTvKitsEnabled;
             this.quickTvPresets = Collections.unmodifiableSet(EnumSet.copyOf(quickTvPresets));
+            this.quickTvBuildMode = quickTvBuildMode;
+            this.maximumVideoWidth = maximumVideoWidth;
+            this.maximumVideoHeight = maximumVideoHeight;
+            this.maximumVideoBitrateKbps = maximumVideoBitrateKbps;
             this.importedFrom = importedFrom;
         }
 
@@ -146,14 +140,8 @@ public final class CanonicalConfigFiles {
         public Path importedFrom() { return importedFrom; }
         @Override public String plexUrl() { return plexUrl; }
         @Override public String plexToken() { return plexToken; }
-        @Override public String musicLibrary() { return musicLibrary; }
-        @Override public RestartMode restartMode() { return restartMode; }
-        @Override public boolean pauseWhenEmpty() { return pauseWhenEmpty; }
         @Override public int operatorPermissionLevel() { return operatorPermissionLevel; }
         @Override public int queueLimit() { return queueLimit; }
-        @Override public int audioBitrateKbps() { return audioBitrateKbps; }
-        @Override public long cacheSizeMiB() { return cacheSizeMiB; }
-        @Override public boolean stationMetadataFallbackEnabled() { return stationMetadataFallbackEnabled; }
         @Override public int minimumScreenPixels() { return minimumScreenPixels; }
         @Override public int maximumScreenPixels() { return maximumScreenPixels; }
         @Override public int maximumScreenDimension() { return maximumScreenDimension; }
@@ -163,13 +151,16 @@ public final class CanonicalConfigFiles {
         @Override public int inactiveSessionGraceSeconds() { return inactiveSessionGraceSeconds; }
         @Override public boolean quickTvKitsEnabled() { return quickTvKitsEnabled; }
         @Override public boolean quickTvPresetEnabled(QuickTvPreset preset) { return quickTvPresets.contains(preset); }
+        @Override public QuickTvBuildMode quickTvBuildMode() { return quickTvBuildMode; }
+        @Override public int maximumVideoWidth() { return maximumVideoWidth; }
+        @Override public int maximumVideoHeight() { return maximumVideoHeight; }
+        @Override public int maximumVideoBitrateKbps() { return maximumVideoBitrateKbps; }
 
         public void save() throws IOException {
             List<String> lines = new ArrayList<String>();
             lines.add("# Cinemarr server configuration. CINEMARR_PLEX_TOKEN overrides plexToken.");
             lines.add("plexUrl = " + quoted(plexUrl));
             lines.add("plexToken = " + quoted(plexToken));
-            lines.add("pauseWhenNoPlayers = " + pauseWhenEmpty);
             lines.add("operatorPermissionLevel = " + operatorPermissionLevel);
             lines.add("queueLimit = " + queueLimit);
             lines.add("");
@@ -182,8 +173,14 @@ public final class CanonicalConfigFiles {
             lines.add("allowIrregularScreens = " + allowIrregularScreens);
             lines.add("inactiveSessionGraceSeconds = " + inactiveSessionGraceSeconds);
             lines.add("");
-            lines.add("# Compact 16:9 prefab builders with exact named video rendition targets.");
+            lines.add("# Plex transcode limits. Source media is never upscaled beyond these caps.");
+            lines.add("maximumVideoWidth = " + maximumVideoWidth);
+            lines.add("maximumVideoHeight = " + maximumVideoHeight);
+            lines.add("maximumVideoBitrateKbps = " + maximumVideoBitrateKbps);
+            lines.add("");
+            lines.add("# Quick TV construction. literal is still constrained by the screen safety limits above.");
             lines.add("quickTvKitsEnabled = " + quickTvKitsEnabled);
+            lines.add("quickTvBuildMode = " + quoted(quickTvBuildMode.configValue()));
             for (QuickTvPreset preset : QuickTvPreset.values()) {
                 lines.add(preset.configKey() + " = " + quickTvPresets.contains(preset));
             }
@@ -371,13 +368,6 @@ public final class CanonicalConfigFiles {
         } catch (NumberFormatException ignored) { throw invalid(key); }
     }
 
-    private static RestartMode restartMode(Map<String, String> values, String key) throws ConfigValidationException {
-        String value = values.get(normalize(key));
-        if (value == null) return RestartMode.RESTART_TRACK;
-        try { return RestartMode.valueOf(value.trim().toUpperCase(Locale.ROOT).replace('-', '_').replace(' ', '_')); }
-        catch (IllegalArgumentException ignored) { throw invalid(key); }
-    }
-
     private static Set<QuickTvPreset> quickTvPresets(Map<String, String> values) throws ConfigValidationException {
         Set<QuickTvPreset> enabled = EnumSet.noneOf(QuickTvPreset.class);
         for (QuickTvPreset preset : QuickTvPreset.values()) if (bool(values, preset.configKey(), true)) enabled.add(preset);
@@ -456,6 +446,8 @@ public final class CanonicalConfigFiles {
             normalize("minimumScreenPixels"), normalize("maximumScreenPixels"), normalize("maximumScreenDimension"),
             normalize("maximumActiveTelevisions"), normalize("maximumConcurrentStreams"), normalize("maximumScreensPerOwner"),
             normalize("allowIrregularScreens"), normalize("inactiveSessionGraceSeconds"),
+            normalize("quickTvBuildMode"), normalize("maximumVideoWidth"), normalize("maximumVideoHeight"),
+            normalize("maximumVideoBitrateKbps"),
             normalize("quickTvKitsEnabled"), normalize("quickTv144pEnabled"), normalize("quickTv240pEnabled"),
             normalize("quickTv480pEnabled"), normalize("quickTv720pEnabled"), normalize("quickTv1080pEnabled"),
             normalize("quickTv1440pEnabled"), normalize("quickTv4KEnabled"), normalize("quickTv8KEnabled"));

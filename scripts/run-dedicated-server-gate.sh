@@ -75,9 +75,12 @@ command_client_gate=${CINEMARR_COMMAND_CLIENT_GATE:-false}
 audio_client_gate=${CINEMARR_AUDIO_CLIENT_GATE:-false}
 audio_scenario_gate=${CINEMARR_AUDIO_SCENARIO_GATE:-false}
 video_client_gate=${CINEMARR_VIDEO_CLIENT_GATE:-false}
+video_control_gate=${CINEMARR_VIDEO_CONTROL_GATE:-false}
+video_adverse_network_gate=${CINEMARR_VIDEO_ADVERSE_NETWORK_GATE:-false}
 video_follower_first_gate=${CINEMARR_VIDEO_FOLLOWER_FIRST_GATE:-false}
 external_video_client_gate=${CINEMARR_EXTERNAL_VIDEO_CLIENT_GATE:-false}
 live_plex_gate=${CINEMARR_LIVE_PLEX_GATE:-false}
+acceptance_server_host=${CINEMARR_ACCEPTANCE_SERVER_HOST:-127.0.0.1}
 video_decoder_backend=${CINEMARR_VIDEO_DECODER_BACKEND:-software}
 video_decoder_device=${CINEMARR_VIDEO_DECODER_DEVICE:-}
 video_decoder_expected_effective=${CINEMARR_VIDEO_DECODER_EXPECTED_EFFECTIVE:-$video_decoder_backend}
@@ -104,6 +107,35 @@ fi
 if [[ "$external_video_client_gate" != true && "$external_video_client_gate" != false ]]; then
   echo "CINEMARR_EXTERNAL_VIDEO_CLIENT_GATE must be true or false" >&2
   exit 2
+fi
+if [[ "$video_control_gate" != true && "$video_control_gate" != false ]]; then
+  echo "CINEMARR_VIDEO_CONTROL_GATE must be true or false" >&2
+  exit 2
+fi
+if [[ "$video_control_gate" == true && "$video_client_gate" != true ]]; then
+  echo "CINEMARR_VIDEO_CONTROL_GATE requires CINEMARR_VIDEO_CLIENT_GATE=true" >&2
+  exit 2
+fi
+if [[ "$video_adverse_network_gate" != true && "$video_adverse_network_gate" != false ]]; then
+  echo "CINEMARR_VIDEO_ADVERSE_NETWORK_GATE must be true or false" >&2
+  exit 2
+fi
+if [[ "$video_adverse_network_gate" == true && "$video_client_gate" != true ]]; then
+  echo "CINEMARR_VIDEO_ADVERSE_NETWORK_GATE requires CINEMARR_VIDEO_CLIENT_GATE=true" >&2
+  exit 2
+fi
+if [[ "$video_adverse_network_gate" == true && "$live_plex_gate" == true ]]; then
+  echo "CINEMARR_VIDEO_ADVERSE_NETWORK_GATE requires the deterministic fault-injection Plex service" >&2
+  exit 2
+fi
+if [[ "$video_adverse_network_gate" == true && -z "${CINEMARR_GATE_VIDEO_DURATION_SECONDS+x}" ]]; then
+  fake_video_duration_seconds=300
+fi
+if [[ "$video_control_gate" == true && -z "${CINEMARR_GATE_VIDEO_DURATION_SECONDS+x}" ]]; then
+  # The control sequence deliberately waits for stable playback between pause,
+  # resume, seek, stream replacement, and reconnect. Keep the deterministic
+  # fixture alive long enough that those checks cannot run into its natural end.
+  fake_video_duration_seconds=300
 fi
 if [[ "$external_video_client_gate" == true && "$video_client_gate" != true ]]; then
   echo "CINEMARR_EXTERNAL_VIDEO_CLIENT_GATE requires CINEMARR_VIDEO_CLIENT_GATE=true" >&2
@@ -143,6 +175,11 @@ if [[ "$live_plex_gate" == true ]]; then
     echo "CINEMARR_LIVE_PLEX_GATE requires a numeric CINEMARR_LIVE_VIDEO_SECTION_ID" >&2
     exit 2
   fi
+fi
+if [[ ! "$acceptance_server_host" =~ ^[A-Za-z0-9._:-]+$ ]] \
+    || [[ "$acceptance_server_host" == *$'\n'* || "$acceptance_server_host" == *$'\r'* ]]; then
+  echo "CINEMARR_ACCEPTANCE_SERVER_HOST contains an unsafe server host" >&2
+  exit 2
 fi
 
 restore_server_config() {
@@ -462,7 +499,7 @@ run_acceptance_client() {
       ./gradlew runClient --no-daemon --max-workers=1 --console=plain \
       "${runtime_args[@]}" \
       -PcinemarrAcceptanceUsername="$username" \
-      -PcinemarrAcceptanceServer="127.0.0.1:${port}" \
+      -PcinemarrAcceptanceServer="${acceptance_server_host}:${port}" \
       -PcinemarrAcceptanceGameDir="$client_dir" \
       > "$client_console" 2>&1
   ) &
@@ -563,7 +600,7 @@ run_command_client() {
       ./gradlew runClient --no-daemon --max-workers=1 --console=plain \
       "${runtime_args[@]}" \
       -PcinemarrAcceptanceUsername="$username" \
-      -PcinemarrAcceptanceServer="127.0.0.1:${port}" \
+      -PcinemarrAcceptanceServer="${acceptance_server_host}:${port}" \
       -PcinemarrAcceptanceGameDir="$client_dir" \
       > "$client_console" 2>&1
   ) &
@@ -696,6 +733,7 @@ start_audio_client() {
   local client_console="$output_root/$label.audio-$role.console.log"
   local control_file="$output_root/$label.audio-$role.control"
   local leader=false
+  local xvfb_geometry=1280x720x24
   local java_options='-Dcinemarr.acceptance.enabled=true -Dorg.lwjgl.opengl.Display.allowSoftwareOpenGL=true'
   local -a cache_args=()
   local -a runtime_args=()
@@ -707,7 +745,7 @@ start_audio_client() {
     java_options+=" -Dcinemarr.acceptance.audioProbe=true -Dcinemarr.acceptance.audioLeader=$leader -Dcinemarr.acceptance.audioControlFile=$control_file"
   fi
   if [[ "$video_client_gate" == "true" ]]; then
-    java_options+=" -Dcinemarr.acceptance.videoProbe=true -Dcinemarr.acceptance.videoLeader=$leader"
+    java_options+=" -Dcinemarr.acceptance.videoProbe=true -Dcinemarr.acceptance.videoLeader=$leader -Dcinemarr.acceptance.audioControlFile=$control_file"
   fi
   case "$label" in
     1.20.1-forge|1.20.1-neoforge|1.20.2-forge|1.20.2-neoforge|1.21.1-neoforge)
@@ -726,8 +764,17 @@ start_audio_client() {
     'skipMultiplayerWarning:true' \
     'joinedFirstServer:true' \
     'narrator:0' \
+    'guiScale:1' \
     'soundCategory_master:1.0' \
-    'soundCategory_music:1.0' > "$client_dir/options.txt"
+    'soundCategory_music:0.0' \
+    'soundCategory_weather:0.0' \
+    'soundCategory_block:0.0' \
+    'soundCategory_hostile:0.0' \
+    'soundCategory_neutral:0.0' \
+    'soundCategory_player:0.0' \
+    'soundCategory_ambient:0.0' \
+    'soundCategory_voice:0.0' \
+    'soundCategory_record:1.0' > "$client_dir/options.txt"
   printf '%s\n' '# Generated by the two-client audio acceptance gate.' \
     'enabled = true' 'volume = 1.0' \
     "videoDecoderBackend = \"$video_decoder_backend\"" \
@@ -766,10 +813,15 @@ start_audio_client() {
     '[general]' \
     'period_size = 512' \
     'periods = 8' > "$client_dir/alsoft.conf"
+  if [[ "$video_client_gate" == "true" && "$role" == "follower" \
+      && "${CINEMARR_VIDEO_FOLLOWER_SMALL_WINDOW:-false}" == "true" ]]; then
+    xvfb_geometry=640x360x24
+    runtime_args+=(-PcinemarrAcceptanceWidth=640 -PcinemarrAcceptanceHeight=360)
+  fi
   (
     cd "$target_dir" || exit 1
     exec setsid env -u WAYLAND_DISPLAY XDG_SESSION_TYPE=x11 \
-      xvfb-run -a -s '-screen 0 1280x720x24 -ac +extension GLX +render -noreset' env \
+      xvfb-run -a -s "-screen 0 $xvfb_geometry -ac +extension GLX +render -noreset" env \
       JAVA_HOME="$java_home" PATH="$java_home/bin:$PATH" \
       JAVA_TOOL_OPTIONS="$java_options" \
       ALSA_CONFIG_PATH="$client_dir/alsa.conf" ALSOFT_CONF="$client_dir/alsoft.conf" \
@@ -777,7 +829,7 @@ start_audio_client() {
       ./gradlew runClient --no-daemon --max-workers=1 --console=plain "${cache_args[@]}" \
       "${runtime_args[@]}" \
       -PcinemarrAcceptanceUsername="$username" \
-      -PcinemarrAcceptanceServer="127.0.0.1:${port}" \
+      -PcinemarrAcceptanceServer="${acceptance_server_host}:${port}" \
       -PcinemarrAcceptanceGameDir="$client_dir" \
       > "$client_console" 2>&1
   ) &
@@ -801,7 +853,7 @@ wait_for_audio_playing() {
       echo "$label: $role client could not initialize its headless display; see $client_console" >&2
       return 1
     fi
-    if grep -Eq 'Acceptance audio state: ERROR|Cinemarr rejected video segment|Failed to open OpenAL device|Error starting SoundSystem|NoClassDefFoundError: (javazoom|de/sciss)' \
+    if grep -Eq 'Acceptance audio state: ERROR|Cinemarr rejected video segment|Client disconnected with reason:|Connection reset by peer|Couldn.t connect to server|Failed to open OpenAL device|Error starting SoundSystem|NoClassDefFoundError: (javazoom|de/sciss)' \
         "$client_console" 2>/dev/null; then
       echo "$label: $role client failed before playback; see $client_console" >&2
       return 2
@@ -1005,6 +1057,223 @@ send_audio_control() {
   audio_control_sequence=$((audio_control_sequence + 1))
   printf '%s|%s\n' "$audio_control_sequence" "$command" \
     > "$output_root/$label.audio-$role.control"
+}
+
+wait_for_pattern_after() {
+  local file=$1 first_line=$2 pattern=$3 timeout=${4:-90}
+  local deadline=$((SECONDS + timeout))
+  while ! tail -n "+$((first_line + 1))" "$file" 2>/dev/null | grep -Eq "$pattern"; do
+    if (( SECONDS >= deadline )); then return 1; fi
+    sleep 1
+  done
+}
+
+real_video_capture_is_silent() {
+  local raw=$1 metrics=$2 mean maximum
+  ffmpeg -hide_banner -loglevel info -ss 1 -f s16le -ar 48000 -ac 2 -i "$raw" \
+    -af volumedetect -f null - > /dev/null 2> "$metrics" || return 1
+  mean=$(sed -n 's/.*mean_volume: \([^ ]*\) dB.*/\1/p' "$metrics" | tail -n 1)
+  maximum=$(sed -n 's/.*max_volume: \([^ ]*\) dB.*/\1/p' "$metrics" | tail -n 1)
+  [[ "$mean" == "-inf" || "$maximum" == "-inf" ]] && return 0
+  [[ -n "$mean" && -n "$maximum" ]] || return 1
+  awk -v mean="$mean" -v maximum="$maximum" 'BEGIN { exit !(mean <= -50.0 && maximum <= -35.0) }'
+}
+
+latest_video_generation() {
+  sed -n 's/.*Acceptance video session:.*generation=\([0-9][0-9]*\).*/\1/p' "$1" | tail -n 1
+}
+
+run_video_control_scenarios() {
+  local label=$1 target_dir=$2 java_home=$3 port=$4 sink_leader=$5 sink_follower=$6
+  local leader_pid=$7 follower_pid=$8
+  local leader_log="$output_root/$label.audio-leader.console.log"
+  local follower_log="$output_root/$label.audio-follower.console.log"
+  local leader_control="$output_root/$label.audio-leader.control"
+  local follower_ui="$output_root/$label.audio-follower/screenshots/cinemarr-video-ui-acceptance.png"
+  local evidence="$output_root/$label.video-controls.evidence.txt"
+  local raw="$output_root/$label.video-control.s16le" metrics="$output_root/$label.video-control.metrics.txt"
+  local first_leader first_follower old_generation new_generation action target_audio target_subtitle
+  : > "$evidence"
+
+  first_follower=$(wc -l < "$follower_log")
+  send_audio_control "$label" follower 'video:open-ui'
+  if ! wait_for_pattern_after "$follower_log" "$first_follower" \
+      'Acceptance video UI: width=640 height=360 widgets=[1-9][0-9]* clipped=0 canControl=false' 90; then
+    echo "$label: non-owner small-window controller UI was clipped, missing, or incorrectly privileged" >&2
+    return 1
+  fi
+  for _ in {1..60}; do [[ -s "$follower_ui" ]] && break; sleep 1; done
+  [[ -s "$follower_ui" ]] || { echo "$label: non-owner small-window UI screenshot was not saved" >&2; return 1; }
+  printf 'Non-owner controller UI rendered at 640x360 with zero clipped widgets. Screenshot SHA-256: ' >> "$evidence"
+  sha256sum "$follower_ui" | awk '{print $1}' >> "$evidence"
+
+  first_follower=$(wc -l < "$follower_log")
+  send_audio_control "$label" follower 'video:pause'
+  if ! wait_for_pattern_after "$follower_log" "$first_follower" \
+      'Acceptance video control denied locally: operation=video:pause canControl=false' 30; then
+    echo "$label: non-owner mutation was not rejected by the real client" >&2
+    return 1
+  fi
+  printf 'Non-owner pause mutation was rejected locally from authoritative canControl=false state.\n' >> "$evidence"
+
+  first_leader=$(wc -l < "$leader_log"); first_follower=$(wc -l < "$follower_log")
+  send_audio_control "$label" leader 'video:pause'
+  wait_for_pattern_after "$leader_log" "$first_leader" 'Acceptance video action: PAUSE ' 30 \
+    && wait_for_pattern_after "$leader_log" "$first_leader" 'Acceptance video session:.*status=PAUSED' 60 \
+    && wait_for_pattern_after "$follower_log" "$first_follower" 'Acceptance video session:.*status=PAUSED' 60 \
+    || { echo "$label: pause did not reach both real clients" >&2; return 1; }
+  sleep 2; capture_audio_sink "$sink_leader" "$raw" 4
+  real_video_capture_is_silent "$raw" "$metrics" \
+    || { echo "$label: paused real-Plex session continued producing program audio" >&2; return 1; }
+  printf 'Pause reached both clients and produced captured silence.\n' >> "$evidence"
+
+  first_leader=$(wc -l < "$leader_log"); first_follower=$(wc -l < "$follower_log")
+  send_audio_control "$label" leader 'video:resume'
+  wait_for_pattern_after "$leader_log" "$first_leader" 'Acceptance video action: RESUME ' 30 \
+    && wait_for_pattern_after "$leader_log" "$first_leader" 'Acceptance video session:.*status=PLAYING' 60 \
+    && wait_for_pattern_after "$follower_log" "$first_follower" 'Acceptance video session:.*status=PLAYING' 60 \
+    && wait_for_video_audio_pair_stable "$label" "$leader_pid" "$follower_pid" \
+    || { echo "$label: resume did not restore synchronized playback" >&2; return 1; }
+  capture_audio_sink "$sink_leader" "$raw" 4
+  audio_capture_is_audible "$raw" "$metrics" \
+    || { echo "$label: resumed real-Plex session was not audible" >&2; return 1; }
+  printf 'Resume restored synchronized audible playback.\n' >> "$evidence"
+
+  old_generation=$(latest_video_generation "$leader_log")
+  [[ "$old_generation" =~ ^[0-9]+$ ]] || return 1
+  first_leader=$(wc -l < "$leader_log"); first_follower=$(wc -l < "$follower_log")
+  send_audio_control "$label" leader 'video:seek-forward'
+  if ! wait_for_pattern_after "$leader_log" "$first_leader" 'Acceptance video action: SEEK ' 30; then
+    echo "$label: seek action was not issued" >&2; return 1
+  fi
+  if ! wait_for_pattern_after "$leader_log" "$first_leader" 'Acceptance video session:.*status=PLAYING' 120 \
+      || ! wait_for_pattern_after "$follower_log" "$first_follower" 'Acceptance video session:.*status=PLAYING' 120; then
+    echo "$label: seek did not publish replacement playback to both clients" >&2; return 1
+  fi
+  new_generation=$(latest_video_generation "$leader_log")
+  [[ "$new_generation" =~ ^[0-9]+$ ]] && (( new_generation > old_generation )) \
+    || { echo "$label: seek did not advance the playback generation" >&2; return 1; }
+  wait_for_video_audio_pair_stable "$label" "$leader_pid" "$follower_pid" \
+    || { echo "$label: seek replacement did not stabilize" >&2; return 1; }
+  printf 'Seek advanced generation %s to %s and restored both clients.\n' "$old_generation" "$new_generation" >> "$evidence"
+
+  old_generation=$new_generation
+  first_leader=$(wc -l < "$leader_log"); first_follower=$(wc -l < "$follower_log")
+  send_audio_control "$label" leader 'video:cycle-stream'
+  if ! wait_for_pattern_after "$leader_log" "$first_leader" 'Acceptance video action: SET_STREAMS ' 30; then
+    if tail -n "+$((first_leader + 1))" "$leader_log" | grep -Fq 'Acceptance video stream selection unavailable:'; then
+      echo "$label: selected real Plex item has no alternate audio or subtitle stream" >&2
+    else
+      echo "$label: stream selection action was not issued" >&2
+    fi
+    return 1
+  fi
+  action=$(tail -n "+$((first_leader + 1))" "$leader_log" | grep -F 'Acceptance video action: SET_STREAMS ' | tail -n 1)
+  target_audio=$(sed -n 's/.* audio=\(-\{0,1\}[0-9][0-9]*\) subtitle=.*/\1/p' <<<"$action")
+  target_subtitle=$(sed -n 's/.* subtitle=\(-\{0,1\}[0-9][0-9]*\).*/\1/p' <<<"$action")
+  [[ "$target_audio" =~ ^-?[0-9]+$ && "$target_subtitle" =~ ^-?[0-9]+$ ]] || return 1
+  wait_for_pattern_after "$leader_log" "$first_leader" "Acceptance video session:.*status=PLAYING.*audio=$target_audio subtitle=$target_subtitle" 180 \
+    && wait_for_pattern_after "$follower_log" "$first_follower" "Acceptance video session:.*status=PLAYING.*audio=$target_audio subtitle=$target_subtitle" 180 \
+    || { echo "$label: selected stream IDs were not authoritative on both clients" >&2; return 1; }
+  new_generation=$(latest_video_generation "$leader_log")
+  [[ "$new_generation" =~ ^[0-9]+$ ]] && (( new_generation > old_generation )) \
+    || { echo "$label: stream selection did not restart playback generation" >&2; return 1; }
+  wait_for_video_audio_pair_stable "$label" "$leader_pid" "$follower_pid" \
+    || { echo "$label: stream-selected playback did not stabilize" >&2; return 1; }
+  printf 'Stream selection chose audio=%s subtitle=%s and advanced generation %s to %s.\n' \
+    "$target_audio" "$target_subtitle" "$old_generation" "$new_generation" >> "$evidence"
+
+  cp -- "$follower_log" "$output_root/$label.audio-follower.pre-reconnect.console.log"
+  cp -- "$follower_ui" "$output_root/$label.non-owner-small-window-ui.png"
+  terminate_client_launch "$follower_pid" 20 \
+    || { echo "$label: follower did not disconnect cleanly" >&2; return 1; }
+  if ! launch_audio_client "$label" "$target_dir" "$java_home" "$port" follower CinemarrVideoB "$sink_follower"; then
+    echo "$label: follower did not reconnect to the live session" >&2; return 1
+  fi
+  video_scenario_follower_pid=$ready_audio_client_pid
+  wait_for_video_audio_pair_stable "$label" "$leader_pid" "$video_scenario_follower_pid" \
+    || { echo "$label: reconnected follower did not restore synchronized playback" >&2; return 1; }
+  printf 'Follower disconnect/reconnect restored the selected generation with visible, audible playback.\n' >> "$evidence"
+}
+
+wait_for_fault_segment_requests() {
+  local state=$1 minimum=$2 timeout=$3 deadline count
+  deadline=$((SECONDS + timeout))
+  while (( SECONDS < deadline )); do
+    count=$(awk -F '\t' -v expected="$state" '
+      $2 ~ /^\/video\/:\/transcode\/universal\/segment[0-9]+\.ts$/ && $4 == expected { count++ }
+      END { print count + 0 }
+    ' "$fake_plex_request_log")
+    if (( count >= minimum )); then printf '%s\n' "$count"; return 0; fi
+    sleep 1
+  done
+  return 1
+}
+
+run_video_adverse_network_scenarios() {
+  local label=$1 leader_pid=$2 follower_pid=$3
+  local leader_log="$output_root/$label.audio-leader.console.log"
+  local follower_log="$output_root/$label.audio-follower.console.log"
+  local server_log="$output_root/$label.console.log"
+  local evidence="$output_root/$label.video-adverse-network.evidence.txt"
+  local first_leader first_follower first_server old_generation new_generation
+  local transient_state offline_state transient_requests offline_requests
+  : > "$evidence"
+
+  transient_state="segments-transient-${BASHPID}-${RANDOM}"
+  old_generation=$(latest_video_generation "$leader_log")
+  first_leader=$(wc -l < "$leader_log"); first_follower=$(wc -l < "$follower_log")
+  printf '%s\n' "$transient_state" > "$fake_plex_state"
+  send_audio_control "$label" leader 'video:seek-forward'
+  if ! wait_for_pattern_after "$leader_log" "$first_leader" 'Acceptance video action: SEEK ' 30 \
+      || ! wait_for_pattern_after "$leader_log" "$first_leader" 'Acceptance video session:.*status=PLAYING' 120 \
+      || ! wait_for_pattern_after "$follower_log" "$first_follower" 'Acceptance video session:.*status=PLAYING' 120; then
+    printf 'online\n' > "$fake_plex_state"
+    echo "$label: transient segment fault did not publish replacement playback" >&2; return 1
+  fi
+  new_generation=$(latest_video_generation "$leader_log")
+  if [[ ! "$old_generation" =~ ^[0-9]+$ || ! "$new_generation" =~ ^[0-9]+$ ]] \
+      || (( new_generation <= old_generation )); then
+    printf 'online\n' > "$fake_plex_state"
+    echo "$label: transient segment fault did not advance generation" >&2; return 1
+  fi
+  if ! transient_requests=$(wait_for_fault_segment_requests "$transient_state" 3 90) \
+      || ! wait_for_video_audio_pair_stable "$label" "$leader_pid" "$follower_pid"; then
+    printf 'online\n' > "$fake_plex_state"
+    echo "$label: two injected HTTP 503 segment responses did not recover inside the bounded server retry" >&2; return 1
+  fi
+  printf 'Transient segment fault: generation %s to %s, HTTP attempts=%s, playback remained synchronized.\n' \
+    "$old_generation" "$new_generation" "$transient_requests" >> "$evidence"
+
+  offline_state="segments-offline-${BASHPID}-${RANDOM}"
+  old_generation=$new_generation
+  first_leader=$(wc -l < "$leader_log"); first_follower=$(wc -l < "$follower_log")
+  first_server=$(wc -l < "$server_log")
+  printf '%s\n' "$offline_state" > "$fake_plex_state"
+  send_audio_control "$label" leader 'video:seek-forward'
+  if ! wait_for_pattern_after "$leader_log" "$first_leader" 'Acceptance video action: SEEK ' 30 \
+      || ! wait_for_pattern_after "$server_log" "$first_server" 'Cinemarr video request failed:' 120 \
+      || ! offline_requests=$(wait_for_fault_segment_requests "$offline_state" 6 120); then
+    printf 'online\n' > "$fake_plex_state"
+    echo "$label: segment exhaustion did not reach the bounded client/server retry path" >&2; return 1
+  fi
+  if tail -n "+$((first_server + 1))" "$server_log" \
+      | grep -F -e "$fake_plex_token" -e "http://127.0.0.1:" -e 'X-Plex-Token'; then
+    printf 'online\n' > "$fake_plex_state"
+    echo "$label: exhausted segment diagnostics exposed a credential or Plex endpoint" >&2; return 1
+  fi
+  printf 'online\n' > "$fake_plex_state"
+  # "Acceptance video ready" is a one-shot per playback generation. A segment
+  # refill after transport recovery deliberately keeps that same generation,
+  # so continuous two-client A/V stability is the authoritative recovery gate.
+  if ! wait_for_video_audio_pair_stable "$label" "$leader_pid" "$follower_pid"; then
+    echo "$label: clients did not recover in-session after exhausted segment fetches were restored" >&2; return 1
+  fi
+  new_generation=$(latest_video_generation "$leader_log")
+  [[ "$new_generation" =~ ^[0-9]+$ ]] && (( new_generation > old_generation )) \
+    || { echo "$label: exhaustion recovery lost the replacement playback generation" >&2; return 1; }
+  printf 'Exhausted segment fault: generation %s to %s, HTTP attempts=%s, redacted failure observed, in-session recovery passed.\n' \
+    "$old_generation" "$new_generation" "$offline_requests" >> "$evidence"
 }
 
 wait_for_marker_after() {
@@ -1392,6 +1661,7 @@ run_two_client_video() {
   local sink_leader="${sink_prefix}_leader" sink_follower="${sink_prefix}_follower"
   local raw_leader="$output_root/$label.video-leader.s16le"
   local raw_follower="$output_root/$label.video-follower.s16le"
+  local paired_capture="$output_root/$label.video-paired.wav"
   local metrics_leader="$output_root/$label.video-leader.metrics.txt"
   local metrics_follower="$output_root/$label.video-follower.metrics.txt"
   local sync_evidence="$output_root/$label.video-audio-sync.json"
@@ -1401,7 +1671,7 @@ run_two_client_video() {
   local leader_shot="$output_root/$label.audio-leader/screenshots/cinemarr-video-acceptance.png"
   local follower_shot="$output_root/$label.audio-follower/screenshots/cinemarr-video-acceptance.png"
   local server_log="$output_root/$label.console.log"
-  local module leader_pid follower_pid recorder_leader recorder_follower common_frame result=0 clients_ready=0
+  local module leader_pid follower_pid common_frame result=0 clients_ready=0
   local sync_script="$repo_root/scripts/compare-pcm-sync.py"
   if [[ "$live_plex_gate" == true ]]; then
     sync_script="$repo_root/scripts/compare-live-pcm-sync.py"
@@ -1426,11 +1696,11 @@ run_two_client_video() {
       start_audio_client "$label" "$target_dir" "$java_home" "$port" leader CinemarrVideoA "$sink_leader"
       leader_pid=$started_audio_client_pid
     fi
-  elif [[ "$label" == "1.21.1-neoforge" ]]; then
-    # Two cold NeoGradle runClient builds can retain the same project lock for
-    # the lifetime of Minecraft on hosted runners. Launch this profile through
-    # the existing bounded retry path; both clients remain connected together
-    # for the shared-frame and physical-sync evidence window.
+  elif [[ "$label" == "1.21.1-neoforge" || "$label" == "1.7.10-forge" ]]; then
+    # Two cold NeoGradle clients can retain the same project lock, while two
+    # simultaneous Forge 1.7.10 handshakes can race inside FML's shared network
+    # dispatcher. Launch these profiles sequentially through the bounded retry
+    # path; both remain connected for the shared-frame and sync evidence window.
     if launch_audio_client "$label" "$target_dir" "$java_home" "$port" leader CinemarrVideoA "$sink_leader"; then
       leader_pid=$ready_audio_client_pid
     else
@@ -1458,6 +1728,22 @@ run_two_client_video() {
     wait_for_video_audio_pair_stable "$label" "$leader_pid" "$follower_pid" || result=1
   fi
 
+  if (( result == 0 )) && [[ "$video_control_gate" == true ]]; then
+    video_scenario_follower_pid=""
+    if run_video_control_scenarios "$label" "$target_dir" "$java_home" "$port" \
+        "$sink_leader" "$sink_follower" "$leader_pid" "$follower_pid"; then
+      follower_pid=$video_scenario_follower_pid
+    else
+      result=1
+    fi
+  fi
+
+  if (( result == 0 )) && [[ "$video_adverse_network_gate" == true ]]; then
+    if ! run_video_adverse_network_scenarios "$label" "$leader_pid" "$follower_pid"; then
+      result=1
+    fi
+  fi
+
   if (( result == 0 )); then
     if [[ "$video_decoder_expect_fallback" == true ]]; then
       if ! grep -Fq "video decoder requested=$video_decoder_backend" "$leader_log" \
@@ -1482,15 +1768,20 @@ run_two_client_video() {
     sleep 1
     : > "$raw_leader"
     : > "$raw_follower"
-    parec --raw --latency-msec=50 --device="${sink_leader}.monitor" --format=s16le --rate=48000 --channels=2 > "$raw_leader" &
-    recorder_leader=$!; active_audio_recorder_pids+=("$recorder_leader")
-    parec --raw --latency-msec=50 --device="${sink_follower}.monitor" --format=s16le --rate=48000 --channels=2 > "$raw_follower" &
-    recorder_follower=$!; active_audio_recorder_pids+=("$recorder_follower")
-    sleep 8
-    kill -TERM "$recorder_leader" "$recorder_follower" 2>/dev/null || true
-    wait "$recorder_leader" 2>/dev/null || true
-    wait "$recorder_follower" 2>/dev/null || true
-    active_audio_recorder_pids=()
+    rm -f -- "$paired_capture"
+    if ! ffmpeg -hide_banner -loglevel error -y -copyts -start_at_zero \
+        -f pulse -i "${sink_leader}.monitor" -f pulse -i "${sink_follower}.monitor" \
+        -filter_complex '[0:a][1:a]join=inputs=2:channel_layout=quad:map=0.0-FL|0.1-FR|1.0-BL|1.1-BR[out]' \
+        -map '[out]' -t 8 -c:a pcm_s16le "$paired_capture"; then
+      echo "$label: shared-clock two-client audio capture failed" >&2
+      result=1
+    elif ! ffmpeg -hide_banner -loglevel error -y -i "$paired_capture" \
+        -af 'pan=stereo|c0=c0|c1=c1' -f s16le "$raw_leader" \
+      || ! ffmpeg -hide_banner -loglevel error -y -i "$paired_capture" \
+        -af 'pan=stereo|c0=c2|c1=c3' -f s16le "$raw_follower"; then
+      echo "$label: shared-clock two-client audio channels could not be separated" >&2
+      result=1
+    fi
   fi
 
   if (( result == 0 )); then
@@ -1551,6 +1842,8 @@ run_two_client_video() {
       else
         printf 'Fake Plex served master playlist, media playlist, and MPEG-TS program segments.\n'
       fi
+      if [[ "$video_control_gate" == true ]]; then cat "$output_root/$label.video-controls.evidence.txt"; fi
+      if [[ "$video_adverse_network_gate" == true ]]; then cat "$output_root/$label.video-adverse-network.evidence.txt"; fi
     } > "$evidence"
   fi
   cleanup_audio_processes
@@ -1582,14 +1875,12 @@ install_fake_plex_config() {
       '# Generated temporarily by the credentialed Cinemarr live-Plex gate.' \
       "plexUrl = \"${CINEMARR_PLEX_URL}\"" \
       'plexToken = ""' \
-      'musicLibrary = ""' \
-      'restartMode = "RESTART_TRACK"' \
-      'pauseWhenNoPlayers = true' \
       'operatorPermissionLevel = 2' \
       'queueLimit = 500' \
-      'audioBitrateKbps = 160' \
-      'cacheSizeMiB = 1024' \
-      'stationMetadataFallbackEnabled = false' > "$active_config"
+      'quickTvBuildMode = "bounded"' \
+      'maximumVideoWidth = 3840' \
+      'maximumVideoHeight = 2160' \
+      'maximumVideoBitrateKbps = 20000' > "$active_config"
     printf '%s\n' \
       '# Generated temporarily by the credentialed Cinemarr live-Plex gate.' \
       '[[libraries]]' \
@@ -1604,14 +1895,12 @@ install_fake_plex_config() {
       '# Generated temporarily by the Cinemarr dedicated-server gate.' \
       "plexUrl = \"http://127.0.0.1:${fake_plex_port}\"" \
       'plexToken = ""' \
-      'musicLibrary = "Music"' \
-      'restartMode = "RESTART_TRACK"' \
-      'pauseWhenNoPlayers = true' \
       'operatorPermissionLevel = 2' \
       'queueLimit = 500' \
-      'audioBitrateKbps = 160' \
-      'cacheSizeMiB = 1024' \
-      'stationMetadataFallbackEnabled = false' > "$active_config"
+      'quickTvBuildMode = "bounded"' \
+      'maximumVideoWidth = 3840' \
+      'maximumVideoHeight = 2160' \
+      'maximumVideoBitrateKbps = 20000' > "$active_config"
     printf '%s\n' \
       '# Generated temporarily by the Cinemarr dedicated-server gate.' \
       '[[libraries]]' \
@@ -2206,7 +2495,7 @@ run_target() {
     result=1
   fi
   if [[ "$label" == "1.7.10-forge" ]]; then
-    if ! grep -q 'Initializing Cinemarr 1.0.1 for Forge 1.7.10 protocol 8' "$run_dir/logs/fml-server-latest.log"; then
+    if ! grep -q 'Initializing Cinemarr 1.0.0 for Forge 1.7.10 protocol 9' "$run_dir/logs/fml-server-latest.log"; then
       echo "$label: FML log does not prove Cinemarr initialized" >&2
       result=1
     fi
@@ -2240,6 +2529,10 @@ run_target() {
   fi
   return "$result"
 }
+
+if [[ "${CINEMARR_GATE_LIBRARY_ONLY:-false}" == true ]]; then
+  return 0 2>/dev/null || exit 0
+fi
 
 matched=0
 failed=0

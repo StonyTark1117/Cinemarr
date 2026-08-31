@@ -27,7 +27,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /** Bounded Java-8 FFmpeg pipeline with generation-safe client-thread delivery. */
 final class LegacyVideoPlayback implements AutoCloseable {
     private static final int MAX_DECODE_JOBS = 2;
-    private static final int MAX_VIDEO_FRAMES = 180;
+    private static final int MAX_DECODED_VIDEO_BATCHES = 8;
     private static final long MAX_QUEUED_VIDEO_BYTES = 192L * 1024L * 1024L;
     private static final int MAX_AUDIO_FRAMES = 128;
     private final ExecutorService executor = Executors.newSingleThreadExecutor(runnable -> {
@@ -36,6 +36,7 @@ final class LegacyVideoPlayback implements AutoCloseable {
     private final LegacyFfmpegVideoDecoder decoder = new LegacyFfmpegVideoDecoder(
             CinemarrSettings.videoDecoderBackend(), CinemarrSettings.videoDecoderDevice());
     private final Queue<DecodedBatch> decoded = new ConcurrentLinkedQueue<DecodedBatch>();
+    private final Queue<List<LegacyDecodedVideoFrame>> videoBatches = new ArrayDeque<List<LegacyDecodedVideoFrame>>();
     private final PriorityQueue<LegacyDecodedVideoFrame> video = new PriorityQueue<LegacyDecodedVideoFrame>(32,
             new Comparator<LegacyDecodedVideoFrame>() { @Override public int compare(LegacyDecodedVideoFrame left, LegacyDecodedVideoFrame right) {
                 return left.presentationTimeUs() < right.presentationTimeUs() ? -1 : left.presentationTimeUs() == right.presentationTimeUs() ? 0 : 1;
@@ -62,16 +63,21 @@ final class LegacyVideoPlayback implements AutoCloseable {
             resetQueues(); sessionId = session.sessionId(); generation = session.generation();
         }
         VideoSegmentAssembler.CompletedSegment segment;
-        while (pending.get() < MAX_DECODE_JOBS && decoded.size() < MAX_DECODE_JOBS && queuedVideoBytes < MAX_QUEUED_VIDEO_BYTES
+        while (pending.get() < MAX_DECODE_JOBS && decoded.size() < MAX_DECODE_JOBS && canBufferAnotherVideoBatch()
                 && audio.size() < MAX_AUDIO_FRAMES && (segment = stream.pollSegment()) != null) submit(segment);
         DecodedBatch batch;
-        while (audio.size() < MAX_AUDIO_FRAMES && (batch = decoded.poll()) != null) if (batch.sessionId.equals(sessionId) && batch.generation == generation) {
-            for (LegacyDecodedVideoFrame frame : batch.video) {
-                if (video.size() >= MAX_VIDEO_FRAMES) { queuedVideoBytes -= video.poll().rgbaView().length; videoDrops++; }
-                video.add(frame); queuedVideoBytes += frame.rgbaView().length;
+        while (audio.size() < MAX_AUDIO_FRAMES && canBufferAnotherVideoBatch() && (batch = decoded.poll()) != null) if (batch.sessionId.equals(sessionId) && batch.generation == generation) {
+            if (!batch.video.isEmpty()) {
+                videoBatches.add(batch.video);
+                queuedVideoBytes += videoBytes(batch.video);
             }
             audio.addAll(batch.audio);
         }
+        // Preserve complete HLS segments as bounded batches. Flattening a long
+        // Plex segment into a small frame-count queue evicted its early frames
+        // before the render clock reached them, producing multi-second freezes
+        // that short fake-Plex segments did not expose.
+        if (video.isEmpty() && !videoBatches.isEmpty()) video.addAll(videoBatches.poll());
         long targetUs = authoritativePositionMs(session, LegacyClientState.INSTANCE.serverEpoch(System.currentTimeMillis())) * 1_000L;
         LegacyDecodedVideoFrame current = null;
         while (!video.isEmpty() && video.peek().presentationTimeUs() <= targetUs + 40_000L) {
@@ -79,7 +85,7 @@ final class LegacyVideoPlayback implements AutoCloseable {
         }
         if (current != null) {
             texture.upload(current); lastPresentedUs = current.presentationTimeUs();
-            lastFrameSha256 = Hashing.sha256(current.rgbaView());
+            if (ProtocolLimits.videoProbeEnabled()) lastFrameSha256 = Hashing.sha256(current.rgbaView());
             if (ProtocolLimits.videoProbeEnabled()) Cinemarr.LOGGER.info(
                     "Acceptance video frame: session={} generation={} ptsUs={} sha256={} dimensions={}x{}",
                     sessionId, generation, lastPresentedUs, lastFrameSha256, current.width(), current.height());
@@ -137,6 +143,17 @@ final class LegacyVideoPlayback implements AutoCloseable {
     String lastFrameSha256() { return lastFrameSha256; }
     boolean caughtUp() { return caughtUp; }
 
+    private boolean canBufferAnotherVideoBatch() {
+        return decoded.size() + videoBatches.size() < MAX_DECODED_VIDEO_BATCHES
+                && queuedVideoBytes < MAX_QUEUED_VIDEO_BYTES;
+    }
+
+    private static long videoBytes(List<LegacyDecodedVideoFrame> frames) {
+        long bytes = 0L;
+        for (LegacyDecodedVideoFrame frame : frames) bytes += frame.rgbaView().length;
+        return bytes;
+    }
+
     void sendHealth(LegacyVideoClientState.StreamState stream, int underruns) {
         VideoPackets.SessionState session = stream.session(); long now = System.currentTimeMillis();
         if (session == null || session.item() == null || now - lastHealthMs < 5_000L) return;
@@ -166,7 +183,7 @@ final class LegacyVideoPlayback implements AutoCloseable {
         return Math.max(-30_000L, Math.min(30_000L, (lastPresentedUs - targetUs) / 1_000L));
     }
     void reset() { sessionId = null; generation = -1; lastPresentedUs = lastHealthMs = 0; lastFrameSha256 = ""; caughtUp = false; resetQueues(); texture.close(); }
-    private void resetQueues() { decoded.clear(); video.clear(); audio.clear(); queuedVideoBytes = 0L; }
+    private void resetQueues() { decoded.clear(); videoBatches.clear(); video.clear(); audio.clear(); queuedVideoBytes = 0L; }
     @Override public void close() { reset(); executor.shutdownNow(); }
 
     private static final class DecodedBatch {
