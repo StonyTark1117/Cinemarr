@@ -92,6 +92,16 @@ do
     || { echo "$server_name must begin stopped with autostart disabled" >&2; exit 1; }
 
   mods=$(get_mods "$server_id")
+  active_cinemarr_count=$(jq '[.mods[]
+    | select(.enabled == true)
+    | .fileName
+    | ascii_downcase
+    | select(startswith("cinemarr-") and endswith(".jar"))
+  ] | length' <<<"$mods")
+  [[ "$active_cinemarr_count" == 1 ]] || {
+    echo "$server_name must have exactly one enabled Cinemarr artifact; found $active_cinemarr_count" >&2
+    exit 1
+  }
   active_id=$(jq -r --arg name "$canonical" '.mods[]|select(.fileName==$name and .enabled==true)|.id' <<<"$mods")
   active_display=$(jq -r --arg name "$canonical" '.mods[]|select(.fileName==$name and .enabled==true)|.displayName' <<<"$mods")
   [[ -n "$active_id" ]] || { echo "$server_name has no enabled canonical Cinemarr artifact" >&2; exit 1; }
@@ -102,12 +112,33 @@ do
     | jq -r '.content' | base64 -d > "$old_file"
   old_sha=$(sha256sum "$old_file" | awk '{print $1}')
   new_sha=$(sha256sum "$local_jar" | awk '{print $1}')
+  stem=${canonical%.jar}
   if [[ "$old_sha" == "$new_sha" ]]; then
-    echo "$server_name: already has exact indexed artifact $new_sha"
+    verified_rollback=''
+    while IFS= read -r rollback; do
+      [[ -n "$rollback" ]] || continue
+      rollback_prefix=${rollback%.jar}
+      rollback_prefix=${rollback_prefix##*.pre-final-}
+      [[ "$rollback_prefix" =~ ^[0-9a-f]{12}$ ]] || continue
+      rollback_sha=$(file_sha "$server_id" "$rollback")
+      if [[ "$rollback_sha" == "$rollback_prefix"* ]]; then
+        verified_rollback="$rollback $rollback_sha"
+        break
+      fi
+    done < <(jq -r --arg prefix "$stem.pre-final-" '
+      .mods[]
+      | select(.enabled == false)
+      | .fileName
+      | select(startswith($prefix) and endswith(".jar"))
+    ' <<<"$mods")
+    [[ -n "$verified_rollback" ]] || {
+      echo "$server_name has the exact artifact but no disabled hash-verified rollback" >&2
+      exit 1
+    }
+    echo "$server_name: already has exact indexed artifact $new_sha; disabled rollback $verified_rollback"
     continue
   fi
 
-  stem=${canonical%.jar}
   backup="$stem.pre-final-${old_sha:0:12}.jar"
   backup_display=${backup%.jar}
   if jq -e --arg name "$backup" '.mods[]|select(.fileName==$name)' <<<"$mods" >/dev/null; then
