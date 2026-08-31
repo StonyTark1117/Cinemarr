@@ -28,6 +28,12 @@ public final class ClockSynchronizer {
     public synchronized long bestRoundTripMs() { return bestRoundTripMs; }
     public synchronized int sampleCount() { return sampleCount; }
     public synchronized boolean initialized() { return initialized; }
+    public synchronized boolean qualityReady(int minimumSamples, long maximumRoundTripMs) {
+        if (minimumSamples < 1 || maximumRoundTripMs < 0) {
+            throw new IllegalArgumentException("Invalid clock quality bounds");
+        }
+        return sampleCount >= minimumSamples && bestRoundTripMs <= maximumRoundTripMs;
+    }
     public synchronized boolean ready(int minimumSamples, int maximumSamples, long maximumRoundTripMs) {
         if (minimumSamples < 1 || maximumSamples < minimumSamples || maximumRoundTripMs < 0) {
             throw new IllegalArgumentException("Invalid clock readiness bounds");
