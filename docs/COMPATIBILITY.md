@@ -1,6 +1,6 @@
 # Compatibility
 
-Cinemarr 1.0.0 uses protocol 9 and requires the mod on both the server and every client. Cross-version or cross-loader networking is not supported.
+Cinemarr 1.0.0 uses protocol 10 and requires the mod on both the server and every client. Cross-version or cross-loader networking is not supported.
 
 | Minecraft | Loaders / runtime profiles | Java |
 | --- | --- | ---: |
@@ -29,4 +29,4 @@ All decoded frames currently return to CPU-side RGBA for Minecraft's dynamic tex
 
 ## Evidence boundary
 
-Historical fake-Plex and hardware benchmarks remain useful regression history, but they do not certify the current protocol-9, video-only 1.0.0 checkout. Current certification must be regenerated from the exact artifacts being proposed for release. See [release acceptance](RELEASE_ACCEPTANCE.md).
+Historical fake-Plex and hardware benchmarks remain useful regression history, but they do not certify the current protocol-10, video-only 1.0.0 checkout. Current certification must be regenerated from the exact artifacts being proposed for release. See [release acceptance](RELEASE_ACCEPTANCE.md).

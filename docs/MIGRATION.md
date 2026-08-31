@@ -7,7 +7,7 @@ Back up the world and configuration before changing Minecraft versions or loader
 3. Keep `world/serverconfig/cinemarr-server.toml`, `world/serverconfig/cinemarr-libraries.toml`, and the world's `cinemarr_screens` / video-session saved data. Keep each client's `config/cinemarr-client.toml` locally.
 4. Start the server, inspect `/cinemarr status` and `/cinemarr diagnostics`, then test a controller before allowing normal use.
 
-Protocol 9 intentionally removes the inherited global music queue, stations, MP3 streaming, and music UI. Old music-only configuration keys are ignored and dropped when the canonical server file is rewritten. Old music saved data is not used by Cinemarr 1.0. Television geometry, ownership, presentation, rendition, named-session, and video queue/checkpoint data remain the supported persistence surface.
+Protocol 10 intentionally removes the inherited global music queue, stations, MP3 streaming, and music UI. Old music-only configuration keys are ignored and dropped when the canonical server file is rewritten. Old music saved data is not used by Cinemarr 1.0. Television geometry, ownership, presentation, rendition, named-session, and video queue/checkpoint data remain the supported persistence surface.
 
 Screen-data schema 3 includes unfinished Quick TV construction footprints. After an interrupted build, loaded generated pixels are rolled back; positions in unloaded chunks remain recorded until recovery can safely inspect those chunks.
 
