@@ -11,7 +11,7 @@ Status: **1.0 prerelease under hardening; not release-candidate ready**. This ch
 - [x] No JAR contains the removed music/station runtime, JLayer, or Jump3r.
 - [x] SHA-256 digests are recorded for every artifact.
 
-The checks above were repeated for code commit `1cbd341b88023bffce340963f1890428f5be9712` locally and in GitHub Actions run `33392358275`. Later commits `63e0150`, `9adb3c4`, `2de12a7`, and `501c9c6` change only release operations and CI, not packaged inputs. The final documentation SHA still needs its own green CI run and hosted-bundle parity check.
+The checks above were repeated for code commit `1cbd341b88023bffce340963f1890428f5be9712` locally and in GitHub Actions run `33392358275`. Later commits `63e0150`, `9adb3c4`, `2de12a7`, and `501c9c6` change only release operations and CI. Commit `21431bf` changes packaged client audio startup behavior; its nine affected artifact targets and focused 1.21.1 Fabric runtime gate pass locally, but all 16 final artifacts still require a clean hosted run and bundle-parity check.
 
 ## Runtime matrix
 
@@ -59,6 +59,18 @@ CINEMARR_LIVE_VIDEO_SECTION_ID='1' \
 Fake-Plex gates are regression evidence only. Publication must use the final artifact hashes tied to this completed checklist.
 
 ## Current regression evidence
+
+GitHub Actions run `33398719853` passed 15 artifact/runtime jobs, including
+deterministic rebuilds and uploads, but correctly failed 1.21.1 Fabric because
+the two clients' highly correlated program audio was 330 ms apart. The
+aggregate gate was skipped rather than masking the failure with a rerun.
+Commit `21431bfb44c051b6fb9d02a080afe1355f05eb0b` fixes the OpenAL
+source-start cursor that could move backward when processed streaming buffers
+were unqueued. Its private-Xvfb 1.21.1 Fabric gate passed with matching
+identifiable frames, zero underruns, 0.996978 correlation, and 80 ms lag; unit
+tests and all nine affected 1.21.1/26.1.2/26.2 artifact verification targets
+also passed. This does not check the remaining exact-byte external or native
+boxes and still requires clean hosted CI.
 
 On 2026-08-31, code commit `1cbd341b88023bffce340963f1890428f5be9712` passed all 16 local artifact verification targets, all 10 required GameTests, and the complete 21-runtime/two-client matrix using private Xvfb displays. Final Forge 1.7.10 and NeoForge 1.21.1 adverse-network runs passed slow delivery, transient recovery, bounded exhaustion, redacted failure, same-session recovery, and cleanup. GitHub Actions run `33392358275` passed manifest validation, all 16 artifact/runtime jobs, byte-identical rebuilds, and the non-skipped aggregate `1.0 release gate`. The hosted 16-JAR bundle passed deep inspection and `SHA256SUMS`, and `build/releases` was indexed from and compared byte-for-byte with that bundle. Exact representative hashes are `d36fd1799feff72df36f59df39c086765afb27c8e3e23f1554cb6215538e4565` (Forge 1.7.10), `05cb545a741223fdcbe2b8affc3b5c42e671cd6429a55e3d2500e6610bb48350` (Fabric/Quilt 1.20.1), `ab22be1f8cf1498556414859803ebee49acf6776d17a7adfc5fa5b5018944f92` (NeoForge 1.21.1), and `87587a77f2c8361b5ee049c2c33699934334a647617b084333834836c6e3a7f3` (Fabric 26.2).
 
