@@ -49,6 +49,19 @@ final class TransferGrantRegistryTest {
                 new VideoPackets.SegmentAcknowledgement(session, 3, 9, 0, 15, 0), 105));
     }
 
+    @Test void replacementGenerationSupersedesAnUnacknowledgedWindow() {
+        TransferGrantRegistry registry = new TransferGrantRegistry(1_000);
+        UUID client = UUID.randomUUID(), session = UUID.randomUUID();
+        VideoPackets.SegmentRequest pausedGeneration = request(session, 2, 7, 4);
+        VideoPackets.SegmentRequest resumedGeneration = request(session, 3, 1, 5);
+        assertTrue(registry.tryAcquire(client, pausedGeneration, 100));
+        assertTrue(registry.tryAcquire(client, resumedGeneration, 101));
+        assertFalse(registry.acknowledge(client, acknowledgement(pausedGeneration), 102));
+        assertTrue(registry.owns(client, resumedGeneration, 103));
+        assertFalse(registry.tryAcquire(client, request(UUID.randomUUID(), 99, 2, 0), 104));
+        assertTrue(registry.acknowledge(client, acknowledgement(resumedGeneration), 105));
+    }
+
     private static VideoPackets.SegmentRequest request(UUID session, long generation, long request, int segment) {
         return new VideoPackets.SegmentRequest(session, generation, request, segment, 0, 4);
     }
