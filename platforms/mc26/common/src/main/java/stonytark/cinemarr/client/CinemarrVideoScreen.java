@@ -1,17 +1,21 @@
 package stonytark.cinemarr.client;
 
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.Screenshot;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import stonytark.cinemarr.Cinemarr;
 import stonytark.cinemarr.core.library.MediaKind;
 import stonytark.cinemarr.core.library.VideoMediaItem;
 import stonytark.cinemarr.core.library.VideoStreamOption;
 import stonytark.cinemarr.core.library.QueuedVideo;
 import stonytark.cinemarr.core.platform.CinemarrSettings;
 import stonytark.cinemarr.core.protocol.VideoPackets;
+import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.core.video.PresentationMode;
 
 import java.util.ArrayDeque;
@@ -26,6 +30,7 @@ public final class CinemarrVideoScreen extends Screen {
     private EditBox search,sessionName;
     private int page,rowOffset;
     private boolean queueView;
+    private int acceptanceScreenshotTicks;
 
     public CinemarrVideoScreen(long controllerPos,CinemarrVideoClientState state){
         super(Component.translatable("cinemarr.video.title"));this.controllerPos=controllerPos;this.state=state;
@@ -49,6 +54,7 @@ public final class CinemarrVideoScreen extends Screen {
         top+=28;addRows(left,top,panel);
         addControls(left,panel);
         if(search!=null)setInitialFocus(search);
+        inspectAcceptanceLayout();
     }
 
     private void addRows(int left,int top,int panel){
@@ -120,7 +126,9 @@ public final class CinemarrVideoScreen extends Screen {
     }
     @Override public boolean keyPressed(net.minecraft.client.input.KeyEvent event){if(event.key()==257&&search!=null&&search.isFocused()){query=search.getValue().trim();page=0;request();return true;}return super.keyPressed(event);}
     @Override public boolean mouseScrolled(double mouseX,double mouseY,double scrollX,double scrollY){if(scrollY!=0){rowOffset=Math.max(0,rowOffset+(scrollY<0?1:-1));rebuildWidgets();return true;}return super.mouseScrolled(mouseX,mouseY,scrollX,scrollY);}
+    @Override public void tick(){super.tick();if(acceptanceScreenshotTicks>0&&--acceptanceScreenshotTicks==0&&minecraft!=null)Screenshot.grab(minecraft.gameDirectory,"cinemarr-video-ui-acceptance.png",minecraft.gameRenderer.mainRenderTarget(),1,message->Cinemarr.LOGGER.info("Acceptance video UI screenshot: {}",message.getString()));}
     @Override public void extractRenderState(GuiGraphicsExtractor graphics,int mouseX,int mouseY,float partial){super.extractRenderState(graphics,mouseX,mouseY,partial);graphics.centeredText(font,title,width/2,10,0xffffff);VideoPackets.SessionState value=state.session(controllerPos);String now=value==null?"No TV state":value.status().name().toLowerCase()+(value.item()==null?"":": "+value.item().title()+"  "+time(value.positionMs())+"/"+time(value.durationMs()));graphics.centeredText(font,trim(now,width-20),width/2,23,0xa0d8ff);if(!notice.isEmpty())graphics.centeredText(font,trim(notice,width-20),width/2,height-64,0xffb36b);}
+    private void inspectAcceptanceLayout(){if(!ProtocolLimits.videoProbeEnabled())return;int widgets=0,clipped=0;for(net.minecraft.client.gui.components.events.GuiEventListener child:children())if(child instanceof AbstractWidget widget){widgets++;if(widget.getX()<0||widget.getY()<0||widget.getX()+widget.getWidth()>width||widget.getY()+widget.getHeight()>height)clipped++;}VideoPackets.SessionState playback=state.session(controllerPos);boolean control=playback!=null&&playback.canControl();Cinemarr.LOGGER.info("Acceptance video UI: width={} height={} widgets={} clipped={} canControl={}",width,height,widgets,clipped,control);acceptanceScreenshotTicks=2;}
     private String trim(String value,int maximum){return font.width(value)<=maximum?value:font.plainSubstrByWidth(value,Math.max(0,maximum-font.width("…")))+"…";}
     private static String time(long ms){long total=Math.max(0,ms/1000);return String.format("%d:%02d",total/60,total%60);}
 }
