@@ -19,6 +19,12 @@ FAMILY_REFERENCES = {
     "mc1.20": ROOT / "platforms/mc1.20/common/src/main/java",
     "mc26": ROOT / "platforms/mc26/common/src/main/java",
 }
+ACCEPTANCE_VIDEO_SCREENS = (
+    ROOT / "src/main/java/stonytark/cinemarr/client/CinemarrVideoScreen.java",
+    ROOT / "platforms/mc1.20.1/common/src/main/java/stonytark/cinemarr/client/CinemarrVideoScreen.java",
+    ROOT / "platforms/mc26/common/src/main/java/stonytark/cinemarr/client/CinemarrVideoScreen.java",
+    ROOT / "platforms/mc1.7.10/forge/src/main/java/stonytark/cinemarr/client/LegacyVideoScreen.java",
+)
 
 
 def main() -> None:
@@ -44,6 +50,11 @@ def main() -> None:
                 build = ROOT / f"platforms/{version}/{loader}/build.gradle"
                 if expected not in build.read_text("utf-8"):
                     raise SystemExit(f"{build.relative_to(ROOT)} does not include {family} shared sources")
+
+    for source in ACCEPTANCE_VIDEO_SCREENS:
+        text = source.read_text("utf-8")
+        if "Acceptance video UI:" not in text or "clipped=" not in text or "canControl=" not in text:
+            raise SystemExit(f"{source.relative_to(ROOT)} lacks release UI acceptance instrumentation")
     print("family-shared source layout verification passed")
 
 
