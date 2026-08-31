@@ -1,11 +1,14 @@
 param(
     [string]$MediaRoot = "",
-    [string]$Server = "192.168.1.107",
-    [string]$Receiver = "http://192.168.1.15:18080",
+    [string]$Server = $env:CINEMARR_ACCEPTANCE_SERVER_HOST,
+    [string]$Receiver = $env:CINEMARR_ACCEPTANCE_RECEIVER,
     [switch]$QueueOnly
 )
 
 $ErrorActionPreference = "Stop"
+if ([string]::IsNullOrWhiteSpace($Server) -or [string]::IsNullOrWhiteSpace($Receiver)) {
+    throw "Server and Receiver must be supplied as process-local inputs"
+}
 $work = "C:\CinemarrClientGate"
 $javaBase = "C:\cj"
 $source = Join-Path $work "source"
@@ -18,7 +21,7 @@ if ($QueueOnly) {
     New-Item -ItemType Directory -Path $work -Force | Out-Null
     $queuedScript = Join-Path $work "run-client.ps1"
     Copy-Item $scriptPath $queuedScript -Force
-    $command = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$queuedScript`""
+    $command = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$queuedScript`" -Server `"$Server`" -Receiver `"$Receiver`""
     $runOncePath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce"
     New-Item -Path $runOncePath -Force | Out-Null
     New-ItemProperty -Path $runOncePath -Name "CinemarrClientGate" -Value $command -PropertyType String -Force | Out-Null

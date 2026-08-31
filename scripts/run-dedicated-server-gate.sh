@@ -17,7 +17,10 @@ fake_plex_audio="$output_root/fake-plex-tone.mp3"
 fake_plex_video_dir=""
 fake_plex_state="$output_root/fake-plex.state"
 fake_audio_duration_seconds=${CINEMARR_GATE_AUDIO_DURATION_SECONDS:-600}
-fake_video_duration_seconds=${CINEMARR_GATE_VIDEO_DURATION_SECONDS:-60}
+# Cold CI clients can spend close to a minute loading Minecraft and FFmpeg.
+# Keep enough deterministic program runway for both clients to start and then
+# satisfy the steady-playback window without colliding with natural EOS.
+fake_video_duration_seconds=${CINEMARR_GATE_VIDEO_DURATION_SECONDS:-300}
 fake_plex_pid=""
 active_client_pid=""
 active_server_pid=""
@@ -45,32 +48,25 @@ active_world_existed=0
 java21_home=${CINEMARR_JAVA21_HOME:-/usr/lib/jvm/java-21-openjdk}
 java26_home=${CINEMARR_JAVA26_HOME:-/usr/lib/jvm/java-26-openjdk}
 
-targets=(
-  "1.7.10-forge|platforms/mc1.7.10/forge|$java26_home|25695"
-  "1.20.1-fabric|platforms/mc1.20.1/fabric|$java21_home|25571"
-  "1.20.1-quilt|platforms/mc1.20.1/fabric|$java21_home|25648"
-  "1.20.1-forge|platforms/mc1.20.1/forge|$java21_home|25572"
-  "1.20.1-neoforge|platforms/mc1.20.1/neoforge|$java21_home|25574"
-  "1.20.2-fabric|platforms/mc1.20.2/fabric|$java21_home|25576"
-  "1.20.2-quilt|platforms/mc1.20.2/fabric|$java21_home|25649"
-  "1.20.2-forge|platforms/mc1.20.2/forge|$java21_home|25578"
-  "1.20.2-neoforge|platforms/mc1.20.2/neoforge|$java21_home|25580"
-  "1.21.1-fabric|platforms/mc1.21.1/fabric|$java21_home|25581"
-  "1.21.1-quilt|platforms/mc1.21.1/fabric|$java21_home|25650"
-  "1.21.1-forge|platforms/mc1.21.1/forge|$java21_home|25582"
-  "1.21.1-neoforge|.|$java21_home|25566"
-  "26.1.2-fabric|platforms/mc26.1.2/fabric|$java26_home|25642"
-  "26.1.2-quilt|platforms/mc26.1.2/fabric|$java26_home|25651"
-  "26.1.2-forge|platforms/mc26.1.2/forge|$java26_home|25643"
-  "26.1.2-neoforge|platforms/mc26.1.2/neoforge|$java26_home|25644"
-  "26.2-fabric|platforms/mc26.2/fabric|$java26_home|25645"
-  "26.2-quilt|platforms/mc26.2/fabric|$java26_home|25652"
-  "26.2-forge|platforms/mc26.2/forge|$java26_home|25646"
-  "26.2-neoforge|platforms/mc26.2/neoforge|$java26_home|25647"
-)
+targets=()
+while IFS='|' read -r target_name target_path target_build_java target_port target_client_task target_server_task target_disable_cache; do
+  case "$target_build_java" in
+    21) target_java_home=$java21_home ;;
+    26) target_java_home=$java26_home ;;
+    *) echo "Target manifest selected unsupported build Java $target_build_java for $target_name" >&2; exit 2 ;;
+  esac
+  targets+=("$target_name|$target_path|$target_java_home|$target_port|$target_client_task|$target_server_task|$target_disable_cache")
+done < <(python3 "$repo_root/scripts/target-matrix.py" gate-lines "$repo_root/gradle/targets.json")
+if [[ ${#targets[@]} -ne 21 ]]; then
+  echo "Target manifest must generate exactly 21 maintained runtimes; found ${#targets[@]}" >&2
+  exit 2
+fi
 
 requested=${1:-all}
 protocol_client_gate=${CINEMARR_PROTOCOL_CLIENT_GATE:-false}
+active_client_task=runClient
+active_server_task=runServer
+active_disable_configuration_cache=false
 command_client_gate=${CINEMARR_COMMAND_CLIENT_GATE:-false}
 audio_client_gate=${CINEMARR_AUDIO_CLIENT_GATE:-false}
 audio_scenario_gate=${CINEMARR_AUDIO_SCENARIO_GATE:-false}
@@ -496,7 +492,7 @@ run_acceptance_client() {
       JAVA_HOME="$java_home" PATH="$java_home/bin:$PATH" \
       JAVA_TOOL_OPTIONS="$java_tool_options" \
       LIBGL_ALWAYS_SOFTWARE=1 \
-      ./gradlew runClient --no-daemon --max-workers=1 --console=plain \
+      ./gradlew "$active_client_task" --no-daemon --max-workers=1 --console=plain \
       "${runtime_args[@]}" \
       -PcinemarrAcceptanceUsername="$username" \
       -PcinemarrAcceptanceServer="${acceptance_server_host}:${port}" \
@@ -597,7 +593,7 @@ run_command_client() {
       JAVA_HOME="$java_home" PATH="$java_home/bin:$PATH" \
       JAVA_TOOL_OPTIONS='-Dcinemarr.acceptance.enabled=true -Dcinemarr.acceptance.commandProbe=true -Dorg.lwjgl.opengl.Display.allowSoftwareOpenGL=true' \
       LIBGL_ALWAYS_SOFTWARE=1 \
-      ./gradlew runClient --no-daemon --max-workers=1 --console=plain \
+      ./gradlew "$active_client_task" --no-daemon --max-workers=1 --console=plain \
       "${runtime_args[@]}" \
       -PcinemarrAcceptanceUsername="$username" \
       -PcinemarrAcceptanceServer="${acceptance_server_host}:${port}" \
@@ -747,11 +743,7 @@ start_audio_client() {
   if [[ "$video_client_gate" == "true" ]]; then
     java_options+=" -Dcinemarr.acceptance.videoProbe=true -Dcinemarr.acceptance.videoLeader=$leader -Dcinemarr.acceptance.audioControlFile=$control_file"
   fi
-  case "$label" in
-    1.20.1-forge|1.20.1-neoforge|1.20.2-forge|1.20.2-neoforge|1.21.1-neoforge)
-      cache_args+=(--no-configuration-cache)
-      ;;
-  esac
+  [[ "$active_disable_configuration_cache" == true ]] && cache_args+=(--no-configuration-cache)
 
   mkdir -p "$client_dir/config"
   : > "$client_console"
@@ -826,7 +818,7 @@ start_audio_client() {
       JAVA_TOOL_OPTIONS="$java_options" \
       ALSA_CONFIG_PATH="$client_dir/alsa.conf" ALSOFT_CONF="$client_dir/alsoft.conf" \
       ALSOFT_DRIVERS=alsa LIBGL_ALWAYS_SOFTWARE=1 \
-      ./gradlew runClient --no-daemon --max-workers=1 --console=plain "${cache_args[@]}" \
+      ./gradlew "$active_client_task" --no-daemon --max-workers=1 --console=plain "${cache_args[@]}" \
       "${runtime_args[@]}" \
       -PcinemarrAcceptanceUsername="$username" \
       -PcinemarrAcceptanceServer="${acceptance_server_host}:${port}" \
@@ -1217,7 +1209,7 @@ run_video_adverse_network_scenarios() {
   local server_log="$output_root/$label.console.log"
   local evidence="$output_root/$label.video-adverse-network.evidence.txt"
   local first_leader first_follower first_server old_generation new_generation
-  local transient_state offline_state transient_requests offline_requests
+  local transient_state slow_state offline_state transient_requests slow_requests offline_requests
   : > "$evidence"
 
   transient_state="segments-transient-${BASHPID}-${RANDOM}"
@@ -1244,6 +1236,31 @@ run_video_adverse_network_scenarios() {
   fi
   printf 'Transient segment fault: generation %s to %s, HTTP attempts=%s, playback remained synchronized.\n' \
     "$old_generation" "$new_generation" "$transient_requests" >> "$evidence"
+
+  slow_state="segments-slow-${BASHPID}-${RANDOM}"
+  old_generation=$new_generation
+  first_leader=$(wc -l < "$leader_log"); first_follower=$(wc -l < "$follower_log")
+  printf '%s\n' "$slow_state" > "$fake_plex_state"
+  send_audio_control "$label" leader 'video:seek-forward'
+  if ! wait_for_pattern_after "$leader_log" "$first_leader" 'Acceptance video action: SEEK ' 30 \
+      || ! wait_for_pattern_after "$leader_log" "$first_leader" 'Acceptance video session:.*status=PLAYING' 180 \
+      || ! wait_for_pattern_after "$follower_log" "$first_follower" 'Acceptance video session:.*status=PLAYING' 180; then
+    printf 'online\n' > "$fake_plex_state"
+    echo "$label: delayed segment delivery did not publish replacement playback" >&2; return 1
+  fi
+  new_generation=$(latest_video_generation "$leader_log")
+  if [[ ! "$old_generation" =~ ^[0-9]+$ || ! "$new_generation" =~ ^[0-9]+$ ]] \
+      || (( new_generation <= old_generation )); then
+    printf 'online\n' > "$fake_plex_state"
+    echo "$label: delayed segment delivery did not advance generation" >&2; return 1
+  fi
+  if ! slow_requests=$(wait_for_fault_segment_requests "$slow_state" 3 120) \
+      || ! wait_for_video_audio_pair_stable "$label" "$leader_pid" "$follower_pid"; then
+    printf 'online\n' > "$fake_plex_state"
+    echo "$label: bounded slow segment delivery did not maintain synchronized playback" >&2; return 1
+  fi
+  printf 'Slow segment delivery: generation %s to %s, delayed responses=%s, playback remained synchronized.\n' \
+    "$old_generation" "$new_generation" "$slow_requests" >> "$evidence"
 
   offline_state="segments-offline-${BASHPID}-${RANDOM}"
   old_generation=$new_generation
@@ -2038,7 +2055,9 @@ ensure_runtime_files() {
   if [[ ! -f "$run_dir/server.properties" ]]; then
     printf 'allow-flight=true\nonline-mode=false\nserver-port=%s\nlevel-name=world\nmotd=Cinemarr dedicated-server gate\n' \
       "$default_port" > "$run_dir/server.properties"
-  elif ! grep -Eq '^server-port=[0-9]+$' "$run_dir/server.properties"; then
+  elif grep -Eq '^server-port=[0-9]+$' "$run_dir/server.properties"; then
+    sed -i -E "s/^server-port=[0-9]+$/server-port=$default_port/" "$run_dir/server.properties"
+  else
     printf '\nserver-port=%s\n' "$default_port" >> "$run_dir/server.properties"
   fi
 }
@@ -2057,18 +2076,14 @@ run_invalid_config_check() {
   local -a runtime_args=(-PcinemarrServerGameDir="$run_dir")
   [[ "$label" == *-quilt ]] && runtime_args+=(-PcinemarrRuntimeLoader=quilt)
   [[ "$label" == *-fabric && -n "$fabric_loader_version" ]] && runtime_args+=(-PcinemarrFabricLoaderVersion="$fabric_loader_version")
-  case "$label" in
-    1.20.1-forge|1.20.1-neoforge|1.20.2-forge|1.20.2-neoforge)
-      cache_args+=(--no-configuration-cache)
-      ;;
-  esac
+  [[ "$active_disable_configuration_cache" == true ]] && cache_args+=(--no-configuration-cache)
 
   install_invalid_config "$run_dir" "$label" "$level_name"
   (
     cd "$target_dir" || exit 1
     exec setsid env JAVA_HOME="$java_home" PATH="$java_home/bin:$PATH" \
       CINEMARR_PLEX_TOKEN="$fake_plex_token" \
-      ./gradlew runServer --no-daemon --max-workers=1 --console=plain "${cache_args[@]}" \
+      ./gradlew "$active_server_task" --no-daemon --max-workers=1 --console=plain "${cache_args[@]}" \
       "${runtime_args[@]}" \
       < /dev/null > "$console_log" 2>&1
   ) &
@@ -2274,11 +2289,7 @@ run_target() {
     set_property "$run_dir/server.properties" rcon.port "$rcon_port"
     set_property "$run_dir/server.properties" rcon.password "$rcon_password"
   fi
-  case "$label" in
-    1.20.1-forge|1.20.1-neoforge|1.20.2-forge|1.20.2-neoforge)
-      cache_args+=(--no-configuration-cache)
-      ;;
-  esac
+  [[ "$active_disable_configuration_cache" == true ]] && cache_args+=(--no-configuration-cache)
 
   if ! run_invalid_config_check "$label" "$target_dir" "$run_dir" "$java_home" "$port" "$level_name"; then
     restore_server_properties
@@ -2315,7 +2326,7 @@ run_target() {
     export CINEMARR_PLEX_TOKEN="$plex_runtime_token"
     exec setsid env JAVA_HOME="$java_home" PATH="$java_home/bin:$PATH" \
       JAVA_TOOL_OPTIONS="$server_java_options" \
-      ./gradlew runServer --no-daemon --max-workers=1 --console=plain "${cache_args[@]}" \
+      ./gradlew "$active_server_task" --no-daemon --max-workers=1 --console=plain "${cache_args[@]}" \
       "${runtime_args[@]}" \
       < "$fifo" > "$console_log" 2>&1
   ) &
@@ -2495,7 +2506,7 @@ run_target() {
     result=1
   fi
   if [[ "$label" == "1.7.10-forge" ]]; then
-    if ! grep -q 'Initializing Cinemarr 1.0.0 for Forge 1.7.10 protocol 9' "$run_dir/logs/fml-server-latest.log"; then
+    if ! grep -q 'Initializing Cinemarr 1.0.0 for Forge 1.7.10 protocol 10' "$run_dir/logs/fml-server-latest.log"; then
       echo "$label: FML log does not prove Cinemarr initialized" >&2
       result=1
     fi
@@ -2538,7 +2549,7 @@ matched=0
 failed=0
 start_fake_plex || exit 1
 for target in "${targets[@]}"; do
-  IFS='|' read -r label relative_dir java_home port <<< "$target"
+  IFS='|' read -r label relative_dir java_home port active_client_task active_server_task active_disable_configuration_cache <<< "$target"
   if [[ "$requested" != "all" && "$requested" != "$label"
       && !( "$requested" == "quilt" && "$label" == *-quilt )
       && !( "$requested" == "fabric" && "$label" == *-fabric ) ]]; then

@@ -4,12 +4,13 @@ import stonytark.cinemarr.core.protocol.WireCodec;
 import stonytark.cinemarr.core.protocol.WireInput;
 import stonytark.cinemarr.core.protocol.WireOutput;
 import stonytark.cinemarr.core.protocol.VideoPackets;
+import stonytark.cinemarr.core.protocol.ProtocolCapabilities;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/** Stable protocol-9 identifiers for connection management and television playback. */
+/** Stable protocol-10 identifiers for connection management and television playback. */
 public final class LegacyPacketTypes {
     public enum Direction { CLIENTBOUND, SERVERBOUND }
 
@@ -18,14 +19,20 @@ public final class LegacyPacketTypes {
         private EmptyRequest() {}
     }
     public static final class ClientHello {
-        private final int protocolVersion;
-        public ClientHello(int protocolVersion) { this.protocolVersion = protocolVersion; }
+        private final int protocolVersion; private final long featureBits; private final int maxChunkBytes,maxTransferWindow,healthIntervalMs;
+        public ClientHello(int protocolVersion) { this(protocolVersion,ProtocolCapabilities.REQUIRED_FEATURES,ProtocolCapabilities.currentOffer().maxChunkBytes(),ProtocolCapabilities.MAX_TRANSFER_WINDOW,ProtocolCapabilities.HEALTH_INTERVAL_MS); }
+        public ClientHello(int protocolVersion,long featureBits,int maxChunkBytes,int maxTransferWindow,int healthIntervalMs) { this.protocolVersion=protocolVersion;this.featureBits=featureBits;this.maxChunkBytes=maxChunkBytes;this.maxTransferWindow=maxTransferWindow;this.healthIntervalMs=healthIntervalMs; }
         public int protocolVersion() { return protocolVersion; }
+        public boolean valid(){try{ProtocolCapabilities.negotiate(protocolVersion,featureBits,maxChunkBytes,maxTransferWindow,healthIntervalMs);return true;}catch(IllegalArgumentException invalid){return false;}}
+        public long featureBits(){return featureBits;} public int maxChunkBytes(){return maxChunkBytes;} public int maxTransferWindow(){return maxTransferWindow;} public int healthIntervalMs(){return healthIntervalMs;}
     }
     public static final class ServerHello {
-        private final int protocolVersion; private final long serverEpochMs;
-        public ServerHello(int protocolVersion, long serverEpochMs) { this.protocolVersion = protocolVersion; this.serverEpochMs = serverEpochMs; }
+        private final int protocolVersion; private final long featureBits; private final int maxChunkBytes,maxTransferWindow,healthIntervalMs; private final long serverEpochMs;
+        public ServerHello(int protocolVersion,long serverEpochMs){this(protocolVersion,ProtocolCapabilities.REQUIRED_FEATURES,ProtocolCapabilities.currentOffer().maxChunkBytes(),ProtocolCapabilities.MAX_TRANSFER_WINDOW,ProtocolCapabilities.HEALTH_INTERVAL_MS,serverEpochMs);}
+        public ServerHello(int protocolVersion,long featureBits,int maxChunkBytes,int maxTransferWindow,int healthIntervalMs,long serverEpochMs){this.protocolVersion=protocolVersion;this.featureBits=featureBits;this.maxChunkBytes=maxChunkBytes;this.maxTransferWindow=maxTransferWindow;this.healthIntervalMs=healthIntervalMs;this.serverEpochMs=serverEpochMs;}
         public int protocolVersion() { return protocolVersion; }
+        public boolean valid(){try{ProtocolCapabilities.negotiate(protocolVersion,featureBits,maxChunkBytes,maxTransferWindow,healthIntervalMs);return true;}catch(IllegalArgumentException invalid){return false;}}
+        public long featureBits(){return featureBits;} public int maxChunkBytes(){return maxChunkBytes;} public int maxTransferWindow(){return maxTransferWindow;} public int healthIntervalMs(){return healthIntervalMs;}
         public long serverEpochMs() { return serverEpochMs; }
     }
     public static final class TimeSyncRequest {
@@ -66,12 +73,12 @@ public final class LegacyPacketTypes {
         @Override public void encode(WireOutput output, EmptyRequest value) {}
     };
     private static final WireCodec<ClientHello> CLIENT_HELLO_CODEC = new WireCodec<ClientHello>() {
-        @Override public ClientHello decode(WireInput input) { return new ClientHello(input.readVarInt()); }
-        @Override public void encode(WireOutput output, ClientHello value) { output.writeVarInt(value.protocolVersion()); }
+        @Override public ClientHello decode(WireInput input) { return new ClientHello(input.readVarInt(),input.readLong(),input.readVarInt(),input.readVarInt(),input.readVarInt()); }
+        @Override public void encode(WireOutput output, ClientHello value) { output.writeVarInt(value.protocolVersion());output.writeLong(value.featureBits());output.writeVarInt(value.maxChunkBytes());output.writeVarInt(value.maxTransferWindow());output.writeVarInt(value.healthIntervalMs()); }
     };
     private static final WireCodec<ServerHello> SERVER_HELLO_CODEC = new WireCodec<ServerHello>() {
-        @Override public ServerHello decode(WireInput input) { return new ServerHello(input.readVarInt(), input.readLong()); }
-        @Override public void encode(WireOutput output, ServerHello value) { output.writeVarInt(value.protocolVersion()); output.writeLong(value.serverEpochMs()); }
+        @Override public ServerHello decode(WireInput input) { return new ServerHello(input.readVarInt(),input.readLong(),input.readVarInt(),input.readVarInt(),input.readVarInt(),input.readLong()); }
+        @Override public void encode(WireOutput output, ServerHello value) { output.writeVarInt(value.protocolVersion());output.writeLong(value.featureBits());output.writeVarInt(value.maxChunkBytes());output.writeVarInt(value.maxTransferWindow());output.writeVarInt(value.healthIntervalMs());output.writeLong(value.serverEpochMs()); }
     };
     private static final WireCodec<TimeSyncRequest> TIME_REQUEST_CODEC = new WireCodec<TimeSyncRequest>() {
         @Override public TimeSyncRequest decode(WireInput input) { return new TimeSyncRequest(input.readLong(), input.readLong()); }

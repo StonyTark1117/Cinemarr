@@ -11,11 +11,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CinemarrForgeNetworkTest {
-    @Test void protocolNineHelloAndTimeSyncRoundTrip() {
-        assertEquals(9, CinemarrNetwork.PROTOCOL);
+    @Test void protocolTenHelloAndTimeSyncRoundTrip() {
+        assertEquals(10, CinemarrNetwork.PROTOCOL);
         assertEquals(ProtocolLimits.VERSION, CinemarrNetwork.PROTOCOL);
-        assertTrue(CinemarrNetwork.protocolMatches(9)); assertFalse(CinemarrNetwork.protocolMatches(8));
-        RegistryFriendlyByteBuf hello = buffer(); var expectedHello = new CinemarrPayloads.ClientHello(9);
+        assertTrue(CinemarrNetwork.protocolMatches(10)); assertFalse(CinemarrNetwork.protocolMatches(8));
+        RegistryFriendlyByteBuf hello = buffer(); var expectedHello = new CinemarrPayloads.ClientHello(10);
         CinemarrPayloads.ClientHello.CODEC.encode(hello, expectedHello);
         assertEquals(expectedHello, CinemarrPayloads.ClientHello.CODEC.decode(hello));
         RegistryFriendlyByteBuf time = buffer(); var expectedTime = new CinemarrPayloads.TimeSyncResponse(7, 1000, 1025);

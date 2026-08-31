@@ -1,9 +1,12 @@
-param([string]$Stage = "Install")
+param(
+    [string]$Stage = "Install",
+    [string]$Receiver = $env:CINEMARR_ACCEPTANCE_RECEIVER
+)
 
 $ErrorActionPreference = "Stop"
 $work = "C:\CinemarrDecoderBenchmark"
 $log = Join-Path $work "validation.log"
-$receiver = "http://192.168.1.15:18080"
+if ([string]::IsNullOrWhiteSpace($Receiver)) { throw "Receiver must be supplied as a process-local input" }
 
 function Write-Log([string]$Message) {
     "$(Get-Date -Format o) $Message" | Tee-Object -FilePath $log -Append
@@ -11,7 +14,7 @@ function Write-Log([string]$Message) {
 
 function Publish-File([string]$Path, [string]$Name) {
     if (Test-Path $Path) {
-        & curl.exe --fail --retry 5 --retry-delay 3 -X PUT --data-binary "@$Path" "$receiver/$Name"
+        & curl.exe --fail --retry 5 --retry-delay 3 -X PUT --data-binary "@$Path" "$Receiver/$Name"
         if ($LASTEXITCODE -ne 0) { throw "Unable to publish $Name" }
     }
 }
@@ -34,7 +37,7 @@ try {
         $mediaVolume = Get-Volume -FileSystemLabel "CINEMARR" | Select-Object -First 1
         if ($null -eq $mediaVolume) { throw "CINEMARR media not found" }
         $mediaScript = "$($mediaVolume.DriveLetter):\run.ps1"
-        $command = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$mediaScript`" -Stage Benchmark"
+        $command = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$mediaScript`" -Stage Benchmark -Receiver `"$Receiver`""
         $runOncePath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce"
         New-Item -Path $runOncePath -Force | Out-Null
         New-ItemProperty -Path $runOncePath -Name "CinemarrDecoderBenchmark" -Value $command -PropertyType String -Force | Out-Null
@@ -46,7 +49,7 @@ try {
         $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
         $principal = New-Object Security.Principal.WindowsPrincipal($identity)
         if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-            $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Stage Install"
+            $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Stage Install -Receiver `"$Receiver`""
             Start-Process -FilePath "powershell.exe" -ArgumentList $arguments -Verb RunAs
             exit 0
         }
@@ -63,7 +66,7 @@ try {
             throw "NVIDIA driver signature is not valid"
         }
         Write-Log "NVIDIA driver Authenticode signature valid"
-        $command = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$work\run.ps1`" -Stage Benchmark"
+        $command = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$work\run.ps1`" -Stage Benchmark -Receiver `"$Receiver`""
         $runOncePath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce"
         New-Item -Path $runOncePath -Force | Out-Null
         New-ItemProperty -Path $runOncePath -Name "CinemarrDecoderBenchmark" -Value $command -PropertyType String -Force | Out-Null

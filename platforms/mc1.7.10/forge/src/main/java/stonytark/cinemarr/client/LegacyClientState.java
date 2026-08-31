@@ -47,7 +47,7 @@ final class LegacyClientState implements LegacyNetwork.ClientListener {
         Minecraft minecraft = Minecraft.getMinecraft();
         if (type == LegacyPacketTypes.SERVER_HELLO) {
             LegacyPacketTypes.ServerHello hello = (LegacyPacketTypes.ServerHello) message;
-            if (hello.protocolVersion() != ProtocolLimits.clientHelloVersion()) {
+            if (!hello.valid() || hello.protocolVersion() != ProtocolLimits.clientHelloVersion()) {
                 if (minecraft.getNetHandler() != null) minecraft.getNetHandler().getNetworkManager().closeChannel(
                         new ChatComponentText("Cinemarr protocol mismatch: server requires version " + hello.protocolVersion()));
             } else {

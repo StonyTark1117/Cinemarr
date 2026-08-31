@@ -68,6 +68,18 @@ class VideoSessionCoordinatorTest {
         assertEquals(2, starts.get());
     }
 
+    @Test void snapshotPositionAndServerEpochShareOneAuthoritativeInstant() throws Exception {
+        VideoSessionCoordinator coordinator = new VideoSessionCoordinator(2, 0,
+                (session, generation, item, offset) -> () -> {});
+        coordinator.tune(UUID.randomUUID(), "party");
+        coordinator.play("party", movie(), 5_000, 1_000);
+
+        VideoSessionCoordinator.Snapshot snapshot = coordinator.snapshot("party", 8_500);
+
+        assertEquals(8_500, snapshot.serverEpochMs());
+        assertEquals(12_500, snapshot.positionMs());
+    }
+
     @Test void staleOrFailedReplacementCannotDisplaceCurrentPlayback() throws Exception {
         AtomicInteger starts = new AtomicInteger();
         AtomicInteger stops = new AtomicInteger();

@@ -10,6 +10,7 @@ import org.lwjgl.openal.AL10;
 import org.lwjgl.openal.AL11;
 import org.lwjgl.openal.SOFTSourceLatency;
 import stonytark.cinemarr.Cinemarr;
+import stonytark.cinemarr.core.client.AudioUnderrunPolicy;
 import stonytark.cinemarr.core.platform.CinemarrSettings;
 import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.core.protocol.VideoPackets;
@@ -118,7 +119,11 @@ public final class CinemarrVideoAudio {
         }
         if (channel != null) {
             int starvations = stream == null ? 0 : stream.starvations();
-            if (starvations > observedStarvations) { underruns += starvations - observedStarvations; observedStarvations = starvations; }
+            boolean stopped = channel.isStopped() && !session.paused();
+            boolean terminal = playback.audioInputExhausted() && pending.isEmpty();
+            underruns += AudioUnderrunPolicy.additionalUnderruns(observedStarvations, starvations,
+                    stopped, session.paused(), terminal);
+            observedStarvations = Math.max(observedStarvations, starvations);
             Vec3 origin = nearestScreenPoint(session, Minecraft.getInstance().gameRenderer.mainCamera().position());
             float volume = CinemarrSettings.enabled() ? (float) (CinemarrSettings.volume()
                     * Minecraft.getInstance().options.getSoundSourceVolume(SoundSource.RECORDS)) : 0;
@@ -126,7 +131,12 @@ public final class CinemarrVideoAudio {
                 value.setSelfPosition(origin); value.setVolume(volume); value.setRelative(false); value.linearAttenuation(64);
                 if (session.paused()) value.pause(); else value.unpause();
             });
-            if (channel.isStopped() && !session.paused()) { underruns++; resetChannel(); }
+            if (stopped) {
+                if (terminal && ProtocolLimits.videoProbeEnabled()) Cinemarr.LOGGER.info(
+                        "Acceptance video audio terminal drain: targetMs={} audioMs={}",
+                        targetUs / 1_000L, audioTimelineUs / 1_000L);
+                resetChannel();
+            }
         }
         if (ProtocolLimits.videoProbeEnabled() && System.currentTimeMillis() - lastAcceptanceLogMs >= 1_000) {
             lastAcceptanceLogMs = System.currentTimeMillis();

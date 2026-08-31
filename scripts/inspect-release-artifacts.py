@@ -15,26 +15,16 @@ import base64
 from pathlib import Path, PurePosixPath
 
 
-PRODUCT_VERSION = "1.0.0"
-PROTOCOL_VERSION = 9
-TARGETS = (
-    ("1.7.10", "forge", 8, 52),
-    ("1.20.1", "fabric", 17, 61),
-    ("1.20.1", "forge", 17, 61),
-    ("1.20.1", "neoforge", 17, 61),
-    ("1.20.2", "fabric", 17, 61),
-    ("1.20.2", "forge", 17, 61),
-    ("1.20.2", "neoforge", 17, 61),
-    ("1.21.1", "fabric", 21, 65),
-    ("1.21.1", "forge", 21, 65),
-    ("1.21.1", "neoforge", 21, 65),
-    ("26.1.2", "fabric", 25, 69),
-    ("26.1.2", "forge", 25, 69),
-    ("26.1.2", "neoforge", 25, 69),
-    ("26.2", "fabric", 25, 69),
-    ("26.2", "forge", 25, 69),
-    ("26.2", "neoforge", 25, 69),
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+TARGET_MANIFEST = json.loads((REPOSITORY_ROOT / "gradle/targets.json").read_text("utf-8"))
+PRODUCT_VERSION = str(TARGET_MANIFEST["productVersion"])
+PROTOCOL_VERSION = int(TARGET_MANIFEST["protocolVersion"])
+TARGETS = tuple(
+    (str(entry["minecraft"]), str(entry["loader"]), int(entry["runtimeJava"]),
+     int(entry["bytecodeJava"]) + 44)
+    for entry in TARGET_MANIFEST["artifacts"]
 )
+EXPECTED_ARTIFACTS = len(TARGETS)
 COMMON_ENTRIES = {
     "META-INF/LICENSE-Cinemarr-CC0-1.0.txt",
     "META-INF/LICENSE-LGPL-2.1-or-later.txt",
@@ -701,7 +691,7 @@ def main() -> int:
 
     entries = manifest.get("artifacts", [])
     if len(entries) != len(TARGETS) or {entry.get("filename") for entry in entries} != expected_names:
-        fail("release manifest does not map exactly the 16 canonical artifacts")
+        fail(f"release manifest does not map exactly the {EXPECTED_ARTIFACTS} canonical artifacts")
     manifest_by_name = {entry["filename"]: entry for entry in entries}
 
     sums = {}
@@ -711,7 +701,7 @@ def main() -> int:
             fail(f"invalid SHA256SUMS line: {line!r}")
         sums[match.group(2)] = match.group(1)
     if set(sums) != expected_names:
-        fail("SHA256SUMS does not cover exactly the 16 canonical artifacts")
+        fail(f"SHA256SUMS does not cover exactly the {EXPECTED_ARTIFACTS} canonical artifacts")
 
     for minecraft, loader, java, major in TARGETS:
         filename = f"cinemarr-{PRODUCT_VERSION}+mc{minecraft}-{loader}.jar"
@@ -734,7 +724,7 @@ def main() -> int:
             fail(f"{filename} does not record the certified Quilt Loader version")
         verify_jar(path, minecraft, loader, java, major)
 
-    print(f"Inspected 16 Cinemarr release artifacts in {release_dir}")
+    print(f"Inspected {EXPECTED_ARTIFACTS} Cinemarr release artifacts in {release_dir}")
     return 0
 
 

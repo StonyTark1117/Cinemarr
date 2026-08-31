@@ -9,16 +9,16 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class CinemarrNetworkTest {
-    @Test void acceptsOnlyProtocolNine() {
-        assertEquals(9, CinemarrNetwork.PROTOCOL);
-        assertTrue(CinemarrNetwork.protocolMatches(9));
+    @Test void acceptsOnlyProtocolTen() {
+        assertEquals(10, CinemarrNetwork.PROTOCOL);
+        assertTrue(CinemarrNetwork.protocolMatches(10));
         assertFalse(CinemarrNetwork.protocolMatches(8));
-        assertFalse(CinemarrNetwork.protocolMatches(10));
+        assertFalse(CinemarrNetwork.protocolMatches(9));
     }
 
     @Test void helloAndTimeSyncRoundTrip() {
-        assertEquals(new CinemarrPayloads.ClientHello(9), roundTrip(CinemarrPayloads.ClientHello.CODEC,
-                new CinemarrPayloads.ClientHello(9)));
+        assertEquals(new CinemarrPayloads.ClientHello(10), roundTrip(CinemarrPayloads.ClientHello.CODEC,
+                new CinemarrPayloads.ClientHello(10)));
         var response = new CinemarrPayloads.TimeSyncResponse(7, 1_000, 1_025);
         assertEquals(response, roundTrip(CinemarrPayloads.TimeSyncResponse.CODEC, response));
     }

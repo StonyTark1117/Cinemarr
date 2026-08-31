@@ -2,11 +2,13 @@
 set -euo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-api_base=${DISCOPANEL_API_BASE:-http://192.168.1.73:8080}
-server_host=${DISCOPANEL_SERVER_HOST:-192.168.1.73}
+api_base=${DISCOPANEL_API_BASE:-}
+server_host=${DISCOPANEL_SERVER_HOST:-}
 label=${1:-}
 
 [[ -n "${DISCOPANEL_TOKEN:-}" ]] || { echo "DISCOPANEL_TOKEN is required" >&2; exit 2; }
+[[ "$api_base" =~ ^https?://[A-Za-z0-9._:-]+$ && "$server_host" =~ ^[A-Za-z0-9._:-]+$ ]] \
+  || { echo "DiscPanel API and server host are required process-local inputs" >&2; exit 2; }
 case "$label" in
   1.7.10-forge)
     server_name='Jammarr 1.7.10 Forge Test'

@@ -77,11 +77,13 @@ releaseTask.configure {
                 // Normalize the two entries this post-processor can mutate;
                 // otherwise identical Forge-family rebuilds receive new hashes.
                 if (java.nio.file.Files.exists(isolatedCore)) {
-                    java.nio.file.Files.setLastModifiedTime(isolatedCore, zipEpoch)
+                    java.nio.file.Files.getFileAttributeView(isolatedCore,
+                            java.nio.file.attribute.BasicFileAttributeView).setTimes(zipEpoch, zipEpoch, zipEpoch)
                 }
                 def metadataPath = jarJarRoot.resolve('metadata.json')
                 if (java.nio.file.Files.exists(metadataPath)) {
-                    java.nio.file.Files.setLastModifiedTime(metadataPath, zipEpoch)
+                    java.nio.file.Files.getFileAttributeView(metadataPath,
+                            java.nio.file.attribute.BasicFileAttributeView).setTimes(zipEpoch, zipEpoch, zipEpoch)
                 }
             }
         }

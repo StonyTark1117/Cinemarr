@@ -9,108 +9,32 @@ permissions:
   contents: read
 
 jobs:
+  matrix:
+    name: Validate target manifest
+    runs-on: ubuntu-latest
+    outputs:
+      artifact: ${{ steps.generate.outputs.artifact }}
+      expected_artifacts: ${{ steps.generate.outputs.expected_artifacts }}
+      expected_runtimes: ${{ steps.generate.outputs.expected_runtimes }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: generate
+        name: Generate matrices from gradle/targets.json
+        run: |
+          python3 scripts/test-target-matrix.py
+          python3 scripts/target-matrix.py verify
+          python3 scripts/check-source-layout.py
+          python3 scripts/verify-release-hygiene.py
+          echo "artifact=$(python3 scripts/target-matrix.py artifact-matrix)" >> "$GITHUB_OUTPUT"
+          echo "expected_artifacts=$(python3 scripts/target-matrix.py summary | jq -r .artifacts)" >> "$GITHUB_OUTPUT"
+          echo "expected_runtimes=$(python3 scripts/target-matrix.py summary | jq -r .runtimes)" >> "$GITHUB_OUTPUT"
+
   artifact:
+    needs: matrix
     strategy:
       fail-fast: false
       max-parallel: 16
-      matrix:
-        include:
-          - name: 1.7.10-forge
-            task: verifyLegacy1710
-            artifact: platforms/mc1.7.10/forge/build/libs/cinemarr-*+mc1.7.10-forge.jar
-            runtime: 1.7.10-forge
-            quilt: ''
-            game-tests: false
-          - name: 1.20.1-fabric
-            task: verifyFabric1201
-            artifact: platforms/mc1.20.1/fabric/build/libs/cinemarr-*+mc1.20.1-fabric.jar
-            runtime: 1.20.1-fabric
-            quilt: 1.20.1-quilt
-            game-tests: false
-          - name: 1.20.1-forge
-            task: verifyForge1201
-            artifact: platforms/mc1.20.1/forge/build/libs/cinemarr-*+mc1.20.1-forge.jar
-            runtime: 1.20.1-forge
-            quilt: ''
-            game-tests: false
-          - name: 1.20.1-neoforge
-            task: verifyNeoForge1201
-            artifact: platforms/mc1.20.1/neoforge/build/libs/cinemarr-*+mc1.20.1-neoforge.jar
-            runtime: 1.20.1-neoforge
-            quilt: ''
-            game-tests: false
-          - name: 1.20.2-fabric
-            task: verifyFabric1202
-            artifact: platforms/mc1.20.2/fabric/build/libs/cinemarr-*+mc1.20.2-fabric.jar
-            runtime: 1.20.2-fabric
-            quilt: 1.20.2-quilt
-            game-tests: false
-          - name: 1.20.2-forge
-            task: verifyForge1202
-            artifact: platforms/mc1.20.2/forge/build/libs/cinemarr-*+mc1.20.2-forge.jar
-            runtime: 1.20.2-forge
-            quilt: ''
-            game-tests: false
-          - name: 1.20.2-neoforge
-            task: verifyNeoForge1202
-            artifact: platforms/mc1.20.2/neoforge/build/libs/cinemarr-*+mc1.20.2-neoforge.jar
-            runtime: 1.20.2-neoforge
-            quilt: ''
-            game-tests: false
-          - name: 1.21.1-fabric
-            task: verifyFabric1211
-            artifact: platforms/mc1.21.1/fabric/build/libs/cinemarr-*+mc1.21.1-fabric.jar
-            runtime: 1.21.1-fabric
-            quilt: 1.21.1-quilt
-            game-tests: false
-          - name: 1.21.1-forge
-            task: verifyForge1211
-            artifact: platforms/mc1.21.1/forge/build/libs/cinemarr-*+mc1.21.1-forge.jar
-            runtime: 1.21.1-forge
-            quilt: ''
-            game-tests: false
-          - name: 1.21.1-neoforge
-            task: verifyRelease
-            artifact: build/libs/cinemarr-*+mc1.21.1-neoforge.jar
-            runtime: 1.21.1-neoforge
-            quilt: ''
-            game-tests: true
-          - name: 26.1.2-fabric
-            task: verifyFabric2612
-            artifact: platforms/mc26.1.2/fabric/build/libs/cinemarr-*+mc26.1.2-fabric.jar
-            runtime: 26.1.2-fabric
-            quilt: 26.1.2-quilt
-            game-tests: false
-          - name: 26.1.2-forge
-            task: verifyForge2612
-            artifact: platforms/mc26.1.2/forge/build/libs/cinemarr-*+mc26.1.2-forge.jar
-            runtime: 26.1.2-forge
-            quilt: ''
-            game-tests: false
-          - name: 26.1.2-neoforge
-            task: verifyNeoForge2612
-            artifact: platforms/mc26.1.2/neoforge/build/libs/cinemarr-*+mc26.1.2-neoforge.jar
-            runtime: 26.1.2-neoforge
-            quilt: ''
-            game-tests: false
-          - name: 26.2-fabric
-            task: verifyFabric262
-            artifact: platforms/mc26.2/fabric/build/libs/cinemarr-*+mc26.2-fabric.jar
-            runtime: 26.2-fabric
-            quilt: 26.2-quilt
-            game-tests: false
-          - name: 26.2-forge
-            task: verifyForge262
-            artifact: platforms/mc26.2/forge/build/libs/cinemarr-*+mc26.2-forge.jar
-            runtime: 26.2-forge
-            quilt: ''
-            game-tests: false
-          - name: 26.2-neoforge
-            task: verifyNeoForge262
-            artifact: platforms/mc26.2/neoforge/build/libs/cinemarr-*+mc26.2-neoforge.jar
-            runtime: 26.2-neoforge
-            quilt: ''
-            game-tests: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.artifact) }}
     name: ${{ matrix.name }}
     runs-on: ubuntu-latest
     timeout-minutes: 300
@@ -136,17 +60,17 @@ jobs:
       - name: Record Java 21 home
         run: echo "CINEMARR_JAVA21_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
       - name: Build and inspect artifact
+        run: ./gradlew ${{ matrix.task }} --no-daemon --max-workers=1
+      - name: Verify byte-identical rebuild
+        env:
+          CINEMARR_ARTIFACT_PATH: ${{ matrix.artifact }}
+          CINEMARR_MATRIX_TASK: ${{ matrix.task }}
         run: |
-          for attempt in 1 2; do
-            if ./gradlew ${{ matrix.task }} --no-daemon --max-workers=1; then
-              exit 0
-            fi
-            if [[ "$attempt" == 2 ]]; then
-              exit 1
-            fi
-            echo "Artifact build failed once; retrying with the populated dependency cache."
-            sleep 15
-          done
+          snapshot="$RUNNER_TEMP/cinemarr-first-build.jar"
+          cp -- "$CINEMARR_ARTIFACT_PATH" "$snapshot"
+          ./gradlew "$CINEMARR_MATRIX_TASK" --rerun-tasks --no-daemon --max-workers=1
+          cmp -- "$snapshot" "$CINEMARR_ARTIFACT_PATH"
+          sha256sum "$CINEMARR_ARTIFACT_PATH"
       - name: Warm Fabric client assets
         if: ${{ matrix.quilt != '' }}
         env:
@@ -195,14 +119,14 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Run GameTests
-        if: ${{ matrix.game-tests }}
+        if: ${{ matrix.game_tests }}
         run: bash scripts/run-gametest-gate.sh
       - name: Validate ${{ matrix.runtime }} runtime
         env:
           CINEMARR_ALSA_PCM_TYPE: pulse
           CINEMARR_PROTOCOL_CLIENT_GATE: 'true'
           CINEMARR_COMMAND_CLIENT_GATE: 'true'
-          CINEMARR_VIDEO_CLIENT_GATE: ${{ matrix.name != '1.7.10-forge' }}
+          CINEMARR_VIDEO_CLIENT_GATE: 'true'
         run: bash scripts/run-dedicated-server-gate.sh ${{ matrix.runtime }}
       - name: Validate ${{ matrix.quilt }} runtime
         if: ${{ matrix.quilt != '' }}
@@ -261,7 +185,7 @@ jobs:
 
   release-gate:
     name: 1.0 release gate
-    needs: artifact
+    needs: [matrix, artifact]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -271,22 +195,27 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: gradle
-      - name: Download all 16 verified artifacts
+      - name: Download all verified artifacts
         uses: actions/download-artifact@v4
         with:
           pattern: release-jar-*
           path: build/prebuilt-release
           merge-multiple: true
       - name: Assemble and inspect release bundle
+        env:
+          EXPECTED_ARTIFACTS: ${{ needs.matrix.outputs.expected_artifacts }}
+          EXPECTED_RUNTIMES: ${{ needs.matrix.outputs.expected_runtimes }}
         run: |
-          test "$(find build/prebuilt-release -maxdepth 1 -type f -name '*.jar' | wc -l)" -eq 16
+          test "$EXPECTED_ARTIFACTS" -eq 16
+          test "$EXPECTED_RUNTIMES" -eq 21
+          test "$(find build/prebuilt-release -maxdepth 1 -type f -name '*.jar' | wc -l)" -eq "$EXPECTED_ARTIFACTS"
           ./gradlew indexReleaseArtifacts -PcinemarrPrebuiltArtifactDir=build/prebuilt-release --no-daemon --max-workers=1
           python3 scripts/inspect-release-artifacts.py build/releases
           (cd build/releases && sha256sum -c SHA256SUMS)
-      - name: Upload 1.0 release candidate
+      - name: Upload verified CI bundle
         uses: actions/upload-artifact@v4
         with:
-          name: cinemarr-1.0.0-${{ github.sha }}
+          name: cinemarr-1.0.0-ci-bundle-${{ github.sha }}
           path: build/releases
           if-no-files-found: error
           retention-days: 14

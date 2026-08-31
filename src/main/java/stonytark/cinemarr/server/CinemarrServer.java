@@ -27,6 +27,7 @@ import stonytark.cinemarr.core.server.PlexConnectionLifecycle;
 import stonytark.cinemarr.core.server.TelevisionLifecycle;
 import stonytark.cinemarr.core.protocol.VideoPackets;
 import stonytark.cinemarr.core.protocol.ProtocolLimits;
+import stonytark.cinemarr.core.network.RequiredClientGate;
 import stonytark.cinemarr.registry.CinemarrBlocks;
 import stonytark.cinemarr.screen.CinemarrWorldScreens;
 
@@ -78,34 +79,37 @@ public final class CinemarrServer {
     }
     @SubscribeEvent public void stopping(ServerStoppingEvent event) {
         if (videoManager != null) { videoManager.close(); videoManager = null; }
-        if(plexLifecycle!=null){plexLifecycle.close();plexLifecycle=null;}TelevisionLifecycle.reset(null); videoService = null; videoLibraries = Collections.emptyList();server=null;
+        if(plexLifecycle!=null){plexLifecycle.close();plexLifecycle=null;}RequiredClientGate.clear();TelevisionLifecycle.reset(null); videoService = null; videoLibraries = Collections.emptyList();server=null;
     }
-    @SubscribeEvent public void tick(ServerTickEvent.Post event) { if(plexLifecycle!=null)plexLifecycle.tick(System.currentTimeMillis());if (videoManager != null) videoManager.tick(); }
+    @SubscribeEvent public void tick(ServerTickEvent.Post event) { long now=System.currentTimeMillis();if(server!=null)for(UUID id:RequiredClientGate.expire(now)){ServerPlayer player=server.getPlayerList().getPlayer(id);if(player!=null)player.connection.disconnect(net.minecraft.network.chat.Component.literal("Cinemarr client handshake timed out; protocol "+ProtocolLimits.VERSION+" is required"));}if(plexLifecycle!=null)plexLifecycle.tick(now);if (videoManager != null) videoManager.tick(); }
     @SubscribeEvent public void joined(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer serverPlayer) {
-            prepareAcceptanceVideo(serverPlayer);
+            RequiredClientGate.require(serverPlayer.getUUID(),System.currentTimeMillis());
         }
     }
-    @SubscribeEvent public void left(PlayerEvent.PlayerLoggedOutEvent event) { if (event.getEntity() instanceof ServerPlayer serverPlayer && videoManager!=null)videoManager.playerLeft(serverPlayer); }
+    @SubscribeEvent public void left(PlayerEvent.PlayerLoggedOutEvent event) { if (event.getEntity() instanceof ServerPlayer serverPlayer){RequiredClientGate.remove(serverPlayer.getUUID());if(videoManager!=null)videoManager.playerLeft(serverPlayer);} }
     @SubscribeEvent public void chunkSent(ChunkWatchEvent.Sent event) { if(videoManager!=null)videoManager.chunkSent(event.getPlayer(),event.getLevel(),event.getPos()); }
     @SubscribeEvent public void chunkUnwatched(ChunkWatchEvent.UnWatch event) { if(videoManager!=null)videoManager.chunkUnwatched(event.getPlayer(),event.getLevel(),event.getPos()); }
 
     public void hello(ServerPlayer sender) {
+        if(!RequiredClientGate.accept(sender.getUUID()))return;
         CinemarrNetwork.sendToPlayer(sender, new CinemarrPayloads.ServerHello(
                 ProtocolLimits.VERSION, System.currentTimeMillis()));
+        prepareAcceptanceVideo(sender);
     }
     public PlexVideoService videoService() { return videoService; }
     public List<PlexVideoService.ResolvedLibrary> videoLibraries() { return videoLibraries; }
     public void videoLibraries(ServerPlayer player) {
+        if (!RequiredClientGate.accepted(player.getUUID())) return;
         if (videoManager != null) videoManager.sendLibraries(player);
         else CinemarrNetwork.sendToPlayer(player, new stonytark.cinemarr.network.VideoPayloads.LibraryList(new VideoPackets.LibraryList(java.util.List.of())));
     }
-    public void videoBrowse(ServerPlayer player, VideoPackets.BrowseRequest request) { if (videoManager != null) videoManager.browse(player, request); }
-    public void videoCommand(ServerPlayer player, VideoPackets.SessionCommand command) { if (videoManager != null) videoManager.command(player, command); }
-    public void videoSegments(ServerPlayer player, VideoPackets.SegmentRequest request) { if (videoManager != null) videoManager.segments(player, request); }
-    public void videoManifest(ServerPlayer player, VideoPackets.SegmentManifestRequest request) { if (videoManager != null) videoManager.manifest(player, request); }
-    public void videoAcknowledge(ServerPlayer player, VideoPackets.SegmentAcknowledgement value) { if (videoManager != null) videoManager.acknowledge(player, value); }
-    public void videoHealth(ServerPlayer player, VideoPackets.ClientHealth value) { if (videoManager != null) videoManager.health(player, value); }
+    public void videoBrowse(ServerPlayer player, VideoPackets.BrowseRequest request) { if (RequiredClientGate.accepted(player.getUUID())&&videoManager != null) videoManager.browse(player, request); }
+    public void videoCommand(ServerPlayer player, VideoPackets.SessionCommand command) { if (RequiredClientGate.accepted(player.getUUID())&&videoManager != null) videoManager.command(player, command); }
+    public void videoSegments(ServerPlayer player, VideoPackets.SegmentRequest request) { if (RequiredClientGate.accepted(player.getUUID())&&videoManager != null) videoManager.segments(player, request); }
+    public void videoManifest(ServerPlayer player, VideoPackets.SegmentManifestRequest request) { if (RequiredClientGate.accepted(player.getUUID())&&videoManager != null) videoManager.manifest(player, request); }
+    public void videoAcknowledge(ServerPlayer player, VideoPackets.SegmentAcknowledgement value) { if (RequiredClientGate.accepted(player.getUUID())&&videoManager != null) videoManager.acknowledge(player, value); }
+    public void videoHealth(ServerPlayer player, VideoPackets.ClientHealth value) { if (RequiredClientGate.accepted(player.getUUID())&&videoManager != null) videoManager.health(player, value); }
     public String videoStatus(){return videoManager==null?"Cinemarr video "+plexState()+"; registeredTvs="+TelevisionLifecycle.count()+"; activeStreams=0/"+CinemarrSettings.maximumConcurrentStreams()+"; attachedSessions=0; dormantSessions=0":videoManager.status();}
     public String videoDiagnostics(){return videoManager==null?"Plex="+plexState()+"; retryInMs="+(plexLifecycle==null?0:plexLifecycle.retryInMs(System.currentTimeMillis()))+"; lastFailure="+(plexLifecycle==null||plexLifecycle.lastFailure().isBlank()?"none":plexLifecycle.lastFailure())+"; registeredTvs="+TelevisionLifecycle.count()+"; libraries=0; activeStreams=0/"+CinemarrSettings.maximumConcurrentStreams():videoManager.diagnostics();}
     public boolean retryPlex(){return plexLifecycle!=null&&plexLifecycle.retry();}

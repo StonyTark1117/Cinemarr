@@ -96,7 +96,7 @@ dependencyLocking { lockAllConfigurations() }
 sourceSets {
     main {
         java {
-            setSrcDirs([file('../../../src/main/java'), file('../common/src/main'), file('src/main')])
+            setSrcDirs([file('../../../src/main/java'), file('../../mc1.20/common/src/main'), file('../common/src/main'), file('src/main')])
             exclude 'stonytark/cinemarr/Cinemarr.java'
             exclude 'stonytark/cinemarr/client/CinemarrClient.java'
             exclude 'stonytark/cinemarr/client/CinemarrClientConfigScreen.java'

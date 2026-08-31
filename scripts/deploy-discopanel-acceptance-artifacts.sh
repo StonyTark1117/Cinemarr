@@ -2,8 +2,10 @@
 set -euo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-api_base=${DISCOPANEL_API_BASE:-http://192.168.1.73:8080}
+api_base=${DISCOPANEL_API_BASE:-}
 [[ -n "${DISCOPANEL_TOKEN:-}" ]] || { echo "DISCOPANEL_TOKEN is required" >&2; exit 2; }
+[[ "$api_base" =~ ^https?://[A-Za-z0-9._:-]+$ ]] \
+  || { echo "DISCOPANEL_API_BASE is required and must be a safe HTTP(S) origin" >&2; exit 2; }
 for tool in curl jq base64 sha256sum; do command -v "$tool" >/dev/null || { echo "Missing required tool: $tool" >&2; exit 2; }; done
 
 tmpdir=$(mktemp -d /tmp/cinemarr-acceptance-deploy.XXXXXX)

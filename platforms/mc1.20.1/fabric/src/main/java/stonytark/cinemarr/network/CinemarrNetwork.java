@@ -29,7 +29,7 @@ public final class CinemarrNetwork {
     public static void sendToAllPlayers(CinemarrMessage payload){MinecraftServer current=server;if(current!=null)for(ServerPlayer player:current.getPlayerList().getPlayers())sendToPlayer(player,payload);}
     public static void register(){
         receive(CinemarrPayloads.ClientHello.ID, CinemarrPayloads.ClientHello::read, (player, payload) -> {
-            if (!protocolMatches(payload.protocolVersion())) {
+            if (!payload.valid()) {
                 Component reason = Component.literal("Cinemarr protocol mismatch: server requires version " + PROTOCOL);
                 Cinemarr.LOGGER.warn("Disconnecting {}: {}", player.getGameProfile().getName(), reason.getString());
                 player.connection.send(new ClientboundDisconnectPacket(reason));

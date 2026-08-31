@@ -5,8 +5,6 @@ import stonytark.cinemarr.core.library.LibraryRule;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /** Loader-neutral asynchronous Plex connection state with bounded automatic retry. */
 public final class PlexConnectionLifecycle implements AutoCloseable {
@@ -16,9 +14,7 @@ public final class PlexConnectionLifecycle implements AutoCloseable {
     public interface FailureHandler { void failed(String redactedMessage, long retryDelayMs); }
     public static final long RETRY_DELAY_MS = 30_000L;
 
-    private final ExecutorService worker = Executors.newSingleThreadExecutor(runnable -> {
-        Thread thread = new Thread(runnable, "Cinemarr Plex connector"); thread.setDaemon(true); return thread;
-    });
+    private final BoundedWorkExecutor worker = new BoundedWorkExecutor(1, 4, "Cinemarr Plex connector ");
     private State state = State.DISABLED;
     private String url = "";
     private String token = "";
@@ -65,7 +61,7 @@ public final class PlexConnectionLifecycle implements AutoCloseable {
         final long attempt = ++generation;
         final String attemptUrl = url, attemptToken = token;
         final List<LibraryRule> attemptRules = rules;
-        worker.execute(() -> {
+        worker.run(() -> {
             Connection connection = null; Throwable failure = null;
             try {
                 PlexVideoService service = new PlexVideoService(attemptUrl, attemptToken);
@@ -75,6 +71,11 @@ public final class PlexConnectionLifecycle implements AutoCloseable {
             MainThread scheduler;
             synchronized (PlexConnectionLifecycle.this) { scheduler = mainThread; }
             if (scheduler != null) scheduler.execute(() -> finish(attempt, result, problem));
+        }).whenComplete((unused, rejected) -> {
+            if (rejected == null) return;
+            MainThread scheduler;
+            synchronized (PlexConnectionLifecycle.this) { scheduler = mainThread; }
+            if (scheduler != null) scheduler.execute(() -> finish(attempt, null, rejected));
         });
     }
 
@@ -95,7 +96,7 @@ public final class PlexConnectionLifecycle implements AutoCloseable {
         if (closed) return;
         closed = true; generation++; state = State.DISABLED; retryAtMs = 0L;
         url = ""; token = ""; rules = Collections.emptyList(); mainThread = null; readyHandler = null; failureHandler = null;
-        worker.shutdownNow();
+        worker.close();
     }
 
     public static final class Connection {

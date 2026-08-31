@@ -20,8 +20,8 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class VideoPayloadsTest {
-    @Test void protocolNineIsAdvertisedAndSessionStateRoundTripsThroughNeoForge(){
-        assertEquals(9,ProtocolLimits.VERSION);UUID tv=UUID.randomUUID(),session=UUID.randomUUID();
+    @Test void protocolTenIsAdvertisedAndSessionStateRoundTripsThroughNeoForge(){
+        assertEquals(10,ProtocolLimits.VERSION);UUID tv=UUID.randomUUID(),session=UUID.randomUUID();
         VideoPackets.SessionState state=new VideoPackets.SessionState(tv,99L,session,2,VideoPackets.SessionStatus.PLAYING,
                 new VideoMediaItem(MediaKind.MOVIE,"1","Movie","","PG",0,90_000),1_000,90_000,false,PresentationMode.FIT,17,11,new byte[]{3,4},ScreenFacing.NORTH,42,-8,10,List.of(),-1,-1,5_000,true,"ok");
         VideoPayloads.SessionState decoded=roundTrip(VideoPayloads.SessionState.CODEC,new VideoPayloads.SessionState(state));

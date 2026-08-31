@@ -55,7 +55,7 @@ public final class CinemarrNetwork {
         registerC2S(VideoPayloads.ClientHealth.TYPE, VideoPayloads.ClientHealth.CODEC);
 
         ServerPlayNetworking.registerGlobalReceiver(CinemarrPayloads.ClientHello.TYPE, (payload, context) -> {
-            if (!protocolMatches(payload.protocolVersion())) context.player().connection.disconnect(Component.literal(
+            if (!payload.valid()) context.player().connection.disconnect(Component.literal(
                     "Cinemarr protocol mismatch: server requires version " + PROTOCOL));
             else CinemarrServer.instance().hello(context.player());
         });

@@ -9,6 +9,7 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 import stonytark.cinemarr.server.CinemarrServer;
 import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.core.protocol.CinemarrMessage;
+import stonytark.cinemarr.core.network.RequiredClientGate;
 
 public final class CinemarrNetwork {
     /** Video protocol shared by the server and required client. */
@@ -35,14 +36,14 @@ public final class CinemarrNetwork {
         registrar.playToClient(VideoPayloads.SegmentManifest.TYPE, VideoPayloads.SegmentManifest.CODEC, CinemarrNetwork::client);
         registrar.playToClient(VideoPayloads.SegmentChunk.TYPE, VideoPayloads.SegmentChunk.CODEC, CinemarrNetwork::client);
         registrar.playToServer(CinemarrPayloads.ClientHello.TYPE, CinemarrPayloads.ClientHello.CODEC, (payload, context) -> {
-            if (!protocolMatches(payload.protocolVersion())) {
+            if (!payload.valid()) {
                 context.disconnect(Component.literal("Cinemarr protocol mismatch: server requires version " + PROTOCOL));
             } else {
                 context.enqueueWork(() -> CinemarrServer.instance().hello((ServerPlayer)context.player()));
             }
         });
         registrar.playToServer(CinemarrPayloads.TimeSyncRequest.TYPE, CinemarrPayloads.TimeSyncRequest.CODEC,
-                (p, c) -> c.reply(new CinemarrPayloads.TimeSyncResponse(p.nonce(), p.clientSentEpochMs(), System.currentTimeMillis())));
+                (p, c) -> {if(RequiredClientGate.accepted(((ServerPlayer)c.player()).getUUID()))c.reply(new CinemarrPayloads.TimeSyncResponse(p.nonce(), p.clientSentEpochMs(), System.currentTimeMillis()));});
         registrar.playToServer(VideoPayloads.LibraryListRequest.TYPE, VideoPayloads.LibraryListRequest.CODEC,
                 (p, c) -> c.enqueueWork(() -> CinemarrServer.instance().videoLibraries((ServerPlayer)c.player())));
         registrar.playToServer(VideoPayloads.BrowseRequest.TYPE, VideoPayloads.BrowseRequest.CODEC,

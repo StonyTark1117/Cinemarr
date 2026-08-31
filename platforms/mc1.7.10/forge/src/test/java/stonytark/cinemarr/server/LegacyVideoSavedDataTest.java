@@ -40,6 +40,12 @@ class LegacyVideoSavedDataTest {
         assertEquals("session-64", data.records().get(63).sessionName());
     }
 
+    @Test void migratesSchemaZeroDefaultsAndClampsCheckpoint(){LegacyVideoSavedData source=new LegacyVideoSavedData();source.put(new LegacyVideoSavedData.Record("old","movies",item("1","Movie"),999_999,false,-1,-1,Collections.<QueuedVideo>emptyList()));NBTTagCompound tag=new NBTTagCompound();source.writeToNBT(tag);tag.removeTag("schemaVersion");tag.getTagList("sessions",10).getCompoundTagAt(0).removeTag("audioStreamId");LegacyVideoSavedData restored=new LegacyVideoSavedData();restored.readFromNBT(tag);assertEquals(60_000,restored.record("old").positionMs());assertEquals(-1,restored.record("old").audioStreamId());}
+
+    @Test void rejectsFutureSchemaCorruptKindsAndOversizedStrings(){NBTTagCompound future=new NBTTagCompound();future.setInteger("schemaVersion",999);LegacyVideoSavedData data=new LegacyVideoSavedData();data.put(record("existing"));data.readFromNBT(future);assertTrue(data.records().isEmpty());NBTTagCompound root=new NBTTagCompound();NBTTagCompound invalid=new NBTTagCompound();invalid.setString("name",String.join("",Collections.nCopies(65,"x")));invalid.setString("library","movies");invalid.setString("kind","NOT_MEDIA");NBTTagListCompat.add(root,invalid);data.readFromNBT(root);assertTrue(data.records().isEmpty());}
+
+    private static final class NBTTagListCompat {static void add(NBTTagCompound root,NBTTagCompound value){net.minecraft.nbt.NBTTagList list=new net.minecraft.nbt.NBTTagList();list.appendTag(value);root.setTag("sessions",list);}}
+
     private static LegacyVideoSavedData.Record record(String name) {
         return new LegacyVideoSavedData.Record(name, "movies", item(name, "Movie"), 0, true, -1, -1,
                 Collections.<QueuedVideo>emptyList());
