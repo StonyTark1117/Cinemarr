@@ -1,0 +1,20 @@
+// Release hashes must describe source content, not the wall-clock time of the
+// machine that assembled an archive. Apply this to every root and included
+// platform build so nested core and jar-in-jar archives are deterministic too.
+tasks.withType(org.gradle.api.tasks.bundling.AbstractArchiveTask).configureEach {
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+
+    // ForgeGradle's jar-in-jar step copies the dependency JAR's filesystem
+    // timestamp into the outer archive even when the outer Jar task is
+    // reproducible. Pin the completed archive itself to the same local ZIP
+    // epoch Gradle uses for normalized entries, so nested core JARs do not
+    // change the release digest on every rebuild or across time zones.
+    doLast {
+        def zipEpoch = java.time.LocalDateTime.of(1980, 2, 1, 0, 0)
+                .atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        if (!archiveFile.get().asFile.setLastModified(zipEpoch)) {
+            throw new GradleException("Could not normalize archive timestamp: ${archiveFile.get().asFile}")
+        }
+    }
+}

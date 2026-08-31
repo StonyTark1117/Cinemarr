@@ -3,6 +3,8 @@ plugins {
     id 'com.gtnewhorizons.retrofuturagradle' version '2.0.3'
 }
 
+allprojects { apply from: rootProject.file('../../../gradle/reproducible-archives.gradle') }
+
 def modVersionValue = providers.gradleProperty('mod_version').get()
 def minecraftVersionValue = providers.gradleProperty('minecraft_version').get()
 
@@ -26,10 +28,15 @@ minecraft {
 def acceptanceServer = providers.gradleProperty('cinemarrAcceptanceServer').orNull
 def acceptanceUsername = providers.gradleProperty('cinemarrAcceptanceUsername').orNull
 def acceptanceGameDir = providers.gradleProperty('cinemarrAcceptanceGameDir').orNull
+def acceptanceWidth = providers.gradleProperty('cinemarrAcceptanceWidth').orNull
+def acceptanceHeight = providers.gradleProperty('cinemarrAcceptanceHeight').orNull
 
 tasks.named('runClient') {
     if (acceptanceUsername != null) username.set(acceptanceUsername)
     if (acceptanceGameDir != null) workingDir(file(acceptanceGameDir))
+    if (acceptanceWidth != null && acceptanceHeight != null) {
+        extraArgs.addAll(['--width', acceptanceWidth, '--height', acceptanceHeight])
+    }
     if (acceptanceServer != null) {
         int separator = acceptanceServer.lastIndexOf(':')
         if (separator <= 0 || separator == acceptanceServer.length() - 1) {
@@ -69,8 +76,6 @@ dependencies {
     def javaCppVersion = '1.5.14'
     def ffmpegVersion = '8.1.2-1.5.14'
     def javaCvVersion = '1.5.14'
-    embeddedLibraries('javazoom:jlayer:1.0.1')
-    embeddedLibraries('de.sciss:jump3r:1.0.5')
     javacvFacade("org.bytedeco:javacv:${javaCvVersion}") { transitive = false }
     compileOnly("org.bytedeco:javacv:${javaCvVersion}") { transitive = false }
     embeddedLibraries("org.bytedeco:javacpp:${javaCppVersion}") { transitive = false }
@@ -182,15 +187,9 @@ tasks.register('verifyRelease') {
                     'META-INF/THIRD_PARTY_NOTICES.md',
                     'stonytark/cinemarr/Cinemarr.class',
                     'stonytark/cinemarr/core/server/ChunkTransferPolicy.class',
-                    'stonytark/cinemarr/core/server/CoordinatorRuntime.class',
-                    'stonytark/cinemarr/core/server/GlobalPlaybackCoordinator.class',
-                    'stonytark/cinemarr/core/server/PlaybackStore.class',
                     'stonytark/cinemarr/network/LegacyNetwork.class',
-                    'stonytark/cinemarr/server/LegacyGlobalPlayer.class',
                     'stonytark/cinemarr/server/LegacyVideoManager.class',
                     'stonytark/cinemarr/server/LegacyVideoSavedData.class',
-                    'stonytark/cinemarr/client/LegacyAudioPlayer.class',
-                    'stonytark/cinemarr/client/LegacyScreen.class',
                     'stonytark/cinemarr/client/LegacyFfmpegVideoDecoder.class',
                     'stonytark/cinemarr/client/FfmpegHardwareVideoDecoder.class',
                     'stonytark/cinemarr/client/LegacyVideoPlayback.class',
@@ -201,10 +200,7 @@ tasks.register('verifyRelease') {
                     'stonytark/cinemarr/screen/LegacyScreenPixelBlock.class',
                     'stonytark/cinemarr/screen/LegacyTvControllerBlock.class',
                     'org/bytedeco/javacv/FFmpegFrameGrabber.class',
-                    'org/bytedeco/ffmpeg/global/avcodec.class',
-                    'stonytark/cinemarr/server/LegacySavedData.class',
-                    'javazoom/jl/decoder/Decoder.class',
-                    'de/sciss/jump3r/mp3/Lame.class'
+                    'org/bytedeco/ffmpeg/global/avcodec.class'
             ].each { entry ->
                 if (!found.contains(entry)) {
                     throw new GradleException("Legacy release archive is missing ${entry}")
@@ -225,7 +221,7 @@ tasks.register('verifyRelease') {
             String metadata = zip.getInputStream(zip.getEntry('mcmod.info')).getText('UTF-8')
             [
                     '"modid": "cinemarr"',
-                    '"version": "1.0.1"',
+                    '"version": "1.0.0"',
                     '"mcversion": "1.7.10"'
             ].each { required ->
                 if (!metadata.contains(required)) throw new GradleException("Legacy metadata is missing ${required}")
@@ -235,18 +231,6 @@ tasks.register('verifyRelease') {
             }
             if (metadata.toLowerCase(Locale.ROOT).contains('pampmod')) {
                 throw new GradleException('Legacy metadata contains the retired PAmpMod identifier')
-            }
-            byte[] playbackStore = zip.getInputStream(zip.getEntry(
-                    'stonytark/cinemarr/core/server/PlaybackStore.class')).bytes
-            byte[] legacySavedData = zip.getInputStream(zip.getEntry(
-                    'stonytark/cinemarr/server/LegacySavedData.class')).bytes
-            String storeConstants = new String(playbackStore, java.nio.charset.StandardCharsets.ISO_8859_1)
-            String adapterConstants = new String(legacySavedData, java.nio.charset.StandardCharsets.ISO_8859_1)
-            if (!storeConstants.contains('markChanged') || !adapterConstants.contains('markChanged')) {
-                throw new GradleException('Legacy playback persistence is missing its explicit reobfuscation-safe bridge')
-            }
-            if (storeConstants.contains('markDirty')) {
-                throw new GradleException('Legacy shared playback contract must not reference the MCP-mapped markDirty name')
             }
         }
     }

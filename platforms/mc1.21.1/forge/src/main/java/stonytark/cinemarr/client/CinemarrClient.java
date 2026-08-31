@@ -47,7 +47,7 @@ public final class CinemarrClient {
     private void reloadListeners(RegisterClientReloadListenersEvent event) {
         event.registerReloadListener((ResourceManagerReloadListener)this::resourcesReloaded);
     }
-    private void resourcesReloaded(ResourceManager ignored) { VIDEO_AUDIO.audioEngineReloaded(); CinemarrClientState.INSTANCE.audioEngineReloaded(); }
+    private void resourcesReloaded(ResourceManager ignored) { VIDEO_AUDIO.audioEngineReloaded(); }
 
     @SubscribeEvent public void tick(TickEvent.ClientTickEvent.Post event) {
         Minecraft minecraft = Minecraft.getInstance();

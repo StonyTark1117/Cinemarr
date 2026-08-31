@@ -3,6 +3,8 @@ package stonytark.cinemarr.client;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.GuiTextField;
+import net.minecraft.util.IChatComponent;
+import net.minecraft.util.ScreenShotHelper;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
 import stonytark.cinemarr.core.library.MediaKind;
@@ -11,7 +13,9 @@ import stonytark.cinemarr.core.library.VideoMediaItem;
 import stonytark.cinemarr.core.library.VideoStreamOption;
 import stonytark.cinemarr.core.platform.CinemarrSettings;
 import stonytark.cinemarr.core.protocol.VideoPackets;
+import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.core.video.PresentationMode;
+import stonytark.cinemarr.Cinemarr;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -34,6 +38,7 @@ final class LegacyVideoScreen extends GuiScreen {
     private boolean queueView;
     private GuiTextField search;
     private GuiTextField sessionName;
+    private boolean acceptanceScreenshotPending;
 
     LegacyVideoScreen(long controllerPos, LegacyVideoClientState state) { this.controllerPos = controllerPos; this.state = state; }
 
@@ -54,6 +59,7 @@ final class LegacyVideoScreen extends GuiScreen {
         add(TOGGLE_QUEUE, left + panel - 72, top, 72, 20, queueView ? "Browse" : "Queue");
         top += 28; if (queueView) addQueueRows(left, top, panel); else addBrowseRows(left, top, panel);
         addControls(left, panel);
+        inspectAcceptanceLayout();
     }
 
     private void addBrowseRows(int left, int top, int panel) {
@@ -169,6 +175,30 @@ final class LegacyVideoScreen extends GuiScreen {
         drawCenteredString(fontRendererObj, trim(now, width - 20), width / 2, 23, 0xa0d8ff);
         super.drawScreen(mouseX, mouseY, partialTicks); if (search != null) search.drawTextBox(); if (sessionName != null) sessionName.drawTextBox();
         if (!notice.isEmpty()) drawCenteredString(fontRendererObj, trim(notice, width - 20), width / 2, height - 64, 0xffb36b);
+        saveAcceptanceScreenshot();
+    }
+    private void inspectAcceptanceLayout() {
+        if (!ProtocolLimits.videoProbeEnabled()) return;
+        int widgets = 0, clipped = 0;
+        for (Object value : buttonList) if (value instanceof GuiButton) {
+            GuiButton button = (GuiButton) value; widgets++;
+            if (button.xPosition < 0 || button.yPosition < 0 || button.xPosition + button.width > width
+                    || button.yPosition + button.height > height) clipped++;
+        }
+        if (search != null) widgets++;
+        if (sessionName != null) widgets++;
+        VideoPackets.SessionState playback = state.session(controllerPos);
+        boolean control = playback != null && playback.canControl();
+        Cinemarr.LOGGER.info("Acceptance video UI: width={} height={} widgets={} clipped={} canControl={}",
+                width, height, widgets, clipped, control);
+        acceptanceScreenshotPending = true;
+    }
+    private void saveAcceptanceScreenshot() {
+        if (!acceptanceScreenshotPending || mc == null) return;
+        acceptanceScreenshotPending = false;
+        IChatComponent result = ScreenShotHelper.saveScreenshot(mc.mcDataDir, "cinemarr-video-ui-acceptance.png",
+                mc.displayWidth, mc.displayHeight, mc.getFramebuffer());
+        Cinemarr.LOGGER.info("Acceptance video UI screenshot: {}", result.getUnformattedText());
     }
     @Override public void onGuiClosed() { Keyboard.enableRepeatEvents(false); }
     private String trim(String value, int maximum) { if (fontRendererObj.getStringWidth(value) <= maximum) return value; while (value.length() > 1 && fontRendererObj.getStringWidth(value + "...") > maximum) value = value.substring(0, value.length() - 1); return value + "..."; }

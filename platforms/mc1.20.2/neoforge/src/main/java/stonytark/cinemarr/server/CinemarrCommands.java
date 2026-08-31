@@ -22,6 +22,9 @@ public final class CinemarrCommands {
                                     () -> Component.literal(CinemarrServer.instance().videoDiagnostics()), false);
                             return 1;
                         }));
+        root.then(Commands.literal("retry")
+                .requires(source -> source.hasPermission(CinemarrSettings.operatorPermissionLevel()))
+                .executes(context -> retry(context.getSource())));
         root.then(CinemarrTvCommands.command());
         event.getDispatcher().register(root);
     }
@@ -29,5 +32,11 @@ public final class CinemarrCommands {
     private static int status(net.minecraft.commands.CommandSourceStack source) {
         source.sendSuccess(() -> Component.literal(CinemarrServer.instance().videoStatus()), false);
         return 1;
+    }
+
+    private static int retry(net.minecraft.commands.CommandSourceStack source) {
+        boolean started = CinemarrServer.instance().retryPlex();
+        source.sendSuccess(() -> Component.literal(started ? "Plex retry started" : "Plex retry is not available"), false);
+        return started ? 1 : 0;
     }
 }

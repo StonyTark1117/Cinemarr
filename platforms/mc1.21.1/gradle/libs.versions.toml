@@ -9,8 +9,6 @@ modmenu = "11.0.4"
 forgegradle = "7.0.35"
 forge-jarjar = "0.2.3"
 forge-loader = "52.1.16"
-jlayer = "1.0.1"
-jump3r = "1.0.5"
 junit = "5.10.2"
 
 [plugins]
@@ -24,8 +22,6 @@ quilt-loader = { module = "org.quiltmc:quilt-loader", version.ref = "quilt-loade
 fabric-api = { module = "net.fabricmc.fabric-api:fabric-api", version.ref = "fabric-api" }
 modmenu = { module = "com.terraformersmc:modmenu", version.ref = "modmenu" }
 forge = { module = "net.minecraftforge:forge", version.ref = "forge-loader" }
-jlayer = { module = "javazoom:jlayer", version.ref = "jlayer" }
-jump3r = { module = "de.sciss:jump3r", version.ref = "jump3r" }
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
 junit-launcher = { module = "org.junit.platform:junit-platform-launcher" }

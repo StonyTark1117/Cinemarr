@@ -11,6 +11,8 @@ import stonytark.cinemarr.core.library.VideoStreamOption;
 import stonytark.cinemarr.core.network.BoundedStreams;
 import stonytark.cinemarr.core.network.HttpTransport;
 import stonytark.cinemarr.core.network.UrlConnectionHttpTransport;
+import stonytark.cinemarr.core.platform.CinemarrSettings;
+import stonytark.cinemarr.core.platform.ProductInfo;
 import stonytark.cinemarr.core.video.RenditionPolicy;
 
 import java.io.IOException;
@@ -105,7 +107,9 @@ public final class PlexVideoService {
         if (metadata.size() == 0) throw new PlexException(PlexException.Kind.NOT_FOUND, "Plex video item was not found");
         VideoMediaItem value = item(metadata.get(0));
         if (value == null) throw new PlexException(PlexException.Kind.INVALID_RESPONSE, "Plex item is not playable video metadata");
-        return new PlaybackMetadata(value,streams(metadata.get(0).getAsJsonObject()));
+        JsonObject raw = metadata.get(0).getAsJsonObject();
+        int[] media = mediaDimensions(raw);
+        return new PlaybackMetadata(value, streams(raw), media[0], media[1], media[2]);
     }
 
     public VideoMediaItem nextEpisode(String key)throws IOException{
@@ -130,15 +134,15 @@ public final class PlexVideoService {
         parameter(query, "videoCodec", "h264");
         parameter(query, "audioCodec", "aac");
         parameter(query, "videoResolution", rendition.width() + "x" + rendition.height());
-        parameter(query, "maxVideoBitrate", "2000");
-        parameter(query, "videoQuality", "60");
+        parameter(query, "maxVideoBitrate", Integer.toString(CinemarrSettings.maximumVideoBitrateKbps()));
+        parameter(query, "videoQuality", "100");
         parameter(query, "location", "lan");
         parameter(query, "offset", Long.toString(Math.max(0, offsetMs) / 1000));
         parameter(query, "X-Plex-Client-Identifier", CLIENT_ID);
         parameter(query, "X-Plex-Device-Name", "Minecraft Server");
         parameter(query, "X-Plex-Product", "Cinemarr");
         parameter(query, "X-Plex-Platform", "Java");
-        parameter(query, "X-Plex-Version", "1.0.1");
+        parameter(query, "X-Plex-Version", ProductInfo.version());
         parameter(query, "X-Plex-Provides", "player");
         parameter(query, "X-Plex-Client-Profile-Name", "Generic");
         parameter(query, "X-Plex-Client-Profile-Extra", profile);
@@ -264,7 +268,7 @@ public final class PlexVideoService {
         Map<String, String> headers = new LinkedHashMap<String, String>();
         headers.put("X-Plex-Token", token);
         headers.put("X-Plex-Product", "Cinemarr");
-        headers.put("X-Plex-Version", "1.0.1");
+        headers.put("X-Plex-Version", ProductInfo.version());
         headers.put("X-Plex-Client-Identifier", CLIENT_ID);
         return headers;
     }
@@ -354,6 +358,18 @@ public final class PlexVideoService {
         for(JsonElement mediaElement:media){if(!mediaElement.isJsonObject())continue;JsonArray parts=array(mediaElement.getAsJsonObject(),"Part");for(JsonElement partElement:parts){if(!partElement.isJsonObject())continue;JsonArray streams=array(partElement.getAsJsonObject(),"Stream");for(JsonElement streamElement:streams){if(!streamElement.isJsonObject())continue;JsonObject stream=streamElement.getAsJsonObject();int type=integer(stream,"streamType"),id=integer(stream,"id");if(id<1||(type!=2&&type!=3))continue;String language=text(stream,"language");String title=text(stream,"title");String label=title.isEmpty()?language:title;if(label.isEmpty())label=type==2?"Audio "+id:"Subtitle "+id;values.add(new VideoStreamOption(type==2?VideoStreamOption.Kind.AUDIO:VideoStreamOption.Kind.SUBTITLE,id,label,text(stream,"languageCode"),text(stream,"codec"),selected(stream)));}}}
         return immutable(values);
     }
+    private static int[] mediaDimensions(JsonObject metadata) {
+        JsonArray media = array(metadata, "Media");
+        for (JsonElement element : media) {
+            if (!element.isJsonObject()) continue;
+            JsonObject value = element.getAsJsonObject();
+            int width = integer(value, "width");
+            int height = integer(value, "height");
+            int bitrate = integer(value, "bitrate");
+            if (width > 0 && height > 0) return new int[] { width, height, Math.max(0, bitrate) };
+        }
+        return new int[] { 1_920, 1_080, 0 };
+    }
     private static <T> List<T> immutable(List<T> values) { return Collections.unmodifiableList(new ArrayList<T>(values)); }
 
     public static final class ResolvedLibrary {
@@ -374,7 +390,26 @@ public final class PlexVideoService {
         public List<VideoMediaItem> items() { return items; }
         public boolean hasMore() { return hasMore; }
     }
-    public static final class PlaybackMetadata {private final VideoMediaItem item;private final List<VideoStreamOption> streams;PlaybackMetadata(VideoMediaItem item,List<VideoStreamOption> streams){this.item=item;this.streams=immutable(streams);}public VideoMediaItem item(){return item;}public List<VideoStreamOption> streams(){return streams;}}
+    public static final class PlaybackMetadata {
+        private final VideoMediaItem item;
+        private final List<VideoStreamOption> streams;
+        private final int sourceWidth;
+        private final int sourceHeight;
+        private final int sourceBitrateKbps;
+        PlaybackMetadata(VideoMediaItem item, List<VideoStreamOption> streams, int sourceWidth, int sourceHeight,
+                         int sourceBitrateKbps) {
+            this.item = item;
+            this.streams = immutable(streams);
+            this.sourceWidth = sourceWidth;
+            this.sourceHeight = sourceHeight;
+            this.sourceBitrateKbps = sourceBitrateKbps;
+        }
+        public VideoMediaItem item() { return item; }
+        public List<VideoStreamOption> streams() { return streams; }
+        public int sourceWidth() { return sourceWidth; }
+        public int sourceHeight() { return sourceHeight; }
+        public int sourceBitrateKbps() { return sourceBitrateKbps; }
+    }
     public static final class VideoSession {
         private final UUID id;
         private final URL playlistUrl;

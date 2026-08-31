@@ -4,8 +4,12 @@ plugins {
     alias(libs.plugins.forge.jarjar)
 }
 
+allprojects { apply from: rootProject.file('../../../gradle/reproducible-archives.gradle') }
+
 group = 'stonytark'
-version = '1.0.1'
+def productProperties = new Properties()
+file('../../../gradle.properties').withInputStream { productProperties.load(it) }
+version = productProperties.getProperty('mod_version')
 def artifactVersion = version.toString()
 def expectedReleaseName = "cinemarr-${artifactVersion}+mc1.21.1-forge.jar"
 
@@ -61,10 +65,6 @@ dependencies {
     implementation minecraft.dependency("net.minecraftforge:forge:${libs.versions.minecraft.get()}-${libs.versions.forge.loader.get()}")
     implementation project(':core')
     jarJar project(':core')
-    implementation libs.jlayer
-    jarJar libs.jlayer
-    implementation libs.jump3r
-    jarJar libs.jump3r
     javacvFacade("org.bytedeco:javacv:${javaCvVersion}") { transitive = false }
     compileOnly("org.bytedeco:javacv:${javaCvVersion}") { transitive = false }
     implementation("org.bytedeco:javacpp:${javaCppVersion}") { transitive = false }
@@ -136,8 +136,7 @@ tasks.named('build') { dependsOn(tasks.named('jarJar')) }
 
 def releaseArchive = tasks.named('jarJar').flatMap { it.archiveFile }
 def coreReleaseEntry = "META-INF/jarjar/stonytark.cinemarr.core-${version}.jar".toString()
-def releaseEntries = [coreReleaseEntry, 'META-INF/jarjar/jlayer-1.0.1.jar',
-                      'META-INF/jarjar/jump3r-1.0.5.jar', 'META-INF/jarjar/metadata.json',
+def releaseEntries = [coreReleaseEntry, 'META-INF/jarjar/metadata.json',
                       'META-INF/LICENSE-Cinemarr-CC0-1.0.txt', 'META-INF/LICENSE-LGPL-2.1-or-later.txt',
                       'META-INF/THIRD_PARTY_NOTICES.md', 'META-INF/mods.toml', 'cinemarr.mixins.json',
                       'cinemarr.png', 'pack.mcmeta', 'assets/cinemarr/lang/en_us.json', 'stonytark/cinemarr/Cinemarr.class',

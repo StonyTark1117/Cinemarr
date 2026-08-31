@@ -71,7 +71,7 @@ public final class CinemarrClient {
     }
     @SubscribeEvent public void logout(ClientPlayerNetworkEvent.LoggingOut event) { VIDEO_AUDIO.reset(); VIDEO.reset(); CinemarrClientState.INSTANCE.stop(); acceptanceVideoReadyTicks=0;acceptanceVideoScreenshotSaved=false; }
     @SubscribeEvent public void login(ClientPlayerNetworkEvent.LoggingIn event) { CinemarrClientState.INSTANCE.hello(); }
-    private void soundEngineLoaded(SoundEngineLoadEvent event) { VIDEO_AUDIO.audioEngineReloaded(); CinemarrClientState.INSTANCE.audioEngineReloaded(); }
+    private void soundEngineLoaded(SoundEngineLoadEvent event) { VIDEO_AUDIO.audioEngineReloaded(); }
     private void captureAcceptanceVideo(Minecraft minecraft) {
         if (!ProtocolLimits.videoProbeEnabled() || acceptanceVideoScreenshotSaved
                 || !VIDEO.hasPresentedFrame() || !VIDEO.presentedFrameCaughtUp() || !VIDEO_AUDIO.anyReady()) {

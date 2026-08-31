@@ -1,7 +1,5 @@
 package stonytark.cinemarr.server;
 
-import stonytark.cinemarr.core.server.Mp3CbrNormalizer;
-import stonytark.cinemarr.core.server.AudioCache;
 import org.junit.jupiter.api.Test;
 import stonytark.cinemarr.Cinemarr;
 import stonytark.cinemarr.network.ClientPayloadBridge;
@@ -15,7 +13,9 @@ import static org.junit.jupiter.api.Assertions.*;
 class DedicatedServerIsolationTest {
     @Test void commonAndServerClassesHaveNoClientOpenAlOrLwjglLinkage() throws Exception {
         List<Class<?>> classes = List.of(Cinemarr.class, CinemarrNetwork.class, CinemarrPayloads.class, ClientPayloadBridge.class,
-                CinemarrServer.class, GlobalPlayer.class, CinemarrCommands.class, PlexClient.class, AudioCache.class, Mp3CbrNormalizer.class);
+                CinemarrServer.class, CinemarrCommands.class, ServerVideoManager.class,
+                stonytark.cinemarr.core.server.PlexVideoService.class,
+                stonytark.cinemarr.core.server.VideoSessionCoordinator.class);
         for (Class<?> type : classes) {
             assertDoesNotThrow(() -> Class.forName(type.getName(), false, type.getClassLoader()));
             String resource = "/" + type.getName().replace('.', '/') + ".class";

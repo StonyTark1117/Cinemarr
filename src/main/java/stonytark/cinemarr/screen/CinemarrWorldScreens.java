@@ -16,6 +16,8 @@ import stonytark.cinemarr.core.screen.ScreenPixel;
 import stonytark.cinemarr.core.screen.ScreenTopology;
 import stonytark.cinemarr.core.platform.CinemarrSettings;
 import stonytark.cinemarr.core.server.TelevisionLifecycle;
+import stonytark.cinemarr.core.protocol.ProtocolLimits;
+import stonytark.cinemarr.Cinemarr;
 import stonytark.cinemarr.core.video.PresentationMode;
 
 import java.util.ArrayDeque;
@@ -29,20 +31,59 @@ import java.util.UUID;
 
 /** Dimension-local durable index of pixels and activated televisions. */
 public final class CinemarrWorldScreens extends SavedData {
-    public static final int SCHEMA_VERSION = 2;
+    public static final int SCHEMA_VERSION = 3;
     private static final Factory<CinemarrWorldScreens> FACTORY = new Factory<>(CinemarrWorldScreens::new,
             CinemarrWorldScreens::load, null);
     private final Map<Long, Direction> pixels = new HashMap<>();
     private final Map<Long, Television> televisions = new HashMap<>();
+    private final Map<Long, Set<Long>> quickTvConstructions = new HashMap<>();
     private final transient String detachedDimension = "detached:" + UUID.randomUUID();
     private transient ServerLevel level;
     private transient boolean registrationsReconciled;
+    private transient boolean constructionsRecovered;
+    private transient boolean recoveryProbeLogged;
 
     public static CinemarrWorldScreens get(ServerLevel level) {
         CinemarrWorldScreens value = level.getDataStorage().computeIfAbsent(FACTORY, "cinemarr_screens");
         value.level = level;
         if(!value.registrationsReconciled)value.reconcileRegistrations();
+        if(!value.constructionsRecovered)value.recoverConstructions();
         return value;
+    }
+
+    public void beginQuickTvConstruction(BlockPos controller, java.util.Collection<BlockPos> targets) {
+        Set<Long> footprint = new HashSet<>();
+        for (BlockPos target : targets) footprint.add(target.asLong());
+        quickTvConstructions.put(controller.asLong(), footprint);
+        setDirty();
+    }
+    public void finishQuickTvConstruction(BlockPos controller) {
+        if (quickTvConstructions.remove(controller.asLong()) != null) setDirty();
+    }
+    private void recoverConstructions() {
+        if (level == null || quickTvConstructions.isEmpty()) { constructionsRecovered = quickTvConstructions.isEmpty(); return; }
+        constructionsRecovered = true;
+        boolean changed = false;
+        int recovered = 0;
+        for (java.util.Iterator<Map.Entry<Long, Set<Long>>> builds = quickTvConstructions.entrySet().iterator(); builds.hasNext();) {
+            Set<Long> footprint = builds.next().getValue();
+            for (java.util.Iterator<Long> positions = footprint.iterator(); positions.hasNext();) {
+                BlockPos pos = BlockPos.of(positions.next());
+                if (!level.hasChunkAt(pos)) continue;
+                if (level.getBlockState(pos).is(stonytark.cinemarr.registry.CinemarrBlocks.screenPixel())) {
+                    level.setBlockAndUpdate(pos, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState());
+                }
+                positions.remove(); changed = true; recovered++;
+            }
+            if (footprint.isEmpty()) builds.remove();
+        }
+        constructionsRecovered = quickTvConstructions.isEmpty();
+        if (changed) setDirty();
+        if (ProtocolLimits.lifecycleProbeEnabled() && (changed || !recoveryProbeLogged)) {
+            int remaining = 0; for (Set<Long> footprint : quickTvConstructions.values()) remaining += footprint.size();
+            Cinemarr.LOGGER.info("Acceptance Quick TV lifecycle recovery: removed={} remaining={} complete={}", recovered, remaining, quickTvConstructions.isEmpty());
+            recoveryProbeLogged = true;
+        }
     }
 
     public void putPixel(BlockPos pos, Direction facing) {
@@ -236,6 +277,14 @@ public final class CinemarrWorldScreens extends SavedData {
             CompoundTag value = new CompoundTag(); value.putLong("controller", entry.getKey()); entry.getValue().save(value); televisionTags.add(value);
         }
         tag.put("televisions", televisionTags);
+        ListTag constructionTags = new ListTag();
+        for (Map.Entry<Long, Set<Long>> entry : quickTvConstructions.entrySet()) {
+            CompoundTag value = new CompoundTag(); value.putLong("controller", entry.getKey());
+            long[] positions = new long[entry.getValue().size()]; int index = 0;
+            for (Long position : entry.getValue()) positions[index++] = position;
+            value.putLongArray("pixels", positions); constructionTags.add(value);
+        }
+        tag.put("quickTvConstructions", constructionTags);
         return tag;
     }
 
@@ -252,6 +301,12 @@ public final class CinemarrWorldScreens extends SavedData {
             CompoundTag value = televisionTags.getCompound(index);
             Television tv = Television.load(value, value.getLong("controller"));
             if (tv != null) data.televisions.put(value.getLong("controller"), tv);
+        }
+        ListTag constructionTags = tag.getList("quickTvConstructions", Tag.TAG_COMPOUND);
+        for (int index = 0; index < constructionTags.size(); index++) {
+            CompoundTag value = constructionTags.getCompound(index); Set<Long> positions = new HashSet<>();
+            for (long position : value.getLongArray("pixels")) positions.add(position);
+            if (!positions.isEmpty()) data.quickTvConstructions.put(value.getLong("controller"), positions);
         }
         return data;
     }

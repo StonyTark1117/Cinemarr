@@ -1,10 +1,13 @@
 plugins {
     alias(libs.plugins.fabric.loom)
 }
+allprojects { apply from: rootProject.file('../../../gradle/reproducible-archives.gradle') }
 apply from: file('../../../gradle/quilt-runtime.gradle')
 
 group = 'stonytark'
-version = '1.0.1'
+def productProperties = new Properties()
+file('../../../gradle.properties').withInputStream { productProperties.load(it) }
+version = productProperties.getProperty('mod_version')
 def artifactVersion = version.toString()
 def runtimeLoader = providers.gradleProperty('cinemarrRuntimeLoader').orElse('fabric')
 def quiltRuntime = runtimeLoader.map { it == 'quilt' }
@@ -87,10 +90,6 @@ dependencies {
 
     implementation project(':core')
     include project(':core')
-    implementation libs.jlayer
-    include libs.jlayer
-    implementation libs.jump3r
-    include libs.jump3r
     javacvFacade("org.bytedeco:javacv:${javaCvVersion}") { transitive = false }
     compileOnly("org.bytedeco:javacv:${javaCvVersion}") { transitive = false }
     implementation("org.bytedeco:javacpp:${javaCppVersion}") { transitive = false }
@@ -182,8 +181,7 @@ tasks.named('remapJar') {
 def releaseArchive = tasks.named('remapJar').flatMap { it.archiveFile }
 def expectedReleaseName = "cinemarr-${artifactVersion}+mc1.20.1-fabric.jar"
 def coreReleaseEntry = "META-INF/jars/core-${version}.jar".toString()
-def releaseEntries = [coreReleaseEntry, 'META-INF/jars/jlayer-1.0.1.jar',
-                      'META-INF/jars/jump3r-1.0.5.jar', 'META-INF/LICENSE-Cinemarr-CC0-1.0.txt',
+def releaseEntries = [coreReleaseEntry, 'META-INF/LICENSE-Cinemarr-CC0-1.0.txt',
                       'META-INF/LICENSE-LGPL-2.1-or-later.txt', 'META-INF/THIRD_PARTY_NOTICES.md',
                       'fabric.mod.json', 'cinemarr.mixins.json', 'cinemarr.png',
                       'assets/cinemarr/lang/en_us.json', 'stonytark/cinemarr/Cinemarr.class',

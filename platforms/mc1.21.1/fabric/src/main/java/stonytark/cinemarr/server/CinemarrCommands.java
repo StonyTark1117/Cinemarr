@@ -19,7 +19,10 @@ public final class CinemarrCommands {
                                 context.getSource().sendSuccess(() -> Component.literal(
                                         CinemarrServer.instance().videoDiagnostics()), false);
                                 return 1;
-                            }));
+                            }))
+                    .then(Commands.literal("retry")
+                            .requires(source -> source.hasPermission(CinemarrSettings.operatorPermissionLevel()))
+                            .executes(context -> retry(context.getSource())));
             root.then(CinemarrTvCommands.command());
             dispatcher.register(root);
         });
@@ -29,5 +32,6 @@ public final class CinemarrCommands {
         source.sendSuccess(() -> Component.literal(CinemarrServer.instance().videoStatus()), false);
         return 1;
     }
+    private static int retry(CommandSourceStack source) { boolean started=CinemarrServer.instance().retryPlex();source.sendSuccess(()->Component.literal(started?"Cinemarr Plex connection attempt started":"Cinemarr Plex is disabled or not configured"),false);return started?1:0; }
     private CinemarrCommands() {}
 }

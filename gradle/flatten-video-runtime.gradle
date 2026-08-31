@@ -43,6 +43,9 @@ releaseTask.configure {
     // loader cannot discover their module descriptors by scanning the folder.
     doLast {
         def archive = archiveFile.get().asFile
+        def zipEpochMillis = java.time.LocalDateTime.of(1980, 2, 1, 0, 0)
+                .atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        def zipEpoch = java.nio.file.attribute.FileTime.fromMillis(zipEpochMillis)
         def jarUri = java.net.URI.create("jar:${archive.toURI()}")
         java.nio.file.FileSystems.newFileSystem(jarUri, [:]).withCloseable { fileSystem ->
             def jarJarRoot = fileSystem.getPath('/META-INF/jarjar')
@@ -69,7 +72,21 @@ releaseTask.configure {
                             "META-INF/jarjar/stonytark.cinemarr.core-${productVersion}.jar")
                     java.nio.file.Files.writeString(metadataPath, metadata)
                 }
+
+                // ZipFS assigns the current time to moved or rewritten entries.
+                // Normalize the two entries this post-processor can mutate;
+                // otherwise identical Forge-family rebuilds receive new hashes.
+                if (java.nio.file.Files.exists(isolatedCore)) {
+                    java.nio.file.Files.setLastModifiedTime(isolatedCore, zipEpoch)
+                }
+                def metadataPath = jarJarRoot.resolve('metadata.json')
+                if (java.nio.file.Files.exists(metadataPath)) {
+                    java.nio.file.Files.setLastModifiedTime(metadataPath, zipEpoch)
+                }
             }
+        }
+        if (!archive.setLastModified(zipEpochMillis)) {
+            throw new GradleException("Could not normalize release archive timestamp: ${archive}")
         }
     }
 }

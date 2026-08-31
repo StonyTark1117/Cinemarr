@@ -156,6 +156,12 @@ final class LegacyVideoAudio {
         float[] origin = new float[] { 0, 0, 0 };
         soundSystem.rawDataStream(format, true, source, origin[0], origin[1], origin[2], SoundSystemConfig.ATTENUATION_LINEAR, 64.0F);
         soundSystem.setLooping(source, false);
+        // Start the physical source with silence only. Paulscode submits raw
+        // buffers through a separate command thread, and OpenAL may report the
+        // source as PLAYING before the selected backend consumes its first
+        // sample. Deferring all program data until cursor movement is observed
+        // lets the later scheduling pass compensate for that real startup time
+        // without needing to remove an already-queued program buffer.
         preparedDurationUs = queueSilence(SOURCE_PREROLL_US);
         sourceRequestedAtUs = System.currentTimeMillis() * 1_000L;
         prepared = true; soundSystem.play(source);
@@ -170,19 +176,16 @@ final class LegacyVideoAudio {
         long boundaryUs = scheduledStartUs(targetUs);
         while (!pending.isEmpty() && endUs(pending.peek()) <= boundaryUs) pending.poll();
         if (pending.isEmpty()) { stopSource(); return; }
-        LegacyDecodedAudioFrame first = pending.peek(), last = first; for (LegacyDecodedAudioFrame value : pending) last = value;
+        LegacyDecodedAudioFrame first = pending.peek(), last = first;
+        for (LegacyDecodedAudioFrame value : pending) last = value;
         scheduledStartUs = Math.max(boundaryUs, first.presentationTimeUs());
         if (endUs(last) - scheduledStartUs < START_BUFFER_US) { stopSource(); return; }
         queuedProgramUntilUs = scheduledStartUs;
         long additionalSilenceUs = additionalSilenceUs(targetUs, scheduledStartUs, preparedDurationUs, playedUs);
         preparedDurationUs += queueSilence(additionalSilenceUs);
         programOffsetUs = preparedDurationUs;
-        // Paulscode's streaming cursor drops the duration of all but one
-        // processed buffer when a feed call unqueues several at once. Use it
-        // only to locate the initial physical boundary, then advance the
-        // trusted media timeline from that wall-clock anchor as modern clients
-        // do. Source stop/starvation checks still guard actual backend health.
-        mediaBoundaryLocalUs = nowUs + Math.max(0L, programOffsetUs - playedUs);
+        // Queue the program only after the physical cursor is confirmed. This
+        // preserves the corrected silence in front of every decoded frame.
         long preparedContentUs = 0L;
         while (preparedContentUs < TARGET_QUEUE_US && !pending.isEmpty()) {
             long queuedUs = queueBatch();
@@ -190,6 +193,7 @@ final class LegacyVideoAudio {
             if (queuedUs == 0L) break;
             preparedDurationUs += queuedUs; preparedContentUs += queuedUs;
         }
+        mediaBoundaryLocalUs = nowUs + Math.max(0L, programOffsetUs - playedUs);
         queuedUntilLocalUs = nowUs + Math.max(0L, preparedDurationUs - playedUs);
         started = true; driftTicks = 0; stableTicks = targetUs >= scheduledStartUs ? 1 : 0;
         if (ProtocolLimits.videoProbeEnabled()) Cinemarr.LOGGER.info(

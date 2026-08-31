@@ -38,20 +38,4 @@ class TransportTimingTest {
         assertTrue(highLatency.ready(8, 16, 50));
     }
 
-    @Test void retriesMissingWindowAndAcknowledgesOnlyWhenComplete() {
-        ChunkWindowTracker tracker = new ChunkWindowTracker(10, 20, 4, 1_000);
-        ChunkWindowTracker.Request first = tracker.request(0, 0, 12_000).get(); assertEquals(10, first.startIndex()); assertEquals(4, first.count());
-        assertFalse(tracker.request(500, 0, 12_000).isPresent());
-        ChunkWindowTracker.Request retry = tracker.request(1_001, 0, 12_000).get(); assertEquals(10, retry.startIndex());
-        assertFalse(tracker.received(retry.id(), 10).isPresent()); assertFalse(tracker.received(retry.id(), 12).isPresent());
-        assertFalse(tracker.received(retry.id(), 11).isPresent());
-        ChunkWindowTracker.Acknowledgement ack = tracker.received(retry.id(), 13).get(); assertEquals(13, ack.receivedThroughIndex()); assertEquals(14, tracker.firstMissing());
-    }
-
-    @Test void pullWindowHonorsMaximumBufferAndDriftThreshold() {
-        ChunkWindowTracker tracker = new ChunkWindowTracker(0, 8, 8, 1_000);
-        assertFalse(tracker.request(0, 12_000, 12_000).isPresent());
-        assertFalse(DriftPolicy.shouldRebuffer(10_000, 10_500, 500));
-        assertTrue(DriftPolicy.shouldRebuffer(10_000, 10_501, 500));
-    }
 }

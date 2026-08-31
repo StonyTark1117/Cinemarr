@@ -41,7 +41,7 @@ class PlexVideoServiceTest {
                 "{\"MediaContainer\":{\"Metadata\":["
                         + "{\"type\":\"movie\",\"ratingKey\":\"10\",\"title\":\"Allowed\",\"contentRating\":\"PG\",\"duration\":60000},"
                         + "{\"type\":\"movie\",\"ratingKey\":\"11\",\"title\":\"Denied\",\"contentRating\":\"R\",\"duration\":60000}]}}"));
-        server.createContext("/library/metadata/10", exchange -> json(exchange,"{\"MediaContainer\":{\"Metadata\":[{\"type\":\"movie\",\"ratingKey\":\"10\",\"title\":\"Allowed\",\"contentRating\":\"PG\",\"duration\":60000,\"Media\":[{\"Part\":[{\"Stream\":[{\"streamType\":2,\"id\":101,\"language\":\"English\",\"languageCode\":\"eng\",\"codec\":\"aac\",\"selected\":1},{\"streamType\":3,\"id\":202,\"title\":\"English SDH\",\"languageCode\":\"eng\",\"codec\":\"srt\"}]}]}]}]}}"));
+        server.createContext("/library/metadata/10", exchange -> json(exchange,"{\"MediaContainer\":{\"Metadata\":[{\"type\":\"movie\",\"ratingKey\":\"10\",\"title\":\"Allowed\",\"contentRating\":\"PG\",\"duration\":60000,\"Media\":[{\"width\":3840,\"height\":2160,\"bitrate\":18000,\"Part\":[{\"Stream\":[{\"streamType\":2,\"id\":101,\"language\":\"English\",\"languageCode\":\"eng\",\"codec\":\"aac\",\"selected\":1},{\"streamType\":3,\"id\":202,\"title\":\"English SDH\",\"languageCode\":\"eng\",\"codec\":\"srt\"}]}]}]}]}}"));
         server.createContext("/library/metadata/20",exchange->json(exchange,"{\"MediaContainer\":{\"Metadata\":[{\"type\":\"episode\",\"ratingKey\":\"20\",\"title\":\"First\",\"grandparentTitle\":\"Show\",\"grandparentRatingKey\":\"99\",\"parentIndex\":1,\"index\":1,\"duration\":30000}]}}"));
         server.createContext("/library/metadata/11", exchange -> json(exchange, metadataWithSelected("true")));
         server.createContext("/library/metadata/12", exchange -> json(exchange, metadataWithSelected("false")));
@@ -115,8 +115,9 @@ class PlexVideoServiceTest {
     @Test void discoversAudioAndSubtitleStreamsAndSelectsThemWithoutExposingTheTokenInTheManifest() throws Exception {
         PlexVideoService service=new PlexVideoService(baseUrl,"secret-token");PlexVideoService.PlaybackMetadata metadata=service.metadataDetails("10");
         assertEquals(2,metadata.streams().size());assertEquals("English SDH",metadata.streams().get(1).label());
+        assertEquals(3840,metadata.sourceWidth());assertEquals(2160,metadata.sourceHeight());assertEquals(18000,metadata.sourceBitrateKbps());
         PlexVideoService.VideoSession session=service.start(metadata.item(),RenditionPolicy.choose(4,4,1920,1080,1920,1080),0,101,202);
-        assertTrue(transcodeQuery.get().contains("audioStreamID=101"));assertTrue(transcodeQuery.get().contains("subtitleStreamID=202"));assertFalse(session.playlist().contains("secret-token"));
+        assertTrue(transcodeQuery.get().contains("audioStreamID=101"));assertTrue(transcodeQuery.get().contains("subtitleStreamID=202"));assertTrue(transcodeQuery.get().contains("maxVideoBitrate=20000"));assertFalse(session.playlist().contains("secret-token"));
     }
 
     @Test void sendsTheNamedQuickTvRenditionToRealPlex() throws Exception {

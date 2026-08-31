@@ -22,15 +22,17 @@ import stonytark.cinemarr.screen.LegacyBlocks;
 import stonytark.cinemarr.screen.LegacyWorldScreens;
 import stonytark.cinemarr.core.library.LibraryAllowlistFiles;
 import stonytark.cinemarr.core.library.LibraryRule;
-import stonytark.cinemarr.core.protocol.StatePackets;
 import stonytark.cinemarr.core.protocol.VideoPackets;
 import stonytark.cinemarr.core.server.PlexVideoService;
+import stonytark.cinemarr.core.server.PlexConnectionLifecycle;
 
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 @Mod(
         modid = Cinemarr.MOD_ID,
@@ -42,12 +44,14 @@ import java.util.Map;
 public final class Cinemarr {
     public static final String MOD_ID = "cinemarr";
     public static final String MOD_NAME = "Cinemarr";
-    public static final String VERSION = "1.0.1";
-    public static final int PROTOCOL = 8;
+    public static final String VERSION = "1.0.0";
+    public static final int PROTOCOL = 9;
 
     public static Logger LOGGER;
     private static LegacyVideoManager videoManager;
+    private static PlexConnectionLifecycle plexLifecycle;
     private static String unavailableReason = "not initialized";
+    private static final Queue<Runnable> MAIN_THREAD_TASKS = new ConcurrentLinkedQueue<Runnable>();
 
     @Mod.EventHandler
     public void preInit(FMLPreInitializationEvent event) {
@@ -82,15 +86,27 @@ public final class Cinemarr {
             List<LibraryRule> rules = LibraryAllowlistFiles.load(libraryPath);
             if (rules.isEmpty()) installUnavailable("no Plex video libraries are allowlisted");
             else if (stonytark.cinemarr.core.platform.CinemarrSettings.plexToken().trim().isEmpty()) installUnavailable("Plex token is not configured");
-            else {
-                PlexVideoService plex = new PlexVideoService(stonytark.cinemarr.core.platform.CinemarrSettings.plexUrl(),
-                        stonytark.cinemarr.core.platform.CinemarrSettings.plexToken());
-                List<PlexVideoService.ResolvedLibrary> libraries = plex.resolveLibraries(rules);
-                videoManager = new LegacyVideoManager(event.getServer(), plex, libraries, saved);
-                unavailableReason = "";
-                LOGGER.info("Validated {} allowed Plex video libraries", libraries.size());
-            }
-            event.registerServerCommand(new LegacyVideoCommands(event.getServer(), videoManager, unavailableReason));
+            else installUnavailable("Plex connection is starting");
+            plexLifecycle = new PlexConnectionLifecycle();
+            final net.minecraft.server.MinecraftServer server = event.getServer();
+            plexLifecycle.configure(stonytark.cinemarr.core.platform.CinemarrSettings.plexUrl(),
+                    stonytark.cinemarr.core.platform.CinemarrSettings.plexToken(), rules,
+                    new PlexConnectionLifecycle.MainThread() {
+                        @Override public void execute(Runnable action) { MAIN_THREAD_TASKS.add(action); }
+                    }, new PlexConnectionLifecycle.ReadyHandler() {
+                        @Override public void install(PlexConnectionLifecycle.Connection connection) {
+                            videoManager = new LegacyVideoManager(server, connection.service(), connection.libraries(), saved);
+                            unavailableReason = "";
+                            LOGGER.info("Validated {} allowed Plex video libraries{}", connection.libraries().size(),
+                                    connection.requested() ? " after manual retry" : "");
+                        }
+                    }, new PlexConnectionLifecycle.FailureHandler() {
+                        @Override public void failed(String message, long delay) {
+                            installUnavailable("Plex degraded: " + message);
+                            LOGGER.warn("Plex unavailable; Cinemarr will retry in {} seconds: {}", delay / 1000L, message);
+                        }
+                    });
+            event.registerServerCommand(new LegacyVideoCommands(event.getServer()));
         } catch (IOException error) {
             throw new IllegalStateException("Unable to load canonical Cinemarr server configuration", error);
         }
@@ -102,12 +118,18 @@ public final class Cinemarr {
             videoManager.close();
             videoManager = null;
         }
+        if (plexLifecycle != null) { plexLifecycle.close(); plexLifecycle = null; }
+        MAIN_THREAD_TASKS.clear();
         LegacyNetwork.shutdown();
     }
 
     @SubscribeEvent
     public void serverTick(TickEvent.ServerTickEvent event) {
-        if (event.phase == TickEvent.Phase.END && videoManager != null) videoManager.tick();
+        if (event.phase != TickEvent.Phase.END) return;
+        Runnable action;
+        while ((action = MAIN_THREAD_TASKS.poll()) != null) action.run();
+        if (plexLifecycle != null) plexLifecycle.tick(System.currentTimeMillis());
+        if (videoManager != null) videoManager.tick();
     }
 
     @SubscribeEvent
@@ -121,6 +143,26 @@ public final class Cinemarr {
         if (videoManager != null && television != null) videoManager.televisionActivated(world, television);
     }
 
+    public static String videoStatus() {
+        if (videoManager != null) return videoManager.status();
+        String state = plexLifecycle == null ? "disabled" : plexLifecycle.state().name().toLowerCase(java.util.Locale.ROOT);
+        return "Cinemarr video " + state + "; registeredTvs="
+                + stonytark.cinemarr.core.server.TelevisionLifecycle.count() + "; activeStreams=0/"
+                + stonytark.cinemarr.core.platform.CinemarrSettings.maximumConcurrentStreams()
+                + "; reason=" + unavailableReason;
+    }
+
+    public static String videoDiagnostics() {
+        if (videoManager != null) return videoManager.diagnostics();
+        String state = plexLifecycle == null ? "disabled" : plexLifecycle.state().name().toLowerCase(java.util.Locale.ROOT);
+        long retry = plexLifecycle == null ? 0L : plexLifecycle.retryInMs(System.currentTimeMillis());
+        String failure = plexLifecycle == null || plexLifecycle.lastFailure().isEmpty() ? "none" : plexLifecycle.lastFailure();
+        return "Plex=" + state + "; retryInMs=" + retry + "; lastFailure=" + failure
+                + "; registeredTvs=" + stonytark.cinemarr.core.server.TelevisionLifecycle.count();
+    }
+
+    public static boolean retryPlex() { return plexLifecycle != null && plexLifecycle.retry(); }
+
     private static void installUnavailable(final String reason) {
         unavailableReason = reason;
         LOGGER.warn("Cinemarr video is unavailable: {}", reason);
@@ -133,7 +175,7 @@ public final class Cinemarr {
                             new VideoPackets.LibraryList(Collections.<VideoPackets.LibrarySummary>emptyList()));
                 } else if (type.id() >= stonytark.cinemarr.network.LegacyPacketTypes.VIDEO_BROWSE_REQUEST.id()) {
                     LegacyNetwork.sendToPlayer(player, stonytark.cinemarr.network.LegacyPacketTypes.ERROR,
-                            new StatePackets.ErrorMessage(StatePackets.ErrorCode.PLEX_OFFLINE, reason));
+                            new stonytark.cinemarr.network.LegacyPacketTypes.ErrorMessage(reason));
                 }
             }
         });
@@ -142,7 +184,7 @@ public final class Cinemarr {
     @NetworkCheckHandler
     public boolean requireMatchingClient(Map<String, String> remoteVersions, Side remoteSide) {
         if (remoteSide == Side.CLIENT) {
-            // Let an absent/older client reach LegacyNetwork's explicit protocol-8 hello gate so
+            // Let an absent/older client reach LegacyNetwork's explicit protocol-9 hello gate so
             // it receives Cinemarr's clear timeout/mismatch text instead of FML's generic timeout.
             return true;
         }

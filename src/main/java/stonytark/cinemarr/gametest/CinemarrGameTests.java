@@ -1,16 +1,15 @@
 package stonytark.cinemarr.gametest;
 
-import stonytark.cinemarr.core.model.QueueTrack;
-
-
 import stonytark.cinemarr.core.server.ChunkTransferPolicy;
 import stonytark.cinemarr.core.server.SlidingWindowRateLimiter;
-import stonytark.cinemarr.core.server.PlaybackTimeline;
 import stonytark.cinemarr.core.server.RetryGate;
-import stonytark.cinemarr.core.client.AsyncStartGuard;
+import stonytark.cinemarr.core.client.VideoSegmentAssembler;
+import stonytark.cinemarr.core.network.Hashing;
+import stonytark.cinemarr.core.server.TelevisionPolicy;
+import stonytark.cinemarr.core.server.WatchPartyRegistry;
+import stonytark.cinemarr.core.video.RenditionPolicy;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.entity.player.Player;
@@ -27,27 +26,19 @@ import stonytark.cinemarr.screen.ScreenPixelBlock;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 import stonytark.cinemarr.Cinemarr;
-import stonytark.cinemarr.server.CinemarrSavedData;
-import stonytark.cinemarr.core.server.QueueOperations;
 import stonytark.cinemarr.core.server.TelevisionLifecycle;
-import stonytark.cinemarr.server.StationDefinition;
-import stonytark.cinemarr.core.server.StationSelection;
-import stonytark.cinemarr.server.StationGenerator;
-import stonytark.cinemarr.network.CinemarrPayloads;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.List;
 
 @GameTestHolder(Cinemarr.MODID)
 @PrefixGameTestTemplate(false)
 public final class CinemarrGameTests {
     @GameTest(template = "empty", timeoutTicks = 20)
-    public static void serverLoadsAuthoritativeTimingAndRateLimitCode(GameTestHelper helper) {
-        AtomicLong clock = new AtomicLong(1_000); PlaybackTimeline timeline = new PlaybackTimeline(clock::get);
-        timeline.schedule(10_000, 0, false, 5_000); clock.set(7_000);
-        helper.assertTrue(timeline.positionMs() == 1_000, "Authoritative server timeline did not advance from its scheduled start");
+    public static void serverLoadsVideoRateLimitAndRetryCode(GameTestHelper helper) {
         SlidingWindowRateLimiter limiter = new SlidingWindowRateLimiter(); UUID player = UUID.randomUUID();
         helper.assertTrue(limiter.allow(player, 1, 1_000) && !limiter.allow(player, 1, 1_100), "Server request rate limit was not enforced");
+        RetryGate retry = new RetryGate(); retry.deferUntil(30_000);
+        helper.assertTrue(!retry.ready(29_999) && retry.ready(30_000), "Plex retry gate ignored its deadline");
         helper.succeed();
     }
 
@@ -64,65 +55,49 @@ public final class CinemarrGameTests {
     }
 
     @GameTest(template = "empty", timeoutTicks = 20)
-    public static void queueAndPlaybackCheckpointRoundTripThroughWorldData(GameTestHelper helper) {
-        CinemarrSavedData data = new CinemarrSavedData();
-        data.queue().add(new QueueTrack("42", "Track", "Artist", "Album", 90_000));
-        data.update(12_345, true);
-        CinemarrSavedData restored = CinemarrSavedData.load(data.save(new CompoundTag(), null), null);
-        helper.assertTrue(restored.queue().size() == 1 && restored.queue().get(0).key().equals("42"), "Queue did not survive saved-data serialization");
-        helper.assertTrue(restored.checkpointMs() == 12_345 && restored.paused(), "Playback checkpoint did not survive saved-data serialization");
+    public static void videoRenditionHonorsNamedTargetAndServerCaps(GameTestHelper helper) {
+        RenditionPolicy.Dimensions named = RenditionPolicy.chooseForScreen(16, 9, 256, 144,
+                3_840, 2_160, 3_840, 2_160);
+        helper.assertTrue(named.width() == 256 && named.height() == 144,
+                "144p Quick TV did not preserve its named rendition");
+        RenditionPolicy.Dimensions capped = RenditionPolicy.choose(80, 45, 7_680, 4_320, 1_920, 1_080);
+        helper.assertTrue(capped.width() == 1_920 && capped.height() == 1_080,
+                "Source rendition exceeded the server video cap");
         helper.succeed();
     }
 
     @GameTest(template = "empty", timeoutTicks = 20)
-    public static void retryAndAudioStartGatesRejectPrematureWork(GameTestHelper helper) {
-        RetryGate retry = new RetryGate(); retry.deferUntil(30_000);
-        helper.assertTrue(!retry.ready(29_999) && retry.ready(30_000), "Preparation retry gate ignored its deadline");
-        AsyncStartGuard starts = new AsyncStartGuard(); long first = starts.begin();
-        helper.assertTrue(starts.begin() < 0, "A duplicate audio-channel start was admitted");
-        starts.cancel(); long second = starts.begin();
-        helper.assertTrue(!starts.complete(first) && starts.complete(second), "A stale audio completion released the current start");
+    public static void videoSegmentAssemblyRejectsWrongGenerationAndVerifiesHash(GameTestHelper helper) {
+        byte[] first = new byte[]{1,2,3}, second = new byte[]{4,5};
+        byte[] complete = new byte[]{1,2,3,4,5}; String hash = Hashing.sha256(complete); UUID session = UUID.randomUUID();
+        VideoSegmentAssembler assembler = new VideoSegmentAssembler(); assembler.begin(session, 7, 1, 2, 2, hash, 4_000, true);
+        helper.assertTrue(assembler.accept(session, 6, 1, 2, 0, 2, hash, 4_000, true, first).isEmpty(),
+                "Assembler accepted a stale playback generation");
+        helper.assertTrue(assembler.accept(session, 7, 1, 2, 1, 2, hash, 4_000, true, second).isEmpty(),
+                "Assembler completed before every chunk arrived");
+        helper.assertTrue(assembler.accept(session, 7, 1, 2, 0, 2, hash, 4_000, true, first).isPresent(),
+                "Assembler did not complete a valid hash-verified segment");
         helper.succeed();
     }
 
     @GameTest(template = "empty", timeoutTicks = 20)
-    public static void operatorQueueActionsPreserveCurrentTrackAndPlaybackPosition(GameTestHelper helper) {
-        var queue = new java.util.ArrayList<QueueTrack>();
-        queue.add(new QueueTrack("current", "Current", "Artist", "Album", 90_000));
-        queue.add(new QueueTrack("next", "Next", "Artist", "Album", 90_000));
-        queue.add(new QueueTrack("last", "Last", "Artist", "Album", 90_000));
-        helper.assertTrue(QueueOperations.move(queue, 2, -1, true) == QueueOperations.Result.APPLIED && queue.get(1).key().equals("last"), "Operator reorder did not move a queued entry");
-        helper.assertTrue(QueueOperations.remove(queue, 1, true) == QueueOperations.Result.APPLIED && queue.get(0).key().equals("current"), "Operator remove changed the current track unexpectedly");
-        AtomicLong clock = new AtomicLong(1_000);
-        PlaybackTimeline timeline = new PlaybackTimeline(clock::get);
-        timeline.schedule(90_000, 0, false, 5_000);
-        clock.set(8_000);
-        timeline.pause();
-        long paused = timeline.positionMs();
-        clock.set(18_000);
-        helper.assertTrue(timeline.positionMs() == paused, "Pause did not hold the authoritative position");
-        timeline.resume();
-        clock.set(19_000);
-        helper.assertTrue(timeline.positionMs() > paused, "Resume did not advance the authoritative position");
+    public static void watchPartySharesOneSessionAndReleasesCapacity(GameTestHelper helper) {
+        WatchPartyRegistry registry = new WatchPartyRegistry(1); UUID first = UUID.randomUUID(), second = UUID.randomUUID();
+        WatchPartyRegistry.Session one = registry.tune("lounge", first);
+        WatchPartyRegistry.Session two = registry.tune("lounge", second);
+        helper.assertTrue(one.id().equals(two.id()) && two.televisions().size() == 2,
+                "Two TVs did not share one named playback session");
+        helper.assertTrue(registry.untune("lounge", first) && registry.untune("lounge", second)
+                && registry.activeSessions() == 0, "Empty watch-party session did not release capacity");
         helper.succeed();
     }
 
     @GameTest(template = "empty", timeoutTicks = 20)
-    public static void stationPersistenceAndAdventureOrderingRoundTrip(GameTestHelper helper) {
-        CinemarrSavedData data = new CinemarrSavedData();
-        var start = new CinemarrPayloads.StationSeed(CinemarrPayloads.ItemKind.TRACK, "1", "Start", "Artist A");
-        var end = new CinemarrPayloads.StationSeed(CinemarrPayloads.ItemKind.TRACK, "3", "End", "Artist B");
-        try { StationGenerator.validate(new StationDefinition(CinemarrPayloads.StationType.SONIC_ADVENTURE, "Adventure", List.of(start, end), 4)); }
-        catch (Exception failure) { helper.fail("Valid Adventure definition was rejected: " + failure.getMessage()); return; }
-        data.station(new StationDefinition(CinemarrPayloads.StationType.SONIC_ADVENTURE, "Adventure", List.of(start, end), 4));
-        data.current(new QueueTrack("1", "Start", "Artist A", "Album", 1_000), CinemarrPayloads.PlaybackOrigin.ADVENTURE);
-        CinemarrSavedData restored = CinemarrSavedData.load(data.save(new CompoundTag(), null), null);
-        helper.assertTrue(restored.station().type() == CinemarrPayloads.StationType.SONIC_ADVENTURE && restored.station().seeds().size() == 2,
-                "Adventure state did not survive world-data serialization");
-        List<QueueTrack> path = StationSelection.deduplicatePath(List.of(
-                List.of(new QueueTrack("1", "Start", "A", "", 1), new QueueTrack("2", "Middle", "B", "", 1)),
-                List.of(new QueueTrack("2", "Middle", "B", "", 1), new QueueTrack("3", "End", "C", "", 1))), 100);
-        helper.assertTrue(path.stream().map(QueueTrack::key).toList().equals(List.of("1", "2", "3")), "Adventure segment join duplicated or reordered a waypoint");
+    public static void televisionOwnershipLimitReleasesAfterTeardown(GameTestHelper helper) {
+        TelevisionPolicy policy = new TelevisionPolicy(1); UUID owner = UUID.randomUUID();
+        helper.assertTrue(policy.claim(owner) && !policy.claim(owner), "Owner exceeded the configured television limit");
+        policy.release(owner);
+        helper.assertTrue(policy.claim(owner) && policy.ownedBy(owner) == 1, "Teardown did not release owner capacity");
         helper.succeed();
     }
 

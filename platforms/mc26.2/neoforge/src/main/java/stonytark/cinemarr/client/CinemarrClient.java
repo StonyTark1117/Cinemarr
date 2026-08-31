@@ -80,7 +80,6 @@ public final class CinemarrClient {
     @SubscribeEvent public void login(ClientPlayerNetworkEvent.LoggingIn event) { CinemarrClientState.INSTANCE.hello(); }
     private void soundEngineLoaded(SoundEngineLoadEvent event) {
         VIDEO_AUDIO.audioEngineReloaded();
-        CinemarrClientState.INSTANCE.audioEngineReloaded();
     }
     private void captureAcceptanceVideo(Minecraft minecraft) {
         if (!ProtocolLimits.videoProbeEnabled() || acceptanceVideoScreenshotSaved

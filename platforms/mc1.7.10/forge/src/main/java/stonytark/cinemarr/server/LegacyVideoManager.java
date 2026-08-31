@@ -10,9 +10,7 @@ import stonytark.cinemarr.core.library.VideoMediaItem;
 import stonytark.cinemarr.core.library.VideoStreamOption;
 import stonytark.cinemarr.core.network.Hashing;
 import stonytark.cinemarr.core.platform.CinemarrSettings;
-import stonytark.cinemarr.core.protocol.ControlPackets;
 import stonytark.cinemarr.core.protocol.ProtocolLimits;
-import stonytark.cinemarr.core.protocol.StatePackets;
 import stonytark.cinemarr.core.protocol.VideoPackets;
 import stonytark.cinemarr.core.server.HlsPlaylist;
 import stonytark.cinemarr.core.server.PlexVideoService;
@@ -204,33 +202,58 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
 
     private void prepareAcceptanceVideo(EntityPlayerMP player) {
         if (!ProtocolLimits.videoProbeEnabled() || !(player.worldObj instanceof WorldServer)) return;
-        WorldServer world = (WorldServer) player.worldObj; int controllerX = -1, controllerY = 100, controllerZ = -1;
+        WorldServer world = (WorldServer) player.worldObj;
+        boolean lifecycleProbe = ProtocolLimits.lifecycleProbeEnabled();
+        int controllerX = lifecycleProbe ? 2047 : -1, controllerY = 100, controllerZ = lifecycleProbe ? 2047 : -1;
+        int pixelPlaneZ = controllerZ + 1;
         long controller = LegacyBlockPos.pack(controllerX, controllerY, controllerZ);
         LegacyWorldScreens screens = LegacyWorldScreens.get(world);
-        if (screens.television(controller) == null && "CinemarrVideoA".equals(player.getCommandSenderName())) {
+        if (lifecycleProbe) {
+            // Establish a player ticket before the large, bounded acceptance
+            // construction so 1.7.10 cannot queue an edge chunk for unloading.
+            player.playerNetServerHandler.setPlayerLocation(controllerX, 100.0D, controllerZ + 8.5D, 180.0F, 0.0F);
+        }
+        if ("CinemarrVideoA".equals(player.getCommandSenderName())) {
+            saved.remove("cinemarr-acceptance");
             // The acceptance television is deliberately built at a fixed location so
             // screenshots from both clients are comparable. A newly generated 1.7.10
             // world can spawn far enough away that its two footprint chunks have not
-            // been loaded yet, causing the normal Quick TV preflight to reject an
-            // otherwise valid construction. Load only the footprint here; production
-            // placement continues to require player-loaded chunks.
-            world.getChunkFromChunkCoords(-1, 0);
-            world.getChunkFromChunkCoords(0, 0);
-            for (int x = -8; x <= 7; x++) for (int y = 100; y <= 108; y++) {
-                world.setBlockToAir(x, y, 0);
+            // been loaded yet. Persistent remote test worlds can also retain a stale
+            // controller or saved pixel-index entries after an interrupted probe. Load
+            // and reset the bounded acceptance area here; production placement remains
+            // unchanged and continues to require player-loaded, unobstructed chunks.
+            int minimumX = lifecycleProbe ? controllerX - 70 : -9, maximumX = lifecycleProbe ? controllerX + 70 : 8;
+            int maximumY = lifecycleProbe ? 172 : 109;
+            world.getChunkFromChunkCoords(controllerX >> 4, controllerZ >> 4);
+            for (int chunkX = minimumX >> 4; chunkX <= maximumX >> 4; chunkX++) world.getChunkFromChunkCoords(chunkX, pixelPlaneZ >> 4);
+            LegacyWorldScreens.Television previous = screens.removeController(controllerX, controllerY, controllerZ);
+            if (previous != null) for (Long pixel : previous.pixels()) {
+                int pixelX = LegacyBlockPos.x(pixel), pixelY = LegacyBlockPos.y(pixel), pixelZ = LegacyBlockPos.z(pixel);
+                if (world.getBlock(pixelX, pixelY, pixelZ) == stonytark.cinemarr.screen.LegacyBlocks.SCREEN_PIXEL) {
+                    world.setBlockToAir(pixelX, pixelY, pixelZ);
+                }
+            }
+            world.setBlockToAir(controllerX, controllerY, controllerZ);
+            for (int x = minimumX; x <= maximumX; x++) for (int y = 99; y <= maximumY; y++) {
+                world.setBlockToAir(x, y, pixelPlaneZ);
+                screens.removePixel(x, y, pixelPlaneZ);
             }
             player.rotationYaw = 0.0F;
-            world.setBlock(controllerX, controllerY, controllerZ, LegacyBlocks.QUICK_TV_144P, 3, 3);
-            ((stonytark.cinemarr.screen.LegacyQuickTvBlock) LegacyBlocks.QUICK_TV_144P).onBlockPlacedBy(
+            net.minecraft.block.Block quick = lifecycleProbe ? LegacyBlocks.QUICK_TV_8K : LegacyBlocks.QUICK_TV_144P;
+            world.setBlock(controllerX, controllerY, controllerZ, quick, 3, 3);
+            ((stonytark.cinemarr.screen.LegacyQuickTvBlock) quick).onBlockPlacedBy(
                     world, controllerX, controllerY, controllerZ, player,
-                    new net.minecraft.item.ItemStack(LegacyBlocks.QUICK_TV_144P));
+                    new net.minecraft.item.ItemStack(quick));
             LegacyWorldScreens.Television television = screens.television(controller);
-            if (television == null || television.width() != 16 || television.height() != 9
-                    || television.renditionWidth() != 256 || television.renditionHeight() != 144) {
+            if (!lifecycleProbe && (television == null || television.width() != 16 || television.height() != 9
+                    || television.renditionWidth() != 256 || television.renditionHeight() != 144)) {
                 throw new IllegalStateException("Quick TV acceptance construction did not persist its geometry and rendition");
             }
-            Cinemarr.LOGGER.info("Acceptance Quick TV: controller={} preset=144p dimensions=16x9 rendition=256x144 owner={}",
+            if (!lifecycleProbe) Cinemarr.LOGGER.info("Acceptance Quick TV: controller={} preset=144p dimensions=16x9 rendition=256x144 owner={}",
                     controller, player.getCommandSenderName());
+        }
+        if (lifecycleProbe) {
+            return;
         }
         for (int x = -9; x <= 9; x++) for (int z = 1; z <= 8; z++) {
             world.setBlock(x, 99, z, net.minecraft.init.Blocks.stone, 0, 3);
@@ -243,7 +266,7 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
     }
 
     private void synchronizeTracking(EntityPlayerMP player) {
-        if (!(player.worldObj instanceof WorldServer)) return;
+        if (!LegacyNetwork.serverHandshakeComplete(player) || !(player.worldObj instanceof WorldServer)) return;
         WorldServer world = (WorldServer) player.worldObj; int radius = Math.max(2, server.getConfigurationManager().getViewDistance());
         int centerX = ((int) Math.floor(player.posX)) >> 4, centerZ = ((int) Math.floor(player.posZ)) >> 4;
         Map<UUID, LegacyWorldScreens.Television> televisions = new LinkedHashMap<UUID, LegacyWorldScreens.Television>();
@@ -717,7 +740,7 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
         for (int level = 4; level >= 0; level--) if (player.canCommandSenderUseCommand(level, "cinemarr")) return level; return 0;
     }
     private void error(EntityPlayerMP player, String message) { send(player, LegacyPacketTypes.ERROR,
-            new StatePackets.ErrorMessage(StatePackets.ErrorCode.INVALID_REQUEST, message)); }
+            new LegacyPacketTypes.ErrorMessage(message)); }
     private void failure(EntityPlayerMP player, Throwable failure) {
         Throwable value = failure instanceof java.util.concurrent.CompletionException && failure.getCause() != null ? failure.getCause() : failure;
         if (value instanceof WrappedFailure && value.getCause() != null) value = value.getCause();

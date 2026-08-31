@@ -1,6 +1,6 @@
 package stonytark.cinemarr.core.platform;
 
-import stonytark.cinemarr.core.model.RestartMode;
+import stonytark.cinemarr.core.screen.QuickTvBuildMode;
 import stonytark.cinemarr.core.screen.QuickTvPreset;
 import stonytark.cinemarr.core.server.TelevisionLifecycle;
 
@@ -9,14 +9,8 @@ public final class CinemarrSettings {
     public interface ServerValues {
         String plexUrl();
         String plexToken();
-        String musicLibrary();
-        RestartMode restartMode();
-        boolean pauseWhenEmpty();
         int operatorPermissionLevel();
         int queueLimit();
-        int audioBitrateKbps();
-        long cacheSizeMiB();
-        boolean stationMetadataFallbackEnabled();
         default int minimumScreenPixels() { return 4; }
         default int maximumScreenPixels() { return 65_536; }
         default int maximumScreenDimension() { return 2_048; }
@@ -28,6 +22,10 @@ public final class CinemarrSettings {
         default int inactiveSessionGraceSeconds() { return 30; }
         default boolean quickTvKitsEnabled() { return true; }
         default boolean quickTvPresetEnabled(QuickTvPreset preset) { return true; }
+        default QuickTvBuildMode quickTvBuildMode() { return QuickTvBuildMode.BOUNDED; }
+        default int maximumVideoWidth() { return 3_840; }
+        default int maximumVideoHeight() { return 2_160; }
+        default int maximumVideoBitrateKbps() { return 20_000; }
     }
 
     public interface ClientValues {
@@ -63,17 +61,8 @@ public final class CinemarrSettings {
         String environment = System.getenv("CINEMARR_PLEX_TOKEN");
         return environment == null || environment.trim().isEmpty() ? safe(server.plexToken(), "").trim() : environment.trim();
     }
-    public static String musicLibrary() { return safe(server.musicLibrary(), ""); }
-    public static RestartMode restartMode() {
-        RestartMode value = server.restartMode();
-        return value == null ? RestartMode.RESTART_TRACK : value;
-    }
-    public static boolean pauseWhenEmpty() { return server.pauseWhenEmpty(); }
     public static int operatorPermissionLevel() { return clamp(server.operatorPermissionLevel(), 0, 4); }
     public static int queueLimit() { return clamp(server.queueLimit(), 1, 500); }
-    public static int audioBitrateKbps() { return clamp(server.audioBitrateKbps(), 64, 320); }
-    public static long cacheSizeMiB() { return clamp(server.cacheSizeMiB(), 64L, 16_384L); }
-    public static boolean stationMetadataFallbackEnabled() { return server.stationMetadataFallbackEnabled(); }
     public static int minimumScreenPixels() { return clamp(server.minimumScreenPixels(), 1, 65_536); }
     public static int maximumScreenPixels() { return clamp(server.maximumScreenPixels(), minimumScreenPixels(), 65_536); }
     public static int maximumScreenDimension() { return clamp(server.maximumScreenDimension(), 1, 2_048); }
@@ -87,6 +76,13 @@ public final class CinemarrSettings {
     public static boolean quickTvPresetEnabled(QuickTvPreset preset) {
         return preset != null && quickTvKitsEnabled() && server.quickTvPresetEnabled(preset);
     }
+    public static QuickTvBuildMode quickTvBuildMode() {
+        QuickTvBuildMode value = server.quickTvBuildMode();
+        return value == null ? QuickTvBuildMode.BOUNDED : value;
+    }
+    public static int maximumVideoWidth() { return clamp(server.maximumVideoWidth(), 2, 7_680); }
+    public static int maximumVideoHeight() { return clamp(server.maximumVideoHeight(), 2, 4_320); }
+    public static int maximumVideoBitrateKbps() { return clamp(server.maximumVideoBitrateKbps(), 128, 100_000); }
     public static boolean enabled() { return client.enabled(); }
     public static void enabled(boolean value) { client.enabled(value); }
     public static void saveEnabled() { client.saveEnabled(); }
@@ -112,14 +108,8 @@ public final class CinemarrSettings {
     private static final class DefaultServerValues implements ServerValues {
         @Override public String plexUrl() { return "http://127.0.0.1:32400"; }
         @Override public String plexToken() { return ""; }
-        @Override public String musicLibrary() { return ""; }
-        @Override public RestartMode restartMode() { return RestartMode.RESTART_TRACK; }
-        @Override public boolean pauseWhenEmpty() { return true; }
         @Override public int operatorPermissionLevel() { return 2; }
         @Override public int queueLimit() { return 500; }
-        @Override public int audioBitrateKbps() { return 160; }
-        @Override public long cacheSizeMiB() { return 1_024; }
-        @Override public boolean stationMetadataFallbackEnabled() { return false; }
     }
 
     private static final class DefaultClientValues implements ClientValues {

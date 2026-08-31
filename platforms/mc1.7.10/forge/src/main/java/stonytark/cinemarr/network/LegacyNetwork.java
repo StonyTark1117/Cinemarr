@@ -13,7 +13,6 @@ import cpw.mods.fml.common.network.simpleimpl.SimpleNetworkWrapper;
 import cpw.mods.fml.relauncher.Side;
 import net.minecraft.entity.player.EntityPlayerMP;
 import stonytark.cinemarr.Cinemarr;
-import stonytark.cinemarr.core.protocol.ControlPackets;
 import stonytark.cinemarr.core.protocol.ProtocolException;
 import stonytark.cinemarr.core.protocol.ProtocolLimits;
 
@@ -25,7 +24,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
-/** Forge 1.7.10 SimpleNetworkWrapper adapter for the canonical protocol-8 codecs. */
+/** Forge 1.7.10 SimpleNetworkWrapper adapter for the television-only protocol 9. */
 public final class LegacyNetwork {
     public interface ServerListener {
         void accept(EntityPlayerMP player, LegacyPacketTypes.Type<?> type, Object message);
@@ -68,6 +67,11 @@ public final class LegacyNetwork {
 
     public static <T> void sendToServer(LegacyPacketTypes.Type<T> type, T message) {
         CHANNEL.sendToServer(LegacyServerboundEnvelope.of(type, message));
+    }
+
+    /** Prevents tracking payloads from overtaking the protocol hello on login. */
+    public static boolean serverHandshakeComplete(EntityPlayerMP player) {
+        return player != null && INSTANCE.confirmed.contains(player.getUniqueID());
     }
 
     public static synchronized void shutdown() {
@@ -133,7 +137,7 @@ public final class LegacyNetwork {
     private void handleServer(ServerIncoming incoming) {
         EntityPlayerMP player = incoming.player;
         if (incoming.type == LegacyPacketTypes.CLIENT_HELLO) {
-            ControlPackets.ClientHello hello = (ControlPackets.ClientHello) incoming.message;
+            LegacyPacketTypes.ClientHello hello = (LegacyPacketTypes.ClientHello) incoming.message;
             if (hello.protocolVersion() != Cinemarr.PROTOCOL) {
                 player.playerNetServerHandler.kickPlayerFromServer(
                         "Cinemarr protocol mismatch: server requires protocol " + Cinemarr.PROTOCOL);
@@ -144,7 +148,7 @@ public final class LegacyNetwork {
             deadlines.remove(player.getUniqueID());
             confirmed.add(player.getUniqueID());
             sendToPlayer(player, LegacyPacketTypes.SERVER_HELLO,
-                    new ControlPackets.ServerHello(Cinemarr.PROTOCOL, System.currentTimeMillis()));
+                    new LegacyPacketTypes.ServerHello(Cinemarr.PROTOCOL, System.currentTimeMillis()));
             ServerListener listener = serverListener;
             if (listener != null) listener.accept(player, incoming.type, incoming.message);
             return;
@@ -154,9 +158,9 @@ public final class LegacyNetwork {
             return;
         }
         if (incoming.type == LegacyPacketTypes.TIME_SYNC_REQUEST) {
-            ControlPackets.TimeSyncRequest request = (ControlPackets.TimeSyncRequest) incoming.message;
+            LegacyPacketTypes.TimeSyncRequest request = (LegacyPacketTypes.TimeSyncRequest) incoming.message;
             sendToPlayer(player, LegacyPacketTypes.TIME_SYNC_RESPONSE,
-                    new ControlPackets.TimeSyncResponse(request.nonce(), request.clientSentEpochMs(), System.currentTimeMillis()));
+                    new LegacyPacketTypes.TimeSyncResponse(request.nonce(), request.clientSentEpochMs(), System.currentTimeMillis()));
             return;
         }
         ServerListener listener = serverListener;

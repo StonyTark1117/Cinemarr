@@ -1,11 +1,14 @@
 plugins {
     alias(libs.plugins.fabric.loom)
 }
+allprojects { apply from: rootProject.file('../../../gradle/reproducible-archives.gradle') }
 apply from: file('../../../gradle/quilt-runtime.gradle')
 apply from: file('../../../gradle/mc26-recipe-resources.gradle')
 
 group = 'stonytark'
-version = '1.0.1'
+def productProperties = new Properties()
+file('../../../gradle.properties').withInputStream { productProperties.load(it) }
+version = productProperties.getProperty('mod_version')
 def artifactVersion = version.toString()
 def runtimeLoader = providers.gradleProperty('cinemarrRuntimeLoader').orElse('fabric')
 def quiltRuntime = runtimeLoader.map { it == 'quilt' }
@@ -95,10 +98,6 @@ dependencies {
 
     implementation project(':core')
     include project(':core')
-    implementation libs.jlayer
-    include libs.jlayer
-    implementation libs.jump3r
-    include libs.jump3r
     javacvFacade("org.bytedeco:javacv:${javaCvVersion}") { transitive = false }
     compileOnly("org.bytedeco:javacv:${javaCvVersion}") { transitive = false }
     implementation("org.bytedeco:javacpp:${javaCppVersion}") { transitive = false }
@@ -131,7 +130,7 @@ sourceSets {
             exclude 'stonytark/cinemarr/Cinemarr.java'
             exclude 'stonytark/cinemarr/client/CinemarrClient.java'
             exclude 'stonytark/cinemarr/client/CinemarrClientConfigScreen.java'
-            exclude 'stonytark/cinemarr/client/CinemarrClientState.java'
+            exclude 'stonytark/cinemarr/client/CinemarrClientUi.java'
             exclude 'stonytark/cinemarr/client/CinemarrScreen.java'
             exclude 'stonytark/cinemarr/client/CinemarrVideoScreen.java'
             exclude 'stonytark/cinemarr/client/CinemarrVideoAudio.java'
@@ -201,8 +200,7 @@ tasks.named('jar', Jar) {
 def releaseArchive = tasks.named('jar', Jar).flatMap { it.archiveFile }
 def expectedReleaseName = "cinemarr-${artifactVersion}+mc26.2-fabric.jar"
 def coreReleaseEntry = "META-INF/jars/core-${version}.jar".toString()
-def releaseEntries = [coreReleaseEntry, 'META-INF/jars/jlayer-1.0.1.jar',
-                      'META-INF/jars/jump3r-1.0.5.jar', 'META-INF/LICENSE-Cinemarr-CC0-1.0.txt',
+def releaseEntries = [coreReleaseEntry, 'META-INF/LICENSE-Cinemarr-CC0-1.0.txt',
                       'META-INF/jars/javacpp-1.5.14.jar', 'META-INF/jars/ffmpeg-8.1.2-1.5.14.jar',
                       'META-INF/jars/javacpp-1.5.14-linux-x86_64.jar', 'META-INF/jars/javacpp-1.5.14-linux-arm64.jar',
                       'META-INF/jars/javacpp-1.5.14-windows-x86_64.jar', 'META-INF/jars/ffmpeg-8.1.2-1.5.14-linux-x86_64.jar',

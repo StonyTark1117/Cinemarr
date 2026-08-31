@@ -6,7 +6,9 @@ import net.minecraft.world.WorldServer;
 import net.minecraft.world.WorldSavedData;
 import net.minecraft.world.storage.MapStorage;
 import stonytark.cinemarr.core.platform.CinemarrSettings;
+import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.core.server.TelevisionLifecycle;
+import stonytark.cinemarr.Cinemarr;
 import stonytark.cinemarr.core.screen.ScreenFacing;
 import stonytark.cinemarr.core.screen.ScreenGeometry;
 import stonytark.cinemarr.core.screen.ScreenLimits;
@@ -27,12 +29,15 @@ import java.util.UUID;
 /** Dimension-local pixel and television index for Forge 1.7.10. */
 public final class LegacyWorldScreens extends WorldSavedData {
     public static final String DATA_NAME = "cinemarr_screens";
-    public static final int SCHEMA_VERSION = 2;
+    public static final int SCHEMA_VERSION = 3;
     private final Map<Long, ScreenFacing> pixels = new HashMap<Long, ScreenFacing>();
     private final Map<Long, Television> televisions = new HashMap<Long, Television>();
+    private final Map<Long, Set<Long>> quickTvConstructions = new HashMap<Long, Set<Long>>();
     private final transient String detachedDimension = "detached:" + UUID.randomUUID();
     private transient WorldServer world;
     private transient boolean registrationsReconciled;
+    private transient boolean constructionsRecovered;
+    private transient boolean recoveryProbeLogged;
 
     public LegacyWorldScreens() { this(DATA_NAME); }
     public LegacyWorldScreens(String name) { super(name); }
@@ -47,7 +52,18 @@ public final class LegacyWorldScreens extends WorldSavedData {
         }
         value.world = world;
         if(!value.registrationsReconciled)value.reconcileRegistrations();
+        if(!value.constructionsRecovered)value.recoverConstructions();
         return value;
+    }
+
+    public void beginQuickTvConstruction(long controller, java.util.Collection<Long> targets) {
+        quickTvConstructions.put(controller, new HashSet<Long>(targets)); markDirty();
+    }
+    public void finishQuickTvConstruction(long controller) { if (quickTvConstructions.remove(controller) != null) markDirty(); }
+    private void recoverConstructions() {
+        if(world==null||quickTvConstructions.isEmpty()){constructionsRecovered=quickTvConstructions.isEmpty();return;}constructionsRecovered=true;boolean changed=false;int recovered=0;
+        for(java.util.Iterator<Map.Entry<Long,Set<Long>>> builds=quickTvConstructions.entrySet().iterator();builds.hasNext();){Set<Long> footprint=builds.next().getValue();for(java.util.Iterator<Long> positions=footprint.iterator();positions.hasNext();){long packed=positions.next();int x=LegacyBlockPos.x(packed),y=LegacyBlockPos.y(packed),z=LegacyBlockPos.z(packed);if(!world.blockExists(x,y,z))continue;if(world.getBlock(x,y,z)==LegacyBlocks.SCREEN_PIXEL)world.setBlockToAir(x,y,z);positions.remove();changed=true;recovered++;}if(footprint.isEmpty())builds.remove();}
+        constructionsRecovered=quickTvConstructions.isEmpty();if(changed)markDirty();if(ProtocolLimits.lifecycleProbeEnabled()&&(changed||!recoveryProbeLogged)){int remaining=0;for(Set<Long> footprint:quickTvConstructions.values())remaining+=footprint.size();Cinemarr.LOGGER.info("Acceptance Quick TV lifecycle recovery: removed={} remaining={} complete={}",recovered,remaining,quickTvConstructions.isEmpty());recoveryProbeLogged=true;}
     }
 
     public void putPixel(int x, int y, int z, ScreenFacing facing) {
@@ -274,6 +290,13 @@ public final class LegacyWorldScreens extends WorldSavedData {
             Television television = Television.load(value);
             if (television != null) televisions.put(television.controllerPos, television);
         }
+        NBTTagList constructionTags = tag.getTagList("quickTvConstructions", 10);
+        for (int index = 0; index < constructionTags.tagCount(); index++) {
+            NBTTagCompound value = constructionTags.getCompoundTagAt(index); Set<Long> positions = new HashSet<Long>();
+            NBTTagList pixels = value.getTagList("pixels", 10);
+            for (int pixelIndex = 0; pixelIndex < pixels.tagCount(); pixelIndex++) positions.add(pixels.getCompoundTagAt(pixelIndex).getLong("pos"));
+            if (!positions.isEmpty()) quickTvConstructions.put(value.getLong("controller"), positions);
+        }
     }
 
     @Override public void writeToNBT(NBTTagCompound tag) {
@@ -287,6 +310,13 @@ public final class LegacyWorldScreens extends WorldSavedData {
         NBTTagList televisionTags = new NBTTagList();
         for (Television television : televisions.values()) { NBTTagCompound value = new NBTTagCompound(); television.save(value); televisionTags.appendTag(value); }
         tag.setTag("televisions", televisionTags);
+        NBTTagList constructionTags = new NBTTagList();
+        for (Map.Entry<Long, Set<Long>> entry : quickTvConstructions.entrySet()) {
+            NBTTagCompound value = new NBTTagCompound(); value.setLong("controller", entry.getKey()); NBTTagList positions = new NBTTagList();
+            for (Long position : entry.getValue()) { NBTTagCompound pixel = new NBTTagCompound(); pixel.setLong("pos", position); positions.appendTag(pixel); }
+            value.setTag("pixels", positions); constructionTags.appendTag(value);
+        }
+        tag.setTag("quickTvConstructions", constructionTags);
     }
 
     public static final class Television {

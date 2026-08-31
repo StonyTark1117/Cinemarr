@@ -48,7 +48,6 @@ public final class CinemarrClient {
     }
     private void resourcesReloaded(ResourceManager ignored) {
         VIDEO_AUDIO.audioEngineReloaded();
-        CinemarrClientState.INSTANCE.audioEngineReloaded();
     }
 
     @SubscribeEvent public void tick(TickEvent.ClientTickEvent event) {

@@ -3,8 +3,12 @@ plugins {
     alias(libs.plugins.forgegradle)
 }
 
+allprojects { apply from: rootProject.file('../../../gradle/reproducible-archives.gradle') }
+
 group = 'stonytark'
-version = '1.0.1'
+def productProperties = new Properties()
+file('../../../gradle.properties').withInputStream { productProperties.load(it) }
+version = productProperties.getProperty('mod_version')
 def artifactVersion = version.toString()
 def expectedReleaseName = "cinemarr-${artifactVersion}+mc1.20.2-forge.jar"
 base { archivesName = "cinemarr-${artifactVersion}+mc1.20.2-forge" }
@@ -66,13 +70,7 @@ dependencies {
     def javaCppVersion='1.5.14',ffmpegVersion='8.1.2-1.5.14',javaCvVersion='1.5.14'
     minecraft "net.minecraftforge:forge:${libs.versions.minecraft.get()}-${libs.versions.forge.loader.get()}"
     implementation project(':core')
-    jarJar(project(':core')) { dependency -> jarJar.ranged(dependency, '[1.0.1,1.0.2)') }
-    implementation libs.jlayer
-    minecraftLibrary libs.jlayer
-    jarJar(libs.jlayer) { dependency -> jarJar.ranged(dependency, '[1.0.1,1.0.2)') }
-    implementation libs.jump3r
-    minecraftLibrary libs.jump3r
-    jarJar(libs.jump3r) { dependency -> jarJar.ranged(dependency, '[1.0.5,1.0.6)') }
+    jarJar(project(':core')) { dependency -> jarJar.ranged(dependency, '[1.0.0,1.0.1)') }
     javacvFacade("org.bytedeco:javacv:${javaCvVersion}"){transitive=false};compileOnly("org.bytedeco:javacv:${javaCvVersion}"){transitive=false}
     implementation("org.bytedeco:javacpp:${javaCppVersion}") { transitive = false }
     minecraftLibrary("org.bytedeco:javacpp:${javaCppVersion}")
@@ -177,8 +175,7 @@ tasks.named('build') { dependsOn(tasks.named('jarJar')) }
 
 def releaseArchive = tasks.named('jarJar').flatMap { it.archiveFile }
 def coreReleaseEntry = "META-INF/jarjar/stonytark.cinemarr.core-${version}.jar".toString()
-def releaseEntries = [coreReleaseEntry, 'META-INF/jarjar/jlayer-1.0.1.jar',
-                      'META-INF/jarjar/jump3r-1.0.5.jar', 'META-INF/jarjar/metadata.json',
+def releaseEntries = [coreReleaseEntry, 'META-INF/jarjar/metadata.json',
                       'org/bytedeco/javacv/FFmpegFrameGrabber.class', 'org/bytedeco/javacv/Frame.class',
                       'META-INF/LICENSE-Cinemarr-CC0-1.0.txt', 'META-INF/LICENSE-LGPL-2.1-or-later.txt',
                       'META-INF/THIRD_PARTY_NOTICES.md', 'META-INF/mods.toml', 'cinemarr.mixins.json',

@@ -67,7 +67,6 @@ public final class CinemarrClient implements ClientModInitializer {
             }
             @Override public void onResourceManagerReload(ResourceManager manager) {
                 VIDEO_AUDIO.audioEngineReloaded();
-                CinemarrClientState.INSTANCE.audioEngineReloaded();
             }
         });
     }
