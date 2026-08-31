@@ -6,7 +6,7 @@ Cinemarr is a required client-and-server Minecraft mod for server-authoritative 
 
 ## 1.0 prerelease status
 
-This checkout targets **Cinemarr 1.0.0**, protocol **9**, and screen-data schema **3**. It is a prerelease development build, not a release candidate. A green compile or fake-Plex run is regression evidence only; release readiness requires the complete 16-artifact / 21-runtime matrix plus a credentialed, two-client controller/UI playback run against real Plex and clean teardown.
+This checkout targets **Cinemarr 1.0.0**, protocol **10**, and screen-data schema **3**. It is a prerelease development build, not a release candidate. A green compile or fake-Plex run is regression evidence only; release readiness requires the complete 16-artifact / 21-runtime matrix plus a credentialed, two-client controller/UI playback run against real Plex and clean teardown.
 
 The old global Plex-music queue, stations, MP3 transport, music UI, and their bundled JLayer/Jump3r libraries have been removed. Cinemarr 1.0 is a television/video mod; it does not require Jammarr.
 
@@ -74,15 +74,15 @@ CINEMARR_VIDEO_CLIENT_GATE=true \
 ./scripts/run-dedicated-server-gate.sh 1.21.1-neoforge
 ```
 
-Current local evidence (2026-08-30): all 21 maintained fake-Plex runtime profiles, all 10 required GameTests, and all 16 canonical 1.0.0/protocol-9 artifact inspections pass. Exact deployed artifacts passed credentialed real-Plex two-client playback on Forge 1.7.10, Quilt 1.20.1, NeoForge 1.21.1, and Fabric 26.2, including controls, reconnect, ownership enforcement, lifecycle teardown, and synchronized audible output. The final Forge 1.7.10 digest `37232612d83ad36729cdfaab3eb36c5736c18b0b86d021136e000c2a05b5495b` passed three fresh full reconnect soaks at 0 ms measured lag. Representative legacy and modern profiles also passed bounded transient-segment retry, retry exhaustion with a redacted error, and same-session recovery. Credentialed disabled/degraded/manual-retry/automatic-retry recovery passed at the four representative adapter boundaries. Packaged native software decoding passed 144p, 480p, and 1080p on both an aarch64 Debian guest with `linux-arm64` and native Windows 11 AMD64 with `windows-x86_64`; the Windows FFmpeg DLL also reported PE machine `0x8664`. The final source/runtime credential scan found no configured credential or private endpoint, all 21 managed servers were stopped with autostart disabled, and the four representative servers retained the exact indexed artifacts. The scoped release tree rebuilt twice to the same complete SHA-256 manifest, so this checkout is release-ready; tagging and publication have not been performed.
+The protocol-10 hardening tree has now passed all 21 maintained fake-Plex runtime profiles, all 10 required GameTests, deep inspection of all 16 canonical artifacts, byte-identical rebuild checks, expanded adverse-network gates, generic endpoint hygiene, and clean teardown. It remains a prerelease because credentialed real-Plex recertification and fully green GitHub CI for the exact pushed commit are still required. Earlier real-Plex and native evidence remains useful regression history but does not independently promote later bytes. See [the 1.0 hardening plan](docs/1.0_RELEASE_HARDENING_PLAN.md).
 
 The credentialed release gate uses the in-game controller with a real allowed Plex library, two independent clients, identifiable video, synchronized audible output, and a residue-free teardown. For the managed DiscPanel environment, run the exact-artifact wrapper on each representative boundary:
 
 ```bash
-DISCOPANEL_TOKEN='...' ./scripts/run-discopanel-real-plex-gate.sh 1.7.10-forge
-DISCOPANEL_TOKEN='...' ./scripts/run-discopanel-real-plex-gate.sh 1.20.1-quilt
-DISCOPANEL_TOKEN='...' ./scripts/run-discopanel-real-plex-gate.sh 1.21.1-neoforge
-DISCOPANEL_TOKEN='...' ./scripts/run-discopanel-real-plex-gate.sh 26.2-fabric
+DISCOPANEL_API_BASE='https://discopanel.example.invalid' \
+DISCOPANEL_SERVER_HOST='minecraft.example.invalid' \
+DISCOPANEL_TOKEN='...' \
+./scripts/run-discopanel-real-plex-gate.sh 1.21.1-neoforge
 ```
 
 Use `run-discopanel-plex-recovery-gate.sh` with the same four labels for the credentialed disabled/degraded/manual/automatic retry matrix. The bounded segment-failure gate is opt-in and should cover one legacy and one modern profile:

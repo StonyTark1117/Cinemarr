@@ -1,17 +1,22 @@
-# Proposal implementation status
+# Prerelease implementation status
 
-This checkout is the validated 1.0.0 release candidate. It has not been tagged or published.
+This checkout is a Cinemarr 1.0.0 prerelease under hardening. It is not a
+validated release candidate and has not been tagged or published. Evidence in
+this document predating protocol 10 is regression history only; every required
+gate must be repeated against the exact final commit and artifact bytes.
 
 | Area | Current state | Required before release |
 | --- | --- | --- |
-| Product boundary | Video-only protocol 9; inherited music/station UI, transport, persistence, tests, JLayer, and Jump3r removed; the 16 rebuilt JARs pass the forbidden-entry inspection | Complete |
-| Platform matrix | All 16 canonical artifacts rebuild and inspect; the deterministic fake-Plex two-client gate passed all 21 runtime profiles; exact deployed artifacts passed real-Plex two-client A/V on Forge 1.7.10, Quilt 1.20.1, NeoForge 1.21.1, and Fabric 26.2; Forge 1.7.10 passed three fresh complete control/reconnect runs at 0 ms measured lag; Linux ARM64 and Windows x86-64 native smoke pass | Complete |
-| Plex security | Server-only token, allowlists, rating/permission filtering, confined HLS, redaction, asynchronous state/retry parity across representative adapter boundaries; credentialed failure/recovery and actual-secret scans pass | Complete |
-| Screens | Persistent geometry, ownership, overlap and lifecycle limits; all 10 required GameTests pass; representative non-owner viewing and mutation rejection passed against real Plex | Complete |
-| Quick TVs | Bounded default, literal ceiling, <=256 placements/tick, transactional rollback and schema-3 recovery ledger; exact Forge 1.7.10 and NeoForge 1.21.1 artifacts passed restart/unloaded-footprint recovery | Complete |
-| Controller UI | Pagination, session draft retention, `canControl` enforcement, queue/stream/presentation controls, visible errors; the 640x360 non-owner UI rendered with zero clipped widgets | Complete |
-| Media relay | Rendition caps, bounded/hash-checked segments, retries and diagnostics; legacy and modern adverse-network/exhaustion/recovery gates pass | Complete |
-| Client decode | Software default; only software/auto/vaapi public modes; software two-client A/V passed all 21 deterministic profiles; packaged Linux ARM64 and Windows x86-64 native smoke pass | Complete |
-| Release evidence | Unit tests, 10 GameTests, 16-artifact inspection/hashes, the 21-profile fake-Plex matrix, representative real-Plex controls/reconnect/non-owner UI, three fresh Forge 1.7.10 reconnect soaks, old/new-loader restart recovery, credentialed recovery, adverse-network behavior, Linux ARM64 and Windows x86-64 native smoke, secret/residue audit, and two identical full-matrix SHA-256 manifests pass in this checkout | Complete |
+| Product boundary | Video-only protocol 10; inherited music/station UI, transport, persistence, tests, JLayer, and Jump3r remain removed | Rebuild and inspect all 16 exact final JARs |
+| Platform matrix | Protocol 10 passed the complete manifest-derived 16-artifact/21-runtime local matrix | Obtain green CI and hosted-bundle parity for the exact pushed SHA |
+| Plex security | Server-only credentials, allowlists, origin confinement, redaction, and bounded recovery remain implemented | Repeat credentialed recovery and exact-secret scans |
+| Screens | Persistent geometry, ownership, overlap, lifecycle limits, and 10 GameTests remain implemented | Repeat all GameTests and real-client ownership checks |
+| Quick TVs | Bounded construction, transactional rollback, and schema-3 recovery remain implemented | Repeat restart and unloaded-footprint recovery on exact candidate bytes |
+| Controller UI | Pagination, session draft retention, `canControl`, queue, stream, and presentation controls remain implemented | Repeat legacy draft-state and representative real-client layout checks |
+| Media relay | Bounded work/cache/egress, fairness tests, EOS handling, sustained latency, transient failure, exhaustion, and recovery are locally green | Repeat credentialed recovery on exact deployed bytes |
+| Client decode | Software remains the release baseline; auto/VAAPI remain experimental | Repeat software A/V and packaged native smoke against exact candidate bytes |
+| Release evidence | Current fake-Plex, GameTest, artifact, reproducibility, and hygiene gates are green; real-Plex evidence remains historical | Complete exact real-Plex recertification, then obtain green CI for the exact pushed SHA |
 
-Every item in [release acceptance](RELEASE_ACCEPTANCE.md) is checked against the final artifact digests. No tag or publication has been performed.
+The authoritative remaining work is [the 1.0 hardening plan](1.0_RELEASE_HARDENING_PLAN.md)
+and the unchecked [release acceptance](RELEASE_ACCEPTANCE.md) checklist. No tag
+or publication is authorized by completing those engineering gates.
