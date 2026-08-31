@@ -2,9 +2,12 @@ package stonytark.cinemarr.client;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.audio.SoundCategory;
+import org.lwjgl.BufferUtils;
+import org.lwjgl.openal.AL10;
+import org.lwjgl.openal.AL11;
 import paulscode.sound.SoundSystem;
-import paulscode.sound.SoundSystemConfig;
 import stonytark.cinemarr.Cinemarr;
+import stonytark.cinemarr.core.client.AudioUnderrunPolicy;
 import stonytark.cinemarr.core.platform.CinemarrSettings;
 import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.core.protocol.VideoPackets;
@@ -12,6 +15,7 @@ import stonytark.cinemarr.core.screen.ScreenFacing;
 
 import javax.sound.sampled.AudioFormat;
 import java.io.ByteArrayOutputStream;
+import java.nio.ByteBuffer;
 import java.util.ArrayDeque;
 import java.util.List;
 import java.util.Queue;
@@ -37,13 +41,14 @@ final class LegacyVideoAudio {
     // per render tick while the four-second runway still bounds recovery time.
     private static final int PCM_FEED_BYTES = 192 * 1024;
     private static final int MAX_PENDING_FRAMES = 256;
-    private static long ids;
-    private final String source = "cinemarr:video:" + (++ids);
     private final Queue<LegacyDecodedAudioFrame> pending = new ArrayDeque<LegacyDecodedAudioFrame>();
+    private final Queue<OpenAlBuffer> backendBuffers = new ArrayDeque<OpenAlBuffer>();
     private UUID sessionId;
     private long generation = -1;
     private SoundSystem soundSystem;
     private AudioFormat format;
+    private int source;
+    private long backendCompletedUs;
     private long queuedUntilLocalUs;
     private long preparedDurationUs;
     private long queuedProgramUntilUs;
@@ -52,6 +57,7 @@ final class LegacyVideoAudio {
     private long mediaBoundaryLocalUs;
     private long sourceRequestedAtUs;
     private long sourcePausedAtUs;
+    private long activationGraceUntilMs;
     private int underruns;
     private int driftTicks;
     private boolean prepared;
@@ -81,19 +87,19 @@ final class LegacyVideoAudio {
         if (!prepared && !session.paused() && LegacyClientState.INSTANCE.mediaClockReady()) prepare(current, targetUs);
         if (!prepared || soundSystem == null) return;
         float[] origin = nearest(televisions);
-        soundSystem.setPosition(source, origin[0], origin[1], origin[2]);
-        soundSystem.setVolume(source, CinemarrSettings.enabled() ? (float) (CinemarrSettings.volume()
+        AL10.alSource3f(source, AL10.AL_POSITION, origin[0], origin[1], origin[2]);
+        AL10.alSourcef(source, AL10.AL_GAIN, CinemarrSettings.enabled() ? (float) (CinemarrSettings.volume()
                 * Minecraft.getMinecraft().gameSettings.getSoundLevel(SoundCategory.RECORDS)) : 0.0F);
         if (session.paused()) {
             if (!started) { stopSource(); return; }
             if (!sourcePaused) {
-                soundSystem.pause(source); sourcePaused = true;
+                AL10.alSourcePause(source); sourcePaused = true;
                 sourcePausedAtUs = System.currentTimeMillis() * 1_000L;
             }
         }
         else if (!started) {
             long nowUs = System.currentTimeMillis() * 1_000L;
-            if (!soundSystem.playing(source)) {
+            if (!backendPlaying()) {
                 if (nowUs - sourceRequestedAtUs > SOURCE_START_TIMEOUT_US) stopSource();
                 return;
             }
@@ -106,17 +112,33 @@ final class LegacyVideoAudio {
         } else {
             long nowUs = System.currentTimeMillis() * 1_000L;
             if (sourcePaused) {
-                soundSystem.play(source); sourcePaused = false;
+                AL10.alSourcePlay(source); sourcePaused = false;
+                activationGraceUntilMs=System.currentTimeMillis()+1_000L;
                 long pausedUs = Math.max(0L, nowUs - sourcePausedAtUs);
                 queuedUntilLocalUs += pausedUs;
                 mediaBoundaryLocalUs += pausedUs;
                 sourcePausedAtUs = 0L;
             }
-            if (!soundSystem.playing(source)) {
-                rebuffer(targetUs, scheduledStartUs, "source-stopped");
+            boolean backendPlaying=backendPlaying();
+            if (!backendPlaying) {
+                boolean terminal = playback.audioInputExhausted() && pending.isEmpty();
+                long nowMs=System.currentTimeMillis();
+                if(!terminal&&!LegacyBackendQueueGuard.shouldRecover(false,false,false,nowMs,activationGraceUntilMs))return;
+                underruns += AudioUnderrunPolicy.additionalUnderruns(0, 0, true, false, terminal);
+                if (terminal) {
+                    if (ProtocolLimits.videoProbeEnabled()) Cinemarr.LOGGER.info(
+                            "Acceptance legacy video audio terminal drain: targetMs={}", targetUs / 1_000L);
+                    stopSource();
+                } else rebuffer(targetUs, scheduledStartUs, "source-stopped");
                 return;
             }
             feed(nowUs);
+            // SoundSystem.millisecondsPlayed() is a cursor within Paulscode's
+            // current raw buffer, not a monotonic source cursor. It can reset
+            // every time the one-second feed advances, so using it as the
+            // media clock creates a false underrun/rebuffer loop. Startup is
+            // still anchored to observed cursor movement; after that anchor,
+            // advance the media clock from the shared wall-clock boundary.
             long audioMediaUs = wallClockAudioMediaUs(scheduledStartUs, mediaBoundaryLocalUs, nowUs);
             long driftUs = audioMediaUs - targetUs;
             if (targetUs >= scheduledStartUs) {
@@ -131,19 +153,20 @@ final class LegacyVideoAudio {
                     stableTicks++;
                 }
             }
-            if (pending.isEmpty() && nowUs > queuedUntilLocalUs + 250_000L && !soundSystem.playing(source)) { underruns++; stopSource(); }
+            if (pending.isEmpty() && nowUs > queuedUntilLocalUs + 250_000L && !backendPlaying()) { underruns++; stopSource(); }
         }
         if (ProtocolLimits.videoProbeEnabled() && System.currentTimeMillis() - lastAcceptanceLogMs >= 1_000L) {
             lastAcceptanceLogMs = System.currentTimeMillis();
             long nowUs = System.currentTimeMillis() * 1_000L;
             long backendPlayedUs = backendPlayedUs();
-            long backendMediaUs = started ? backendAudioMediaUs(scheduledStartUs, programOffsetUs, backendPlayedUs) : 0L;
-            long audioMediaUs = started ? wallClockAudioMediaUs(scheduledStartUs, mediaBoundaryLocalUs,
+            long cursorMediaUs = started ? scheduledStartUs + Math.max(0L, backendPlayedUs - programOffsetUs) : 0L;
+            long wallClockMediaUs = started ? wallClockAudioMediaUs(scheduledStartUs, mediaBoundaryLocalUs,
                     sourcePaused ? sourcePausedAtUs : nowUs) : 0L;
-            Cinemarr.LOGGER.info("Acceptance legacy video audio timeline: targetMs={} videoMs={} scheduledMs={} backendPlayedMs={} backendMediaMs={} audioMediaMs={} driftMs={} started={} stableTicks={} pendingFrames={} underruns={}",
+            Cinemarr.LOGGER.info("Acceptance legacy video audio timeline: targetMs={} videoMs={} scheduledMs={} backendPlayedMs={} cursorMediaMs={} wallClockMediaMs={} audioMediaMs={} driftMs={} started={} stableTicks={} pendingFrames={} underruns={}",
                     targetUs / 1_000L, playback.lastPresentedUs() / 1_000L, scheduledStartUs / 1_000L,
-                    backendPlayedUs / 1_000L, backendMediaUs / 1_000L, audioMediaUs / 1_000L,
-                    (audioMediaUs - targetUs) / 1_000L, started, stableTicks, pending.size(), underruns);
+                    backendPlayedUs / 1_000L, cursorMediaUs / 1_000L, wallClockMediaUs / 1_000L,
+                    wallClockMediaUs / 1_000L, (wallClockMediaUs - targetUs) / 1_000L,
+                    started, stableTicks, pending.size(), underruns);
         }
     }
 
@@ -154,8 +177,13 @@ final class LegacyVideoAudio {
                 || first.presentationTimeUs() > targetUs + SCHEDULE_LEAD_US + 100_000L) return;
         format = new AudioFormat(first.sampleRate(), 16, first.channels(), true, false); soundSystem = system;
         float[] origin = new float[] { 0, 0, 0 };
-        soundSystem.rawDataStream(format, true, source, origin[0], origin[1], origin[2], SoundSystemConfig.ATTENUATION_LINEAR, 64.0F);
-        soundSystem.setLooping(source, false);
+        source = AL10.alGenSources();
+        AL10.alSourcei(source, AL10.AL_LOOPING, AL10.AL_FALSE);
+        AL10.alSourcei(source, AL10.AL_SOURCE_RELATIVE, AL10.AL_FALSE);
+        AL10.alSource3f(source, AL10.AL_POSITION, origin[0], origin[1], origin[2]);
+        AL10.alSourcef(source, AL10.AL_REFERENCE_DISTANCE, 1.0F);
+        AL10.alSourcef(source, AL10.AL_MAX_DISTANCE, 64.0F);
+        AL10.alSourcef(source, AL10.AL_ROLLOFF_FACTOR, 1.0F);
         // Start the physical source with silence only. Paulscode submits raw
         // buffers through a separate command thread, and OpenAL may report the
         // source as PLAYING before the selected backend consumes its first
@@ -164,7 +192,7 @@ final class LegacyVideoAudio {
         // without needing to remove an already-queued program buffer.
         preparedDurationUs = queueSilence(SOURCE_PREROLL_US);
         sourceRequestedAtUs = System.currentTimeMillis() * 1_000L;
-        prepared = true; soundSystem.play(source);
+        prepared = true; AL10.alSourcePlay(source);
         if (ProtocolLimits.videoProbeEnabled()) Cinemarr.LOGGER.info(
                 "Acceptance legacy video audio preroll: targetMs={} queuedMs={} sampleRate={} channels={} pendingFrames={}",
                 targetUs / 1_000L, preparedDurationUs / 1_000L, (int) format.getSampleRate(),
@@ -172,7 +200,7 @@ final class LegacyVideoAudio {
     }
 
     private void scheduleAfterSourceStart(long targetUs, long nowUs) {
-        long playedUs = Math.max(0L, (long) (soundSystem.millisecondsPlayed(source) * 1_000.0F));
+        long playedUs = backendPlayedUs();
         long boundaryUs = scheduledStartUs(targetUs);
         while (!pending.isEmpty() && endUs(pending.peek()) <= boundaryUs) pending.poll();
         if (pending.isEmpty()) { stopSource(); return; }
@@ -195,6 +223,7 @@ final class LegacyVideoAudio {
         }
         mediaBoundaryLocalUs = nowUs + Math.max(0L, programOffsetUs - playedUs);
         queuedUntilLocalUs = nowUs + Math.max(0L, preparedDurationUs - playedUs);
+        activationGraceUntilMs=System.currentTimeMillis()+1_000L;
         started = true; driftTicks = 0; stableTicks = targetUs >= scheduledStartUs ? 1 : 0;
         if (ProtocolLimits.videoProbeEnabled()) Cinemarr.LOGGER.info(
                 "Acceptance legacy video audio scheduled: framePtsMs={} targetMs={} leadMs={} backendPlayedMs={} extraSilenceMs={} queuedMs={}",
@@ -203,8 +232,40 @@ final class LegacyVideoAudio {
     }
 
     private long backendPlayedUs() {
-        return soundSystem == null ? 0L
-                : Math.max(0L, (long) (soundSystem.millisecondsPlayed(source) * 1_000.0F));
+        if (source == 0 || format == null) return 0L;
+        reclaimProcessedBuffers();
+        long currentUs = Math.max(0L, AL10.alGetSourcei(source, AL11.AL_SAMPLE_OFFSET))
+                * 1_000_000L / Math.max(1, (int) format.getSampleRate());
+        return backendCompletedUs + currentUs;
+    }
+
+    private boolean backendPlaying() {
+        return source != 0 && AL10.alGetSourcei(source, AL10.AL_SOURCE_STATE) == AL10.AL_PLAYING;
+    }
+
+    private void reclaimProcessedBuffers() {
+        if (source == 0) return;
+        int processed = Math.max(0, AL10.alGetSourcei(source, AL10.AL_BUFFERS_PROCESSED));
+        while (processed-- > 0 && !backendBuffers.isEmpty()) {
+            int buffer = AL10.alSourceUnqueueBuffers(source);
+            OpenAlBuffer expected = backendBuffers.poll();
+            backendCompletedUs += expected.durationUs;
+            AL10.alDeleteBuffers(buffer);
+        }
+    }
+
+    private void queuePcm(byte[] pcm) {
+        if (pcm.length == 0 || source == 0 || format == null) return;
+        reclaimProcessedBuffers();
+        int buffer = AL10.alGenBuffers();
+        ByteBuffer bytes = BufferUtils.createByteBuffer(pcm.length);
+        bytes.put(pcm).flip();
+        int channels = format.getChannels();
+        AL10.alBufferData(buffer, channels == 1 ? AL10.AL_FORMAT_MONO16 : AL10.AL_FORMAT_STEREO16,
+                bytes, (int) format.getSampleRate());
+        AL10.alSourceQueueBuffers(source, buffer);
+        backendBuffers.add(new OpenAlBuffer(buffer,
+                durationUs(pcm.length, (int) format.getSampleRate(), channels)));
     }
 
     private void rebuffer(long targetUs, long audioMediaUs, String reason) {
@@ -256,7 +317,7 @@ final class LegacyVideoAudio {
             queuedProgramUntilUs = Math.max(queuedProgramUntilUs, frameEndUs);
         }
         if (bytes.size() == 0) return 0L;
-        soundSystem.feedRawAudioData(source, bytes.toByteArray());
+        queuePcm(bytes.toByteArray());
         return durationUs;
     }
 
@@ -269,7 +330,7 @@ final class LegacyVideoAudio {
             int alignment = format.getChannels() * 2;
             length -= length % alignment;
             if (length == 0) break;
-            soundSystem.feedRawAudioData(source, new byte[length]);
+            queuePcm(new byte[length]);
             queuedUs += durationUs(length, (int) format.getSampleRate(), format.getChannels());
             remaining -= length;
         }
@@ -286,9 +347,6 @@ final class LegacyVideoAudio {
     static long additionalSilenceUs(long targetUs, long scheduledStartUs, long queuedPrerollUs, long playedUs) {
         long remainingPrerollUs = Math.max(0L, queuedPrerollUs - Math.max(0L, playedUs));
         return Math.max(0L, scheduledStartUs - targetUs - remainingPrerollUs);
-    }
-    static long backendAudioMediaUs(long scheduledStartUs, long programOffsetUs, long backendPlayedUs) {
-        return scheduledStartUs + Math.max(0L, backendPlayedUs - programOffsetUs);
     }
     static long wallClockAudioMediaUs(long scheduledStartUs, long mediaBoundaryLocalUs, long nowUs) {
         return scheduledStartUs + Math.max(0L, nowUs - mediaBoundaryLocalUs);
@@ -330,12 +388,22 @@ final class LegacyVideoAudio {
     void reset() { stopSource(); pending.clear(); sessionId = null; generation = -1; underruns = 0;
         driftTicks = stableTicks = 0; lastAcceptanceLogMs = 0L; }
     private void stopSource() {
-        SoundSystem previous = soundSystem; soundSystem = null; format = null; prepared = false; started = false;
-        sourcePaused = false; queuedUntilLocalUs = preparedDurationUs = queuedProgramUntilUs = scheduledStartUs = programOffsetUs = mediaBoundaryLocalUs = sourceRequestedAtUs = sourcePausedAtUs = 0L;
-        driftTicks = stableTicks = 0;
-        if (previous != null) {
-            try { previous.stop(source); previous.flush(source); previous.removeSource(source); }
-            catch (RuntimeException ignored) { }
+        soundSystem = null; format = null; prepared = false; started = false;
+        sourcePaused = false; activationGraceUntilMs=0L;queuedUntilLocalUs = preparedDurationUs = queuedProgramUntilUs = scheduledStartUs = programOffsetUs = mediaBoundaryLocalUs = sourceRequestedAtUs = sourcePausedAtUs = 0L;
+        backendCompletedUs = 0L; driftTicks = stableTicks = 0;
+        if (source != 0) {
+            try {
+                AL10.alSourceStop(source);
+                AL10.alSourcei(source, AL10.AL_BUFFER, 0);
+                for (OpenAlBuffer buffer : backendBuffers) if (AL10.alIsBuffer(buffer.id)) AL10.alDeleteBuffers(buffer.id);
+                if (AL10.alIsSource(source)) AL10.alDeleteSources(source);
+            } catch (RuntimeException ignored) { }
         }
+        source = 0; backendBuffers.clear();
+    }
+
+    private static final class OpenAlBuffer {
+        final int id; final long durationUs;
+        OpenAlBuffer(int id, long durationUs) { this.id = id; this.durationUs = durationUs; }
     }
 }

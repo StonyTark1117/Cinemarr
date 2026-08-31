@@ -2,8 +2,8 @@
 set -euo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-api_base=${DISCOPANEL_API_BASE:-http://192.168.1.73:8080}
-proxy_host=${CINEMARR_ACCEPTANCE_PROXY_HOST:-192.168.1.107}
+api_base=${DISCOPANEL_API_BASE:-}
+proxy_host=${CINEMARR_ACCEPTANCE_PROXY_HOST:-}
 label=${1:-}
 
 [[ -n "${DISCOPANEL_TOKEN:-}" ]] || { echo 'DISCOPANEL_TOKEN is required' >&2; exit 2; }

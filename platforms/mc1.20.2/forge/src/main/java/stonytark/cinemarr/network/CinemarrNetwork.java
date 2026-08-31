@@ -37,7 +37,7 @@ public final class CinemarrNetwork {
 
         server(id++, CinemarrPayloads.ClientHello.class, CinemarrPayloads.ClientHello::write, CinemarrPayloads.ClientHello::read,
                 (player, payload) -> {
-                    if (!protocolMatches(payload.protocolVersion())) {
+                    if (!payload.valid()) {
                         String reason = "Cinemarr protocol mismatch: server requires version " + PROTOCOL;
                         Cinemarr.LOGGER.warn("Disconnecting {}: {}", player.getGameProfile().getName(), reason);
                         // Forge 48 can close the connection before disconnect() flushes its

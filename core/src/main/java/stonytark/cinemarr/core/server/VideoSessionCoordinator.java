@@ -258,24 +258,26 @@ public final class VideoSessionCoordinator implements AutoCloseable {
             long clock = pausedAtMs >= 0 ? pausedAtMs : suspendedAtMs >= 0 ? suspendedAtMs : nowMs;
             long position = item == null ? 0 : positionAtStartMs + Math.max(0, clock - startedAtMs);
             if (item != null && item.durationMs() > 0) position = Math.min(position, item.durationMs());
-            return new Snapshot(id, name, generation, item, position, pausedAtMs >= 0, media != null,
+            return new Snapshot(id, name, generation, item, position, nowMs, pausedAtMs >= 0, media != null,
                     televisions, viewers);
         }
     }
 
     public static final class Snapshot {
         private final UUID id; private final String name; private final long generation; private final VideoMediaItem item;
-        private final long positionMs; private final boolean paused; private final boolean transcoding;
+        private final long positionMs; private final long serverEpochMs; private final boolean paused; private final boolean transcoding;
         private final Set<UUID> televisions; private final Set<UUID> viewers;
-        Snapshot(UUID id, String name, long generation, VideoMediaItem item, long positionMs, boolean paused,
+        Snapshot(UUID id, String name, long generation, VideoMediaItem item, long positionMs, long serverEpochMs, boolean paused,
                  boolean transcoding, Set<UUID> televisions, Set<UUID> viewers) {
             this.id = id; this.name = name; this.generation = generation; this.item = item; this.positionMs = positionMs;
+            this.serverEpochMs = serverEpochMs;
             this.paused = paused; this.transcoding = transcoding;
             this.televisions = Collections.unmodifiableSet(new HashSet<UUID>(televisions));
             this.viewers = Collections.unmodifiableSet(new HashSet<UUID>(viewers));
         }
         public UUID id() { return id; } public String name() { return name; } public long generation() { return generation; }
         public VideoMediaItem item() { return item; } public long positionMs() { return positionMs; }
+        public long serverEpochMs() { return serverEpochMs; }
         public boolean paused() { return paused; } public boolean transcoding() { return transcoding; }
         public Set<UUID> televisions() { return televisions; } public Set<UUID> viewers() { return viewers; }
     }

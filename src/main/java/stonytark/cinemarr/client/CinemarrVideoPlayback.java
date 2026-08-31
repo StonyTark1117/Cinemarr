@@ -4,10 +4,12 @@ import stonytark.cinemarr.Cinemarr;
 import stonytark.cinemarr.core.client.VideoSegmentAssembler;
 import stonytark.cinemarr.core.network.Hashing;
 import stonytark.cinemarr.core.protocol.ProtocolLimits;
+import stonytark.cinemarr.core.protocol.ProtocolCapabilities;
 import stonytark.cinemarr.core.protocol.VideoPackets;
 import stonytark.cinemarr.core.platform.CinemarrSettings;
 import stonytark.cinemarr.network.CinemarrNetwork;
 import stonytark.cinemarr.network.VideoPayloads;
+import stonytark.cinemarr.core.server.BoundedWorkExecutor;
 
 import java.util.ArrayDeque;
 import java.util.Comparator;
@@ -15,10 +17,7 @@ import java.util.List;
 import java.util.PriorityQueue;
 import java.util.Queue;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -31,16 +30,10 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
     private static final long MAX_COMPRESSED_VIDEO_BYTES = 128L * 1024L * 1024L;
     private static final long MAX_QUEUED_VIDEO_BYTES = 192L * 1024L * 1024L;
     private static final int MAX_QUEUED_AUDIO_FRAMES = 256;
-    private final ExecutorService audioDecoderExecutor = Executors.newSingleThreadExecutor(r -> {
-        Thread thread = new Thread(r, "Cinemarr FFmpeg audio decoder");
-        thread.setDaemon(true);
-        return thread;
-    });
-    private final ExecutorService videoDecoderExecutor = Executors.newSingleThreadExecutor(r -> {
-        Thread thread = new Thread(r, "Cinemarr FFmpeg video decoder");
-        thread.setDaemon(true);
-        return thread;
-    });
+    private final BoundedWorkExecutor audioDecoderExecutor =
+            new BoundedWorkExecutor(1, MAX_AUDIO_DECODE_JOBS, "Cinemarr FFmpeg audio decoder ");
+    private final BoundedWorkExecutor videoDecoderExecutor =
+            new BoundedWorkExecutor(1, MAX_VIDEO_DECODE_JOBS, "Cinemarr FFmpeg video decoder ");
     private final FfmpegVideoDecoder decoder = new FfmpegVideoDecoder(
             CinemarrSettings.videoDecoderBackend(), CinemarrSettings.videoDecoderDevice());
     private final Queue<AudioBatch> decodedAudio = new ConcurrentLinkedQueue<>();
@@ -62,6 +55,7 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
     private String lastFrameSha256 = "";
     private long lastHealthMs;
     private boolean caughtUp;
+    private boolean audioInputExhausted;
     private long queuedVideoBytes;
     private long queuedCompressedVideoBytes;
 
@@ -115,11 +109,13 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
                     sessionId, generation, lastPresentedUs, lastFrameSha256, current.width(), current.height());
         }
         caughtUp = lastPresentedUs > 0 && Math.abs(lastPresentedUs - targetUs) <= 250_000L;
+        audioInputExhausted = state.inputExhausted() && pendingAudio.get() == 0
+                && decodedAudio.isEmpty() && audio.isEmpty();
     }
 
     private void submitAudio(VideoSegmentAssembler.CompletedSegment segment) {
         pendingAudio.incrementAndGet();
-        CompletableFuture.runAsync(() -> {
+        audioDecoderExecutor.run(() -> {
             try {
                 byte[] mpegTs = segment.data();
                 List<DecodedAudioFrame> decoded = decoder.decodeAudio(mpegTs);
@@ -132,15 +128,13 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
             } catch (Throwable error) {
                 decoderRecoveries.incrementAndGet();
                 Cinemarr.LOGGER.warn("Cinemarr rejected video segment {} audio: {}", segment.segmentIndex(), error.toString());
-            } finally {
-                pendingAudio.decrementAndGet();
             }
-        }, audioDecoderExecutor);
+        }).whenComplete((unused, failure) -> pendingAudio.decrementAndGet());
     }
 
     private void submitVideo(PendingVideoSegment segment) {
         pendingVideo.incrementAndGet();
-        CompletableFuture.runAsync(() -> {
+        videoDecoderExecutor.run(() -> {
             try {
                 FfmpegVideoDecoder.VideoDecodeResult result = decoder.decodeVideoBounded(segment.mpegTs);
                 logDecoderSelection();
@@ -153,10 +147,8 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
             } catch (Throwable error) {
                 decoderRecoveries.incrementAndGet();
                 Cinemarr.LOGGER.warn("Cinemarr rejected video segment {} video: {}", segment.segmentIndex, error.toString());
-            } finally {
-                pendingVideo.decrementAndGet();
             }
-        }, videoDecoderExecutor);
+        }).whenComplete((unused, failure) -> pendingVideo.decrementAndGet());
     }
 
     private void logDecoderSelection() {
@@ -190,6 +182,7 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
     public long lastPresentedUs() { return lastPresentedUs; }
     public String lastFrameSha256() { return lastFrameSha256; }
     public boolean caughtUp() { return caughtUp; }
+    public boolean audioInputExhausted() { return audioInputExhausted; }
     int queuedAudioFrames() { return audio.size(); }
     long queuedVideoBytes() { return queuedVideoBytes; }
     public FfmpegVideoDecoder.DecoderDiagnostics decoderDiagnostics() { return decoder.diagnostics(); }
@@ -213,7 +206,7 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
 
     public void sendHealth(CinemarrVideoClientState.StreamState streamState, int audioUnderruns) {
         VideoPackets.SessionState session = streamState.session(); long now = System.currentTimeMillis();
-        if (session == null || session.item() == null || now - lastHealthMs < 5_000) return;
+        if (session == null || session.item() == null || now - lastHealthMs < ProtocolCapabilities.HEALTH_INTERVAL_MS) return;
         long targetUs = authoritativePositionMsLocal(session) * 1_000L;
         long lastQueuedUs = video.isEmpty() ? lastPresentedUs : Math.max(lastPresentedUs,
                 video.stream().mapToLong(DecodedVideoFrame::presentationTimeUs).max().orElse(lastPresentedUs));
@@ -241,6 +234,7 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
         lastPresentedUs = 0;
         lastFrameSha256 = "";
         caughtUp = false;
+        audioInputExhausted = false;
         lastHealthMs = 0;
         resetQueues();
         texture.close();
@@ -259,8 +253,8 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
 
     @Override public void close() {
         reset();
-        audioDecoderExecutor.shutdownNow();
-        videoDecoderExecutor.shutdownNow();
+        audioDecoderExecutor.close();
+        videoDecoderExecutor.close();
     }
 
     private record AudioBatch(UUID sessionId, long generation, int segmentIndex, long presentationTimeUs,

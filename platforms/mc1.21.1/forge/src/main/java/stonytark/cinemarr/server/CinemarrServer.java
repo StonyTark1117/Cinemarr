@@ -21,6 +21,7 @@ import stonytark.cinemarr.core.library.LibraryRule;
 import stonytark.cinemarr.core.platform.CanonicalConfigFiles;
 import stonytark.cinemarr.core.platform.CinemarrSettings;
 import stonytark.cinemarr.core.protocol.ProtocolLimits;
+import stonytark.cinemarr.core.network.RequiredClientGate;
 import stonytark.cinemarr.core.protocol.VideoPackets;
 import stonytark.cinemarr.core.server.PlexVideoService;
 import stonytark.cinemarr.network.CinemarrNetwork;
@@ -61,13 +62,13 @@ public final class CinemarrServer {
             ticks = 0;
         } catch (Exception error) { throw new IllegalStateException("Unable to initialize Cinemarr server", error); }
     }
-    @SubscribeEvent public void stopping(ServerStoppingEvent event) {
+    @SubscribeEvent public void stopping(ServerStoppingEvent event) { RequiredClientGate.clear();
         if (videoManager != null) { videoManager.close(); videoManager = null; }
         if (plexLifecycle != null) { plexLifecycle.close(); plexLifecycle = null; }
         videoService = null;
         videoLibraries = Collections.emptyList();
     }
-    @SubscribeEvent public void tick(TickEvent.ServerTickEvent.Post event) {
+    @SubscribeEvent public void tick(TickEvent.ServerTickEvent.Post event) { for(java.util.UUID id:RequiredClientGate.expire(System.currentTimeMillis())){ServerPlayer timedOut=event.getServer().getPlayerList().getPlayer(id);if(timedOut!=null)timedOut.connection.disconnect(net.minecraft.network.chat.Component.literal("Cinemarr client handshake timed out; protocol "+ProtocolLimits.VERSION+" is required"));}
         ticks++;
         if (plexLifecycle != null) plexLifecycle.tick(System.currentTimeMillis());
         if (videoManager != null) {
@@ -75,21 +76,21 @@ public final class CinemarrServer {
             if (ticks % 10 == 0) for (ServerPlayer player : event.getServer().getPlayerList().getPlayers()) videoManager.synchronizeTrackingRadius(player);
         }
     }
-    @SubscribeEvent public void joined(PlayerEvent.PlayerLoggedInEvent event) { if (videoManager != null && event.getEntity() instanceof ServerPlayer player) videoManager.synchronizeTrackingRadius(player); }
-    @SubscribeEvent public void left(PlayerEvent.PlayerLoggedOutEvent event) { if (videoManager != null && event.getEntity() instanceof ServerPlayer player) videoManager.playerLeft(player); }
+    @SubscribeEvent public void joined(PlayerEvent.PlayerLoggedInEvent event) { if (event.getEntity() instanceof ServerPlayer player) RequiredClientGate.require(player.getUUID(),System.currentTimeMillis()); }
+    @SubscribeEvent public void left(PlayerEvent.PlayerLoggedOutEvent event) { if (event.getEntity() instanceof ServerPlayer player) {RequiredClientGate.remove(player.getUUID());if(videoManager!=null)videoManager.playerLeft(player);} }
 
-    public void hello(ServerPlayer sender) {
+    public void hello(ServerPlayer sender) { if(!RequiredClientGate.accept(sender.getUUID()))return;
         CinemarrNetwork.sendToPlayer(sender, new CinemarrPayloads.ServerHello(ProtocolLimits.VERSION, System.currentTimeMillis()));
         prepareAcceptanceVideo(sender);
         if (videoManager != null) videoManager.synchronizeTrackingRadius(sender);
     }
-    public void videoLibraries(ServerPlayer player) { if (videoManager != null) videoManager.sendLibraries(player); else CinemarrNetwork.sendToPlayer(player, new VideoPayloads.LibraryList(new VideoPackets.LibraryList(List.of()))); }
-    public void videoBrowse(ServerPlayer player, VideoPackets.BrowseRequest request) { if (videoManager != null) videoManager.browse(player, request); }
-    public void videoCommand(ServerPlayer player, VideoPackets.SessionCommand command) { if (videoManager != null) videoManager.command(player, command); }
-    public void videoSegments(ServerPlayer player, VideoPackets.SegmentRequest request) { if (videoManager != null) videoManager.segments(player, request); }
-    public void videoManifest(ServerPlayer player, VideoPackets.SegmentManifestRequest request) { if (videoManager != null) videoManager.manifest(player, request); }
-    public void videoAcknowledge(ServerPlayer player, VideoPackets.SegmentAcknowledgement value) { if (videoManager != null) videoManager.acknowledge(player, value); }
-    public void videoHealth(ServerPlayer player, VideoPackets.ClientHealth value) { if (videoManager != null) videoManager.health(player, value); }
+    public void videoLibraries(ServerPlayer player) { if(!RequiredClientGate.accepted(player.getUUID()))return; if (RequiredClientGate.accepted(player.getUUID()) && videoManager != null) videoManager.sendLibraries(player); else CinemarrNetwork.sendToPlayer(player, new VideoPayloads.LibraryList(new VideoPackets.LibraryList(List.of()))); }
+    public void videoBrowse(ServerPlayer player, VideoPackets.BrowseRequest request) { if (RequiredClientGate.accepted(player.getUUID()) && videoManager != null) videoManager.browse(player, request); }
+    public void videoCommand(ServerPlayer player, VideoPackets.SessionCommand command) { if (RequiredClientGate.accepted(player.getUUID()) && videoManager != null) videoManager.command(player, command); }
+    public void videoSegments(ServerPlayer player, VideoPackets.SegmentRequest request) { if (RequiredClientGate.accepted(player.getUUID()) && videoManager != null) videoManager.segments(player, request); }
+    public void videoManifest(ServerPlayer player, VideoPackets.SegmentManifestRequest request) { if (RequiredClientGate.accepted(player.getUUID()) && videoManager != null) videoManager.manifest(player, request); }
+    public void videoAcknowledge(ServerPlayer player, VideoPackets.SegmentAcknowledgement value) { if (RequiredClientGate.accepted(player.getUUID()) && videoManager != null) videoManager.acknowledge(player, value); }
+    public void videoHealth(ServerPlayer player, VideoPackets.ClientHealth value) { if (RequiredClientGate.accepted(player.getUUID()) && videoManager != null) videoManager.health(player, value); }
     public String videoStatus() { return videoManager == null ? unavailableStatus() : videoManager.status(); }
     public String videoDiagnostics() { return videoManager == null ? unavailableDiagnostics() : videoManager.diagnostics(); }
     public boolean retryPlex() { return plexLifecycle != null && plexLifecycle.retry(); }

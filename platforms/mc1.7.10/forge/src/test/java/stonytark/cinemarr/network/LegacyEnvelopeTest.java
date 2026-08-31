@@ -15,16 +15,16 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class LegacyEnvelopeTest {
-    @Test void advertisesAndCarriesProtocolNineHello() {
+    @Test void advertisesAndCarriesProtocolTenCapabilities() {
         assertEquals(ProtocolLimits.VERSION, Cinemarr.PROTOCOL);
         LegacyEnvelope outgoing = LegacyEnvelope.encode(LegacyPacketTypes.CLIENT_HELLO,
-                new LegacyPacketTypes.ClientHello(9));
+                new LegacyPacketTypes.ClientHello(10));
         ByteBuf buffer = Unpooled.buffer(); outgoing.toBytes(buffer);
         LegacyEnvelope incoming = new LegacyEnvelope(); incoming.fromBytes(buffer);
         LegacyPacketTypes.ClientHello decoded = (LegacyPacketTypes.ClientHello) incoming.decode(LegacyPacketTypes.Direction.SERVERBOUND);
         assertEquals(LegacyPacketTypes.CLIENT_HELLO.id(), incoming.messageId());
-        assertEquals("09", hex(incoming.payload()));
-        assertEquals(9, decoded.protocolVersion());
+        assertEquals("0a000000000000000380800108e807", hex(incoming.payload()));
+        assertEquals(10, decoded.protocolVersion());
         assertEquals(0, buffer.readableBytes());
     }
 
@@ -40,7 +40,7 @@ class LegacyEnvelopeTest {
     }
 
     @Test void rejectsWrongDirectionUnknownIdsAndTrailingBytes() {
-        LegacyEnvelope hello = LegacyEnvelope.encode(LegacyPacketTypes.CLIENT_HELLO, new LegacyPacketTypes.ClientHello(9));
+        LegacyEnvelope hello = LegacyEnvelope.encode(LegacyPacketTypes.CLIENT_HELLO, new LegacyPacketTypes.ClientHello(10));
         assertThrows(ProtocolException.class, () -> hello.decode(LegacyPacketTypes.Direction.CLIENTBOUND));
         ByteBuf unknown = Unpooled.buffer();
         cpw.mods.fml.common.network.ByteBufUtils.writeVarInt(unknown, 127, 5);

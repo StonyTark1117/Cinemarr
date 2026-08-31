@@ -5,6 +5,7 @@ import org.bytedeco.javacv.Frame;
 import org.bytedeco.javacv.FrameGrabber;
 import stonytark.cinemarr.core.platform.DecoderProbeFixture;
 import stonytark.cinemarr.core.platform.VideoDecoderBackend;
+import stonytark.cinemarr.core.server.BoundedWorkExecutor;
 
 import java.io.ByteArrayInputStream;
 import java.lang.management.ManagementFactory;
@@ -20,8 +21,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 import static org.bytedeco.ffmpeg.global.avutil.AV_SAMPLE_FMT_S16;
 import static org.bytedeco.ffmpeg.global.avutil.AV_PIX_FMT_RGBA;
@@ -34,11 +33,9 @@ import static org.bytedeco.ffmpeg.global.avutil.AV_PIX_FMT_RGBA;
 public final class FfmpegVideoDecoder implements MediaSegmentDecoder {
     private static final int MAX_SEGMENT_BYTES = 32 * 1024 * 1024;
     private static final long MAX_RETAINED_VIDEO_BYTES = 128L * 1024L * 1024L;
-    private static final ExecutorService PROBE_EXECUTOR = Executors.newSingleThreadExecutor(task -> {
-        Thread thread = new Thread(task, "Cinemarr FFmpeg hardware probe");
-        thread.setDaemon(true);
-        return thread;
-    });
+    private static final int MAX_PROBE_KEYS = 32;
+    private static final BoundedWorkExecutor PROBE_EXECUTOR =
+            new BoundedWorkExecutor(1, 8, "Cinemarr FFmpeg hardware probe ");
     private static final Map<String, CompletableFuture<String>> PROBES = new ConcurrentHashMap<>();
     private final VideoDecoderBackend requestedBackend;
     private final String requestedDevice;
@@ -173,7 +170,11 @@ public final class FfmpegVideoDecoder implements MediaSegmentDecoder {
 
     private CompletableFuture<String> probe(VideoDecoderBackend backend) {
         String key = backend.configValue() + '\n' + requestedDevice;
-        return PROBES.computeIfAbsent(key, ignored -> CompletableFuture.supplyAsync(() -> {
+        CompletableFuture<String> existing = PROBES.get(key);
+        if (existing != null) return existing;
+        if (PROBES.size() >= MAX_PROBE_KEYS) return CompletableFuture.completedFuture(
+                "Hardware probe cache limit reached; use a stable decoder device setting");
+        CompletableFuture<String> created = PROBE_EXECUTOR.supply(() -> {
             try {
                 FfmpegHardwareVideoDecoder.probe(backend, requestedDevice);
                 FfmpegHardwareVideoDecoder.Result decoded = FfmpegHardwareVideoDecoder.decode(
@@ -183,7 +184,9 @@ public final class FfmpegVideoDecoder implements MediaSegmentDecoder {
             } catch (FfmpegHardwareVideoDecoder.HardwareDecoderException | RuntimeException | LinkageError failure) {
                 return sanitize(failure.getMessage());
             }
-        }, PROBE_EXECUTOR));
+        });
+        existing = PROBES.putIfAbsent(key, created);
+        return existing == null ? created : existing;
     }
 
     private VideoDecoderBackend selectedHardwareBackend() {

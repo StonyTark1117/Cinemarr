@@ -43,6 +43,8 @@ final class LegacyVideoScreen extends GuiScreen {
     LegacyVideoScreen(long controllerPos, LegacyVideoClientState state) { this.controllerPos = controllerPos; this.state = state; }
 
     @Override public void initGui() {
+        LegacyTextFieldState previousSearch=search==null?null:LegacyTextFieldState.capture(search);
+        LegacyTextFieldState previousSession=sessionName==null?null:LegacyTextFieldState.capture(sessionName);
         Keyboard.enableRepeatEvents(true); buttonList.clear(); displayed.clear();
         int panel = Math.min(760, width - 16), left = (width - panel) / 2, top = 36;
         List<VideoPackets.LibrarySummary> libraries = state.libraries().libraries(); int libraryWidth = Math.max(80, panel / Math.max(1, libraries.size()));
@@ -52,13 +54,14 @@ final class LegacyVideoScreen extends GuiScreen {
             GuiButton button = add(LIBRARY_BASE + index, x, top, Math.max(20, actual - 2), 20, library.displayName());
             button.enabled = !library.id().equals(libraryId); x += actual;
         }
-        top += 26; search = new GuiTextField(fontRendererObj, left, top, panel - 266, 20); search.setMaxStringLength(128); search.setText(query);
+        top += 26; search = new GuiTextField(fontRendererObj, left, top, panel - 266, 20); search.setMaxStringLength(128);if(previousSearch==null)search.setText(query);else previousSearch.restore(search);
         add(SEARCH, left + panel - 262, top, 54, 20, "Search"); GuiButton back = add(BACK, left + panel - 204, top, 60, 20, "Back");
         back.enabled = !parents.isEmpty() && !queueView;
         add(queueView ? CLEAR_QUEUE : REFRESH, left + panel - 140, top, 64, 20, queueView ? "Clear" : "Refresh");
         add(TOGGLE_QUEUE, left + panel - 72, top, 72, 20, queueView ? "Browse" : "Queue");
         top += 28; if (queueView) addQueueRows(left, top, panel); else addBrowseRows(left, top, panel);
         addControls(left, panel);
+        if(previousSession!=null)previousSession.restore(sessionName);
         inspectAcceptanceLayout();
     }
 
@@ -116,7 +119,7 @@ final class LegacyVideoScreen extends GuiScreen {
         if (button.id >= QUEUE_BASE && button.id < REMOVE_BASE) { int row = button.id - QUEUE_BASE; if (row < displayed.size()) queue(displayed.get(row)); return; }
         if (button.id >= REMOVE_BASE) { removeQueue(rowOffset + button.id - REMOVE_BASE); return; }
         if (button.id == SEARCH) { query = search.getText().trim(); page = rowOffset = 0; request(); }
-        else if (button.id == BACK) { if (!parents.isEmpty()) { parentKey = parents.pop(); query = ""; page = rowOffset = 0; request(); } }
+        else if (button.id == BACK) { if (!parents.isEmpty()) { parentKey = parents.pop(); query = "";if(search!=null)search.setText(query); page = rowOffset = 0; request(); } }
         else if (button.id == REFRESH) request();
         else if (button.id == TOGGLE_QUEUE) { queueView = !queueView; rowOffset = 0; initGui(); }
         else if (button.id == CLEAR_QUEUE) command(VideoPackets.SessionAction.CLEAR_QUEUE, "", 0, mode(), generation(), "", -1, -1);
@@ -133,7 +136,7 @@ final class LegacyVideoScreen extends GuiScreen {
         else if (button.id == CONTINUE) command(VideoPackets.SessionAction.CONTINUE_EPISODE, "", 0, mode(), generation(), "", -1, -1);
     }
 
-    private void activate(VideoMediaItem item) { if (item.kind() == MediaKind.SHOW || item.kind() == MediaKind.SEASON) { parents.push(parentKey); parentKey = item.key(); query = ""; page = rowOffset = 0; request(); } else play(item); }
+    private void activate(VideoMediaItem item) { if (item.kind() == MediaKind.SHOW || item.kind() == MediaKind.SEASON) { parents.push(parentKey); parentKey = item.key(); query = "";if(search!=null)search.setText(query); page = rowOffset = 0; request(); } else play(item); }
     private void play(VideoMediaItem item) { command(VideoPackets.SessionAction.PLAY, item.key(), 0, mode(), generation(), "", -1, -1); notice = "Starting " + item.title(); }
     private void queue(VideoMediaItem item) { command(VideoPackets.SessionAction.QUEUE, item.key(), 0, mode(), generation(), "", -1, -1); notice = "Queued " + item.title(); }
     private void removeQueue(int index) { command(VideoPackets.SessionAction.REMOVE_QUEUE, "", index, mode(), generation(), "", -1, -1); }
@@ -151,7 +154,7 @@ final class LegacyVideoScreen extends GuiScreen {
     private void command(VideoPackets.SessionAction action, String item, long seek, PresentationMode mode, long generation, String session, int audio, int subtitle) {
         state.command(new VideoPackets.SessionCommand(action, controllerPos, libraryId, item, session, mode, generation, seek, audio, subtitle));
     }
-    private void selectLibrary(String id) { libraryId = id; parents.clear(); parentKey = query = ""; page = rowOffset = 0; request(); }
+    private void selectLibrary(String id) { libraryId = id; parents.clear(); parentKey = query = "";if(search!=null)search.setText(query); page = rowOffset = 0; request(); }
     private void request() { if (!libraryId.isEmpty()) state.browse(libraryId, parentKey, query, page); }
     private boolean paused() { VideoPackets.SessionState value = state.session(controllerPos); return value != null && value.paused(); }
     private long position() { VideoPackets.SessionState value = state.session(controllerPos); return value == null ? 0 : value.positionMs(); }

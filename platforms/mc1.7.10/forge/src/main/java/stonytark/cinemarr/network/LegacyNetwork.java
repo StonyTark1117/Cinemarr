@@ -24,7 +24,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
-/** Forge 1.7.10 SimpleNetworkWrapper adapter for the television-only protocol 9. */
+/** Forge 1.7.10 SimpleNetworkWrapper adapter for the television-only protocol 10. */
 public final class LegacyNetwork {
     public interface ServerListener {
         void accept(EntityPlayerMP player, LegacyPacketTypes.Type<?> type, Object message);
@@ -138,7 +138,7 @@ public final class LegacyNetwork {
         EntityPlayerMP player = incoming.player;
         if (incoming.type == LegacyPacketTypes.CLIENT_HELLO) {
             LegacyPacketTypes.ClientHello hello = (LegacyPacketTypes.ClientHello) incoming.message;
-            if (hello.protocolVersion() != Cinemarr.PROTOCOL) {
+            if (!hello.valid()) {
                 player.playerNetServerHandler.kickPlayerFromServer(
                         "Cinemarr protocol mismatch: server requires protocol " + Cinemarr.PROTOCOL);
                 deadlines.remove(player.getUniqueID());

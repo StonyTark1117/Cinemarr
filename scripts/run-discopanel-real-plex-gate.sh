@@ -2,8 +2,8 @@
 set -euo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-api_base=${DISCOPANEL_API_BASE:-http://192.168.1.73:8080}
-server_host=${DISCOPANEL_SERVER_HOST:-192.168.1.73}
+api_base=${DISCOPANEL_API_BASE:-}
+server_host=${DISCOPANEL_SERVER_HOST:-}
 label=${1:-}
 
 if [[ -z "${DISCOPANEL_TOKEN:-}" ]]; then

@@ -36,7 +36,7 @@ public final class CinemarrNetwork {
         registrar.playToClient(VideoPayloads.SegmentManifest.TYPE, VideoPayloads.SegmentManifest.CODEC, CinemarrNetwork::client);
         registrar.playToClient(VideoPayloads.SegmentChunk.TYPE, VideoPayloads.SegmentChunk.CODEC, CinemarrNetwork::client);
         registrar.playToServer(CinemarrPayloads.ClientHello.TYPE, CinemarrPayloads.ClientHello.CODEC, (payload, context) -> {
-            if (!protocolMatches(payload.protocolVersion())) {
+            if (!payload.valid()) {
                 ServerPlayer player = (ServerPlayer) context.player();
                 String reason = "Cinemarr protocol mismatch: server requires version " + PROTOCOL;
                 Cinemarr.LOGGER.warn("Disconnecting {}: {}", player.getGameProfile().name(), reason);

@@ -187,7 +187,12 @@ def main() -> None:
                             self.respond(503, {})
                             return
                     if state.startswith("segments-slow"):
-                        time.sleep(2.0)
+                        # A modern server deliberately prefetches a bounded
+                        # 128-segment window. Delay every response enough to
+                        # exercise sustained backpressure without turning the
+                        # slow-path case into the separate outage/exhaustion
+                        # scenario below.
+                        time.sleep(0.1)
                 content_type = "application/vnd.apple.mpegurl" if candidate.suffix == ".m3u8" else "video/mp2t"
                 self.respond_bytes(200, candidate.read_bytes(), content_type)
                 return

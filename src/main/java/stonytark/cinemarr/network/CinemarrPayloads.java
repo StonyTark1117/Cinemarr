@@ -6,6 +6,7 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 import stonytark.cinemarr.Cinemarr;
 import stonytark.cinemarr.core.protocol.CinemarrMessage;
+import stonytark.cinemarr.core.protocol.ProtocolCapabilities;
 
 /** Connection negotiation and media-clock messages shared by the television protocol. */
 public final class CinemarrPayloads {
@@ -13,21 +14,31 @@ public final class CinemarrPayloads {
         return new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(Cinemarr.MODID, path));
     }
 
-    public record ClientHello(int protocolVersion) implements CustomPacketPayload, CinemarrMessage {
+    public record ClientHello(int protocolVersion, long featureBits, int maxChunkBytes, int maxTransferWindow,
+                              int healthIntervalMs) implements CustomPacketPayload, CinemarrMessage {
+        public ClientHello(int protocolVersion) { this(protocolVersion, ProtocolCapabilities.REQUIRED_FEATURES,
+                ProtocolCapabilities.currentOffer().maxChunkBytes(), ProtocolCapabilities.MAX_TRANSFER_WINDOW,
+                ProtocolCapabilities.HEALTH_INTERVAL_MS); }
+        public boolean valid(){try{ProtocolCapabilities.negotiate(protocolVersion,featureBits,maxChunkBytes,maxTransferWindow,healthIntervalMs);return true;}catch(IllegalArgumentException invalid){return false;}}
         public static final Type<ClientHello> TYPE = genericType("client_hello");
         public static final StreamCodec<RegistryFriendlyByteBuf, ClientHello> CODEC =
                 StreamCodec.ofMember(ClientHello::write, ClientHello::read);
-        private void write(RegistryFriendlyByteBuf buffer) { buffer.writeVarInt(protocolVersion); }
-        private static ClientHello read(RegistryFriendlyByteBuf buffer) { return new ClientHello(buffer.readVarInt()); }
+        private void write(RegistryFriendlyByteBuf buffer) { buffer.writeVarInt(protocolVersion); buffer.writeLong(featureBits); buffer.writeVarInt(maxChunkBytes); buffer.writeVarInt(maxTransferWindow); buffer.writeVarInt(healthIntervalMs); }
+        private static ClientHello read(RegistryFriendlyByteBuf buffer) { return new ClientHello(buffer.readVarInt(),buffer.readLong(),buffer.readVarInt(),buffer.readVarInt(),buffer.readVarInt()); }
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
-    public record ServerHello(int protocolVersion, long serverEpochMs) implements CustomPacketPayload, CinemarrMessage {
+    public record ServerHello(int protocolVersion, long featureBits, int maxChunkBytes, int maxTransferWindow,
+                              int healthIntervalMs, long serverEpochMs) implements CustomPacketPayload, CinemarrMessage {
+        public ServerHello(int protocolVersion,long serverEpochMs){this(protocolVersion,ProtocolCapabilities.REQUIRED_FEATURES,
+                ProtocolCapabilities.currentOffer().maxChunkBytes(),ProtocolCapabilities.MAX_TRANSFER_WINDOW,
+                ProtocolCapabilities.HEALTH_INTERVAL_MS,serverEpochMs);}
+        public boolean valid(){try{ProtocolCapabilities.negotiate(protocolVersion,featureBits,maxChunkBytes,maxTransferWindow,healthIntervalMs);return true;}catch(IllegalArgumentException invalid){return false;}}
         public static final Type<ServerHello> TYPE = genericType("server_hello");
         public static final StreamCodec<RegistryFriendlyByteBuf, ServerHello> CODEC =
                 StreamCodec.ofMember(ServerHello::write, ServerHello::read);
-        private void write(RegistryFriendlyByteBuf buffer) { buffer.writeVarInt(protocolVersion); buffer.writeLong(serverEpochMs); }
-        private static ServerHello read(RegistryFriendlyByteBuf buffer) { return new ServerHello(buffer.readVarInt(), buffer.readLong()); }
+        private void write(RegistryFriendlyByteBuf buffer) { buffer.writeVarInt(protocolVersion);buffer.writeLong(featureBits);buffer.writeVarInt(maxChunkBytes);buffer.writeVarInt(maxTransferWindow);buffer.writeVarInt(healthIntervalMs);buffer.writeLong(serverEpochMs); }
+        private static ServerHello read(RegistryFriendlyByteBuf buffer) { return new ServerHello(buffer.readVarInt(),buffer.readLong(),buffer.readVarInt(),buffer.readVarInt(),buffer.readVarInt(),buffer.readLong()); }
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 

@@ -12,7 +12,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
-/** Java-8-compatible protocol-9 models for Cinemarr video browsing, control, queueing, and media relay. */
+/** Java-8-compatible protocol-10 models for Cinemarr video browsing, control, queueing, and media relay. */
 public final class VideoPackets {
     public enum SessionAction { TUNE, PLAY, PAUSE, RESUME, SEEK, STOP, SET_PRESENTATION, SET_STREAMS, QUEUE, REMOVE_QUEUE, CLEAR_QUEUE, SKIP, CONTINUE_EPISODE }
     public enum SessionStatus { IDLE, PREPARING, BUFFERING, PLAYING, PAUSED, PLEX_OFFLINE, ERROR }

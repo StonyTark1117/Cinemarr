@@ -45,7 +45,7 @@ public final class CinemarrNetwork {
 
         PayloadFlow<RegistryFriendlyByteBuf, CustomPacketPayload> serverbound = connection.play().flow(PacketFlow.SERVERBOUND);
         serverbound.addMain(CinemarrPayloads.ClientHello.TYPE, CinemarrPayloads.ClientHello.CODEC, (payload, context) -> {
-            if (!protocolMatches(payload.protocolVersion())) withSender(context, sender -> sender.connection.disconnect(
+            if (!payload.valid()) withSender(context, sender -> sender.connection.disconnect(
                     Component.literal("Cinemarr protocol mismatch: server requires version " + PROTOCOL)));
             else withSender(context, sender -> CinemarrServer.instance().hello(sender));
         });

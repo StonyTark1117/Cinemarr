@@ -6,8 +6,8 @@ set -euo pipefail
 # tears down every tagged remote resource through proxmox-hwtest.py.
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-host=${CINEMARR_HWTEST_HOST:-192.168.1.15}
-password_file=${CINEMARR_HWTEST_PASSWORD_FILE:-/home/braydon/sshforcodex}
+host=${CINEMARR_HWTEST_HOST:-}
+password_file=${CINEMARR_HWTEST_PASSWORD_FILE:-}
 bundle="$repo_root/build/decoder-benchmark/bundle"
 image_url=${CINEMARR_ARM64_IMAGE_URL:-https://cloud.debian.org/images/cloud/trixie/latest/debian-13-genericcloud-arm64.qcow2}
 checksum_url=${CINEMARR_ARM64_CHECKSUM_URL:-https://cloud.debian.org/images/cloud/trixie/latest/SHA512SUMS}

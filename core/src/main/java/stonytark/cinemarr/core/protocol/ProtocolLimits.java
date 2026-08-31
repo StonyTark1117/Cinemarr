@@ -1,7 +1,7 @@
 package stonytark.cinemarr.core.protocol;
 
 public final class ProtocolLimits {
-    public static final int VERSION = 9;
+    public static final int VERSION = 10;
     public static final String ACCEPTANCE_ENABLED_PROPERTY = "cinemarr.acceptance.enabled";
     public static final String ACCEPTANCE_CLIENT_PROTOCOL_PROPERTY = "cinemarr.acceptance.clientProtocol";
     public static final String ACCEPTANCE_SUPPRESS_HELLO_PROPERTY = "cinemarr.acceptance.suppressClientHello";

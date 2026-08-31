@@ -45,7 +45,7 @@ public final class Cinemarr {
     public static final String MOD_ID = "cinemarr";
     public static final String MOD_NAME = "Cinemarr";
     public static final String VERSION = "1.0.0";
-    public static final int PROTOCOL = 9;
+    public static final int PROTOCOL = stonytark.cinemarr.core.protocol.ProtocolLimits.VERSION;
 
     public static Logger LOGGER;
     private static LegacyVideoManager videoManager;
@@ -184,7 +184,7 @@ public final class Cinemarr {
     @NetworkCheckHandler
     public boolean requireMatchingClient(Map<String, String> remoteVersions, Side remoteSide) {
         if (remoteSide == Side.CLIENT) {
-            // Let an absent/older client reach LegacyNetwork's explicit protocol-9 hello gate so
+            // Let an absent/older client reach LegacyNetwork's explicit protocol-10 hello gate so
             // it receives Cinemarr's clear timeout/mismatch text instead of FML's generic timeout.
             return true;
         }

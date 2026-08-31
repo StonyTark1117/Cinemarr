@@ -119,9 +119,10 @@ final class LegacyVideoClientState {
         private VideoPackets.SessionState session;
         private VideoPackets.SegmentManifest manifest;
         private long requestId;
-        private int requestedSegment = -1, currentWindowStart, currentWindowEnd, totalChunks, requestRetries;
+        private int requestedSegment = -1, lastCompletedSegment = -1, currentWindowStart, currentWindowEnd, totalChunks, requestRetries;
         private long requestSentAt;
         private int deferredSegment = -1;
+        private boolean finalSegmentReceived;
         StreamState(StreamKey key) { this.key = key; }
         void session(VideoPackets.SessionState value) { session = value; }
         VideoPackets.SessionState session() { return session; }
@@ -129,7 +130,7 @@ final class LegacyVideoClientState {
         void manifest(VideoPackets.SegmentManifest value) {
             if (!key.sessionId.equals(value.sessionId()) || key.generation != value.generation() || session == null) return;
             if (sameWindow(manifest, value) && requestedSegment >= 0) { manifest = value; return; }
-            boolean continuation = manifest != null && !value.segments().isEmpty() && value.segments().get(0).index() == requestedSegment + 1;
+            boolean continuation = manifest != null && !value.segments().isEmpty() && value.segments().get(0).index() == lastCompletedSegment + 1;
             manifest = value;
             if (continuation) {
                 int first = value.segments().get(0).index();
@@ -148,7 +149,9 @@ final class LegacyVideoClientState {
             Optional<VideoSegmentAssembler.CompletedSegment> completed = assembler.accept(value.sessionId(), value.generation(), value.requestId(),
                     value.segmentIndex(), value.chunkIndex(), value.totalChunks(), value.segmentSha256(), value.presentationTimeMs(), value.keyframe(), value.data());
             if (completed.isPresent()) {
-                ready.add(completed.get()); LegacyNetwork.sendToServer(LegacyPacketTypes.VIDEO_SEGMENT_ACKNOWLEDGEMENT,
+                ready.add(completed.get()); lastCompletedSegment = value.segmentIndex(); requestedSegment = -1;
+                requestSentAt = 0L; requestRetries = 0;
+                LegacyNetwork.sendToServer(LegacyPacketTypes.VIDEO_SEGMENT_ACKNOWLEDGEMENT,
                         new VideoPackets.SegmentAcknowledgement(value.sessionId(), value.generation(), value.requestId(), value.segmentIndex(),
                                 value.totalChunks() - 1, bufferedMs()));
                 int local = descriptorIndex(value.segmentIndex());
@@ -158,6 +161,7 @@ final class LegacyVideoClientState {
                 }
                 else if (manifest.hasMore()) LegacyNetwork.sendToServer(LegacyPacketTypes.VIDEO_MANIFEST_REQUEST,
                         new VideoPackets.SegmentManifestRequest(key.sessionId, key.generation, value.segmentIndex() + 1));
+                else finalSegmentReceived = true;
             } else if (value.chunkIndex() + 1 >= currentWindowEnd && currentWindowEnd < totalChunks) request(value.segmentIndex(), currentWindowEnd);
         }
         private void request(int segment, int firstChunk) {
@@ -208,9 +212,10 @@ final class LegacyVideoClientState {
             return result;
         }
         private long bufferedMs() { long total = 0; for (VideoSegmentAssembler.CompletedSegment segment : ready) { int index = descriptorIndex(segment.segmentIndex()); if (index >= 0) total += manifest.segments().get(index).durationMs(); } return total; }
-        void reset() { assembler.reset(); ready.clear(); manifest = null; requestedSegment = -1;
+        boolean inputExhausted() { return finalSegmentReceived && ready.isEmpty() && requestedSegment < 0 && deferredSegment < 0; }
+        void reset() { assembler.reset(); ready.clear(); manifest = null; requestedSegment = -1; lastCompletedSegment = -1;
             currentWindowStart = currentWindowEnd = totalChunks = 0; deferredSegment = -1;
-            requestSentAt = 0L; requestRetries = 0; }
+            requestSentAt = 0L; requestRetries = 0; finalSegmentReceived = false; }
         VideoSegmentAssembler.CompletedSegment pollSegment() {
             if (deferredSegment >= 0 && ready.size() < MAX_READY_SEGMENTS) request(deferredSegment, 0);
             VideoSegmentAssembler.CompletedSegment value = ready.poll();

@@ -6,9 +6,9 @@ set -euo pipefail
 # handoff disk, and removes every tagged remote resource.
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-host=${CINEMARR_HWTEST_HOST:-192.168.1.15}
-password_file=${CINEMARR_HWTEST_PASSWORD_FILE:-/home/braydon/sshforcodex}
-windows_iso=${CINEMARR_WINDOWS_ISO:-/home/braydon/Downloads/Win11_25H2_English_x64_v2.iso}
+host=${CINEMARR_HWTEST_HOST:-}
+password_file=${CINEMARR_HWTEST_PASSWORD_FILE:-}
+windows_iso=${CINEMARR_WINDOWS_ISO:-}
 bundle="$repo_root/build/decoder-benchmark/bundle"
 jre_api='https://api.adoptium.net/v3/assets/latest/21/hotspot?architecture=x64&image_type=jre&os=windows&vendor=eclipse'
 

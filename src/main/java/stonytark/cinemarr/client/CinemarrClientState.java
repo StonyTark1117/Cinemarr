@@ -51,7 +51,7 @@ public final class CinemarrClientState {
                     value.controllerPos(), "", "", "", PresentationMode.FIT, 0, 0, -1, -1));
             CinemarrClientUi.openVideoScreen(value.controllerPos());
         } else if (payload instanceof CinemarrPayloads.ServerHello value) {
-            if (value.protocolVersion() != ProtocolLimits.clientHelloVersion() && minecraft.getConnection() != null) {
+            if ((!value.valid() || value.protocolVersion() != ProtocolLimits.clientHelloVersion()) && minecraft.getConnection() != null) {
                 minecraft.getConnection().getConnection().disconnect(net.minecraft.network.chat.Component.literal(
                         "Cinemarr protocol mismatch: server requires version " + value.protocolVersion()));
             } else requestTimeSync();

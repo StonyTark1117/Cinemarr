@@ -45,12 +45,6 @@ class LegacyVideoTimelineTest {
     }
 
     @Test
-    void backendCursorRemainsAvailableAsAStartupDiagnostic() {
-        assertEquals(5_000_000L, LegacyVideoAudio.backendAudioMediaUs(5_000_000L, 2_250_000L, 1_750_000L));
-        assertEquals(5_500_000L, LegacyVideoAudio.backendAudioMediaUs(5_000_000L, 2_250_000L, 2_750_000L));
-    }
-
-    @Test
     void scheduledPhysicalBoundaryAnchorsTheReliableAudioTimeline() {
         assertEquals(5_000_000L, LegacyVideoAudio.wallClockAudioMediaUs(5_000_000L, 10_000_000L, 9_900_000L));
         assertEquals(5_500_000L, LegacyVideoAudio.wallClockAudioMediaUs(5_000_000L, 10_000_000L, 10_500_000L));
