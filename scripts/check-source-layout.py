@@ -25,6 +25,12 @@ ACCEPTANCE_VIDEO_SCREENS = (
     ROOT / "platforms/mc26/common/src/main/java/stonytark/cinemarr/client/CinemarrVideoScreen.java",
     ROOT / "platforms/mc1.7.10/forge/src/main/java/stonytark/cinemarr/client/LegacyVideoScreen.java",
 )
+MC26_UI_CAPTURES = {
+    ROOT / "platforms/mc26.1.2/common/src/main/java/stonytark/cinemarr/client/CinemarrVideoUiCapture.java":
+        "minecraft.getMainRenderTarget()",
+    ROOT / "platforms/mc26.2/common/src/main/java/stonytark/cinemarr/client/CinemarrVideoUiCapture.java":
+        "minecraft.gameRenderer.mainRenderTarget()",
+}
 
 
 def main() -> None:
@@ -55,6 +61,9 @@ def main() -> None:
         text = source.read_text("utf-8")
         if "Acceptance video UI:" not in text or "clipped=" not in text or "canControl=" not in text:
             raise SystemExit(f"{source.relative_to(ROOT)} lacks release UI acceptance instrumentation")
+    for source, accessor in MC26_UI_CAPTURES.items():
+        if accessor not in source.read_text("utf-8"):
+            raise SystemExit(f"{source.relative_to(ROOT)} lacks its remappable render-target accessor")
     print("family-shared source layout verification passed")
 
 
