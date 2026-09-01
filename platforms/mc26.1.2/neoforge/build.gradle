@@ -43,6 +43,10 @@ neoForge {
                 gameDirectory = file(providers.gradleProperty('cinemarrAcceptanceGameDir').get())
                 programArguments.addAll '--username', providers.gradleProperty('cinemarrAcceptanceUsername').get(),
                         '--quickPlayMultiplayer', providers.gradleProperty('cinemarrAcceptanceServer').get()
+                if (providers.gradleProperty('cinemarrAcceptanceWidth').isPresent()) {
+                    programArguments.addAll '--width', providers.gradleProperty('cinemarrAcceptanceWidth').get(),
+                            '--height', providers.gradleProperty('cinemarrAcceptanceHeight').get()
+                }
             }
         }
         server { server(); programArgument '--nogui' }

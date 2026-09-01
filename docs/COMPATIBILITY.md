@@ -15,7 +15,7 @@ This is a 16-artifact / 21-runtime release matrix. Every row must independently 
 
 Packaged native decoding supports Linux x86-64, Linux ARM64, and Windows x86-64. macOS is unsupported for 1.0. Linux clients must provide the standard graphics/media ABI libraries `libudev.so.1`, `libdrm.so.2`, `libva.so.2`, and `libva-drm.so.2`; these are normally present on a graphical Minecraft installation, but minimal/server distributions may need their distribution's libudev, libdrm, and libva runtime packages.
 
-The exact packaged `linux-arm64` classifier passed software decoding at 144p, 480p, and 1080p under an aarch64 Debian 13 kernel and aarch64 Java 21 runtime. The exact `windows-x86_64` classifier passed the same rows under native Windows 11 AMD64 and its FFmpeg DLL reported PE machine `0x8664`. Evidence is retained under `build/native-smoke/linux-arm64/20260830T125759Z/` and `build/native-smoke/windows-x86_64/20260830T174136Z/`.
+The exact packaged `linux-arm64` classifier passed software decoding at 144p, 480p, and 1080p under an aarch64 Debian 13 kernel and aarch64 Java 21 runtime. The exact `windows-x86_64` classifier passed the same rows under native Windows 11 AMD64 and its FFmpeg DLL reported PE machine `0x8664`. Each installed guest then completed a second reuse run without OS installation and powered off. Current reuse evidence is retained under `build/native-smoke/linux-arm64/20260831T230833Z/` and `build/native-smoke/windows-x86_64/20260831T230833Z/`; `build/native-smoke/retained-vm-audit-20260831T231347Z.json` records both ready guests as stopped.
 
 ## Decoder modes
 

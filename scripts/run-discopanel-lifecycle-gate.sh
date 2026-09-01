@@ -85,9 +85,11 @@ stop_remote() {
   wait_for_status SERVER_STATUS_STOPPED; remote_started=0
 }
 
-remote_started=0; remote_prepared=0; modern_forceload=0
+remote_started=0; remote_prepared=0; modern_forceload=0; cleanup_owner_pid=$BASHPID
 cleanup() {
-  local status=$?; trap - EXIT INT TERM; set +e
+  local status=$?
+  [[ $BASHPID == "$cleanup_owner_pid" ]] || return 0
+  trap - EXIT INT TERM; set +e
   if declare -F cleanup_audio_processes >/dev/null; then cleanup_audio_processes; fi
   if (( modern_forceload && remote_started )); then
     command_output 'forceload remove 1968 2048 2128 2048' >/dev/null
@@ -126,7 +128,15 @@ jammarr_name=$(jq -r '.mods[]|select(.enabled==true and (.fileName|ascii_downcas
 if [[ "$label" == 1.7.10-forge ]]; then
   jammarr_source="/home/braydon/PAmpMod/platforms/mc1.7.10/forge/build/libs/${jammarr_name%.jar}-dev.jar"
   [[ -f "$jammarr_source" ]] || { echo "Legacy Jammarr development JAR is unavailable" >&2; exit 1; }
-  for role in leader follower; do mkdir -p "$output_root/$label.audio-$role/mods"; cp -- "$jammarr_source" "$output_root/$label.audio-$role/mods/"; done
+  for role in leader follower; do
+    mods_dir="$output_root/$label.audio-$role/mods"
+    mkdir -p "$mods_dir"
+    # The lifecycle workspace is intentionally reusable, but the active
+    # Jammarr development filename changes with its version. Remove only the
+    # task-owned legacy dev JARs so a prior run cannot create a duplicate mod.
+    find "$mods_dir" -maxdepth 1 -type f -name 'jammarr-*-dev.jar' -delete
+    cp -- "$jammarr_source" "$mods_dir/"
+  done
 else
   jammarr_content=$(api_call discopanel.v1.FileService/GetFile "$(jq -cn --arg id "$server_id" --arg path "mods/$jammarr_name" '{serverId:$id,path:$path}')" | jq -r '.content')
   for role in leader follower; do mkdir -p "$output_root/$label.audio-$role/mods"; base64 -d <<<"$jammarr_content" > "$output_root/$label.audio-$role/mods/$jammarr_name"; done

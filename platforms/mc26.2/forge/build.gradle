@@ -35,6 +35,10 @@ minecraft {
                 workingDir = file(providers.gradleProperty('cinemarrAcceptanceGameDir').get())
                 args '--username', providers.gradleProperty('cinemarrAcceptanceUsername').get(),
                         '--quickPlayMultiplayer', providers.gradleProperty('cinemarrAcceptanceServer').get()
+                if (providers.gradleProperty('cinemarrAcceptanceWidth').isPresent()) {
+                    args '--width', providers.gradleProperty('cinemarrAcceptanceWidth').get(),
+                            '--height', providers.gradleProperty('cinemarrAcceptanceHeight').get()
+                }
             }
         }
         register('server') { args '--nogui' }

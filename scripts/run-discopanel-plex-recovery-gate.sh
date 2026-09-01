@@ -93,8 +93,10 @@ start_server() {
 work=$(mktemp -d "$repo_root/build/plex-recovery.${label}.XXXXXX")
 proxy_control="$work/proxy.state"; proxy_port_file="$work/proxy.port"; proxy_log="$work/proxy.console.log"
 proxy_pid=''; remote_started=0; remote_prepared=0; all_logs=''
+cleanup_owner_pid=$BASHPID
 cleanup() {
   local status=$?
+  [[ $BASHPID == "$cleanup_owner_pid" ]] || return 0
   trap - EXIT INT TERM; set +e
   if (( remote_started )); then stop_server; fi
   if (( remote_prepared )); then update_config "$original_config"; update_overrides "$original_overrides"; fi

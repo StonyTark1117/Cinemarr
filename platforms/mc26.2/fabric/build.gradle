@@ -53,6 +53,10 @@ loom {
                 runDir providers.gradleProperty('cinemarrAcceptanceGameDir').get()
                 programArgs '--username', providers.gradleProperty('cinemarrAcceptanceUsername').get(),
                         '--quickPlayMultiplayer', providers.gradleProperty('cinemarrAcceptanceServer').get()
+                if (providers.gradleProperty('cinemarrAcceptanceWidth').isPresent()) {
+                    programArgs '--width', providers.gradleProperty('cinemarrAcceptanceWidth').get(),
+                            '--height', providers.gradleProperty('cinemarrAcceptanceHeight').get()
+                }
             }
         }
     }

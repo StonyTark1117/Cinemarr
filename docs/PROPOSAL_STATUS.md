@@ -7,15 +7,15 @@ gate must be repeated against the exact final commit and artifact bytes.
 
 | Area | Current state | Required before release |
 | --- | --- | --- |
-| Product boundary | Video-only protocol 10; inherited music/station UI, transport, persistence, tests, JLayer, and Jump3r remain removed | Rebuild and inspect all 16 exact final JARs |
-| Platform matrix | The repaired code passed full local `verifyAllTargets`; GitHub run `33401793006` passed all 16 artifact/runtime jobs and the aggregate gate for `4f6541f`, with a verified 16-JAR bundle and local hosted-input index parity | Repeat CI for the final documentation-only SHA and preserve exact bundle parity |
-| Plex security | Server-only credentials, allowlists, origin confinement, redaction, and bounded recovery remain implemented | Repeat credentialed recovery and exact-secret scans |
-| Screens | Persistent geometry, ownership, overlap, lifecycle limits, and 10 GameTests remain implemented | Repeat all GameTests and real-client ownership checks |
-| Quick TVs | Bounded construction, transactional rollback, and schema-3 recovery remain implemented | Repeat restart and unloaded-footprint recovery on exact candidate bytes |
-| Controller UI | Pagination, session draft retention, `canControl`, queue, stream, and presentation controls remain implemented | Repeat legacy draft-state and representative real-client layout checks |
-| Media relay | Bounded work/cache/egress, fairness tests, EOS handling, sustained latency, transient failure, exhaustion, and recovery are locally green | Repeat credentialed recovery on exact deployed bytes |
-| Client decode | Software remains the release baseline; auto/VAAPI remain experimental; `21431bf` fixes non-monotonic OpenAL source-start accounting and passed the private-Xvfb 1.21.1 Fabric gate at 80 ms inter-client lag | Repeat software A/V and packaged native smoke against exact candidate bytes |
-| Release evidence | Fake-Plex, GameTest, artifact, reproducibility, hygiene, hosted-CI, and bundle-parity evidence is green through `4f6541f`; the attempted exact external run stopped before opening clients when DiscPanel failed a rollback upload/server update and its credential holder then exited | Complete exact real-Plex, recovery, lifecycle, configured-secret, and native recertification, then obtain green CI for the final documentation SHA |
+| Product boundary | Video-only protocol 10; inherited music/station UI, transport, persistence, tests, JLayer, and Jump3r remain removed; the rebuilt 16-JAR index passed deep inspection | Preserve the exact bundle through hosted CI |
+| Platform matrix | The current tree passed all 16 artifact targets, all 10 required GameTests, and a fresh complete 21-runtime matrix in 53 minutes 35 seconds | Repeat the complete CI matrix for the exact pushed SHA |
+| Plex security | Server-only credentials, allowlists, origin confinement, redaction, and bounded recovery passed the exact four-profile recovery matrix; a live-value source/evidence/JAR scan found zero matches | Preserve redaction and secret-scan results through final CI |
+| Screens | Persistent geometry, ownership, overlap, lifecycle limits, and 10 GameTests passed; representative owner/non-owner real-client layouts passed on private Xvfb displays | Preserve the exact client behavior through final CI |
+| Quick TVs | Exact Forge 1.7.10 and NeoForge 1.21.1 artifacts passed restart-mid-build and unloaded-footprint recovery | Preserve lifecycle behavior through final CI |
+| Controller UI | Pagination, session draft retention, `canControl`, queue, stream, and presentation controls passed the exact representative real-Plex gates | Preserve exact behavior through final CI |
+| Media relay | Bounded work/cache/egress, fairness, EOS handling, sustained latency, transient failure, exhaustion, and recovery are green on the current representative bytes | Preserve exact behavior through final CI |
+| Client decode | Software remains the release baseline; the exact Windows x86-64 and Linux ARM64 packages each passed provisioning and a second retained-guest reuse boot, with both guests stopped afterward | Preserve packaged bytes through final hosted-bundle parity |
+| Release evidence | Local build/inspection, exact DiscPanel deployment, real-Plex, recovery, lifecycle, live-secret scan, and retained native-guest gates are green on the working tree | Commit and push the scoped tree, obtain fully green exact-SHA CI, download the hosted bundle, and prove byte parity |
 
 The authoritative remaining work is [the 1.0 hardening plan](1.0_RELEASE_HARDENING_PLAN.md)
 and the unchecked [release acceptance](RELEASE_ACCEPTANCE.md) checklist. No tag

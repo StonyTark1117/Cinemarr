@@ -148,8 +148,13 @@ remote_prepared=0
 remote_started=0
 acceptance_tv_id=''
 acceptance_forceload=0
+cleanup_owner_pid=$BASHPID
 cleanup_remote() {
   local cleanup_status=$?
+  # EXIT traps are visible to some Bash subshells. Only the shell which owns
+  # the remote mutation may stop the shared acceptance server or restore its
+  # configuration; a helper/command-substitution exit must be a no-op.
+  [[ $BASHPID == "$cleanup_owner_pid" ]] || return 0
   trap - EXIT INT TERM
   set +e
   if declare -F cleanup_all >/dev/null; then cleanup_all; fi
@@ -284,11 +289,17 @@ wait_for_log 'Validated 1 allowed Plex video libraries' 180
 baseline_diagnostics=$(command_output 'cinemarr diagnostics')
 [[ "$baseline_diagnostics" == *'Plex=ready;'* && "$baseline_diagnostics" == *'activeStreams=0/'* ]] \
   || { echo "$label did not start from an idle, ready video service: $baseline_diagnostics" >&2; exit 1; }
-baseline_registered_tvs=$(sed -n 's/.*registeredTvs=\([0-9][0-9]*\);.*/\1/p' <<<"$baseline_diagnostics")
-[[ "$baseline_registered_tvs" =~ ^[0-9]+$ ]] \
-  || { echo "$label did not expose its baseline TV count" >&2; exit 1; }
 send_command 'setblock -1 100 -1 air'
 sleep 2
+# A prior interrupted acceptance run can leave its temporary TV registered.
+# Remove the bounded test position first, then define the baseline which this
+# invocation must restore. Never require stale acceptance residue to return.
+baseline_diagnostics=$(command_output 'cinemarr diagnostics')
+[[ "$baseline_diagnostics" == *'Plex=ready;'* && "$baseline_diagnostics" == *'activeStreams=0/'* ]] \
+  || { echo "$label preflight TV cleanup did not leave an idle video service: $baseline_diagnostics" >&2; exit 1; }
+baseline_registered_tvs=$(sed -n 's/.*registeredTvs=\([0-9][0-9]*\);.*/\1/p' <<<"$baseline_diagnostics")
+[[ "$baseline_registered_tvs" =~ ^[0-9]+$ ]] \
+  || { echo "$label did not expose its post-cleanup baseline TV count" >&2; exit 1; }
 if [[ "$label" != 1.7.10-forge ]]; then
   # Modern clients can reconnect from the distant lifecycle-probe position;
   # keep only the four acceptance-TV chunks resident until teardown so the

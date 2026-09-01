@@ -26,7 +26,7 @@ import org.lwjgl.input.Keyboard;
 public final class LegacyClient {
     private static final LegacyClient INSTANCE = new LegacyClient();
     private static final KeyBinding OPEN = new KeyBinding("key.cinemarr.open", Keyboard.KEY_P, "key.categories.cinemarr");
-    private NetworkManager disconnectedManager;
+    private volatile NetworkManager disconnectedManager;
     private boolean registered;
 
     public static synchronized void register() {
@@ -67,7 +67,21 @@ public final class LegacyClient {
     }
 
     @SubscribeEvent public void disconnected(FMLNetworkEvent.ClientDisconnectionFromServerEvent event) {
-        disconnectedManager = event.manager;
+        final NetworkManager manager = event.manager;
+        final Minecraft minecraft = Minecraft.getMinecraft();
+        if (minecraft.func_152345_ab()) {
+            handleDisconnect(manager);
+        } else {
+            minecraft.func_152344_a(new Runnable() {
+                @Override public void run() { handleDisconnect(manager); }
+            });
+        }
+    }
+
+    private void handleDisconnect(NetworkManager manager) {
+        disconnectedManager = manager;
+        // Video reset owns OpenGL textures, so it must run on Minecraft's
+        // client/render thread rather than Netty's disconnect callback.
         LegacyClientState.INSTANCE.stop();
     }
 
