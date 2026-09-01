@@ -39,6 +39,10 @@ runs {
             workingDirectory file(providers.gradleProperty('cinemarrAcceptanceGameDir').get())
             arguments '--username', providers.gradleProperty('cinemarrAcceptanceUsername').get(),
                     '--quickPlayMultiplayer', providers.gradleProperty('cinemarrAcceptanceServer').get()
+            if (providers.gradleProperty('cinemarrAcceptanceWidth').isPresent()) {
+                arguments '--width', providers.gradleProperty('cinemarrAcceptanceWidth').get(),
+                        '--height', providers.gradleProperty('cinemarrAcceptanceHeight').get()
+            }
         }
     }
     server { arguments '--nogui' }

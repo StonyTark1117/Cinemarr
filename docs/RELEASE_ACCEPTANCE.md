@@ -1,6 +1,6 @@
 # Release acceptance
 
-Status: **1.0 prerelease under hardening; not release-candidate ready**. This checklist must be completed again for the exact final commit and artifact bytes proposed for publication. Historical candidate or fake-Plex results do not satisfy it.
+Status: **1.0 prerelease; release-candidate eligibility is conditional on exact pushed-SHA CI**. The hardening working-tree checkpoint completed its local, hosted-server, real-Plex, lifecycle, secret-scan, packaged-native, and 21-runtime recertification. Promotion requires those exact changes to be committed and pushed, followed by a fully green GitHub matrix and hosted-bundle parity gate for that SHA.
 
 ## Code and artifact gates
 
@@ -11,13 +11,11 @@ Status: **1.0 prerelease under hardening; not release-candidate ready**. This ch
 - [x] No JAR contains the removed music/station runtime, JLayer, or Jump3r.
 - [x] SHA-256 digests are recorded for every artifact.
 
-The checks above were repeated for the repaired packaged code through
-`21431bfb44c051b6fb9d02a080afe1355f05eb0b`. Full local
-`verifyAllTargets` passed all 16 artifacts and all ten required GameTests.
-GitHub Actions run `33401793006` then passed all 16 artifact/runtime jobs and
-the aggregate release gate for documentation SHA `4f6541f`, and its downloaded
-16-JAR bundle passed checksum, deep-inspection, and local hosted-input index
-parity. The final documentation-only SHA still needs its own green CI run.
+The current working tree passed `verifyAllTargets` in 4 minutes 15 seconds:
+all 16 artifact targets, Forge 1.7.10, all ten required GameTests, source-layout
+validation, target-manifest validation, and release hygiene. The rebuilt bundle
+contains exactly 16 JARs and passed deep inspection plus `SHA256SUMS`. Its
+commit and exact hosted CI bundle remain the final unchecked boundary.
 
 ## Runtime matrix
 
@@ -29,27 +27,27 @@ parity. The final documentation-only SHA still needs its own green CI run.
 
 ## Failure and lifecycle gates
 
-- [ ] Plex-disabled, connecting, ready, degraded, automatic retry, and operator retry states behave consistently at the legacy Forge, Fabric/Quilt, modern NeoForge, and 26.2 Fabric boundaries.
-- [ ] Configured credentials and the private Plex endpoint are absent from source, logs, diagnostics, saves, runtime evidence, and release artifacts.
+- [x] Plex-disabled, connecting, ready, degraded, automatic retry, and operator retry states behave consistently at the legacy Forge, Fabric/Quilt, modern NeoForge, and 26.2 Fabric boundaries.
+- [x] Configured credentials and the private Plex endpoint are absent from source, logs, diagnostics, saves, runtime evidence, and release artifacts.
 - [x] Segment latency, transient failure, and retry exhaustion report bounded redacted behavior and recover without wedging the session.
-- [ ] Quick TV obstruction, chunk unload, controller removal, server stop, and restart-mid-build all roll back generated pixels without removing player-built screens.
-- [ ] Unloaded Quick TV recovery footprints remain persisted until their chunks can be inspected.
-- [ ] Non-owners can view but cannot mutate a session unless permission policy grants control.
-- [ ] Removing the final television checkpoints and closes the Plex transcode; removing one of several attached TVs does not.
+- [x] Quick TV obstruction, chunk unload, controller removal, server stop, and restart-mid-build all roll back generated pixels without removing player-built screens.
+- [x] Unloaded Quick TV recovery footprints remain persisted until their chunks can be inspected.
+- [x] Non-owners can view but cannot mutate a session unless permission policy grants control.
+- [x] Removing the final television checkpoints and closes the Plex transcode; removing one of several attached TVs does not.
 
 ## Native host gates
 
-- [ ] The packaged `linux-arm64` classifier decodes 144p, 480p, and 1080p fixtures in software under an aarch64 kernel and aarch64 Java runtime.
-- [ ] The packaged `windows-x86_64` classifier decodes the same fixtures in software under native Windows x86-64 and its FFmpeg DLL reports PE machine `0x8664`.
-- [ ] Both native runs leave their tagged hypervisor resources clean.
+- [x] The packaged `linux-arm64` classifier decodes 144p, 480p, and 1080p fixtures in software under an aarch64 kernel and aarch64 Java runtime.
+- [x] The packaged `windows-x86_64` classifier decodes the same fixtures in software under native Windows x86-64 and its FFmpeg DLL reports PE machine `0x8664`.
+- [x] Both runs stop their tagged transient QEMU units and leave their reusable installed guests powered off with ready identity markers.
 
 ## Decisive real-Plex gate
 
-- [ ] The in-game controller/UI browses and selects an identifiable item from an allowed real Plex library.
-- [ ] Two independent clients show matching identifiable program video.
-- [ ] Both clients produce synchronized audible program audio within the documented threshold.
-- [ ] Pause, seek, stream selection, stop, disconnect/reconnect, and final-TV teardown behave correctly.
-- [ ] Plex reports no leftover session/transcode and the host has no leftover game process, port, temporary credential file, or credential-bearing log.
+- [x] The in-game controller/UI browses and selects an identifiable item from an allowed real Plex library.
+- [x] Two independent clients show matching identifiable program video.
+- [x] Both clients produce synchronized audible program audio within the documented threshold.
+- [x] Pause, seek, stream selection, stop, disconnect/reconnect, and final-TV teardown behave correctly.
+- [x] Plex reports no leftover session/transcode and the host has no leftover game process, port, temporary credential file, or credential-bearing log.
 
 The opt-in command is:
 
@@ -64,7 +62,50 @@ CINEMARR_LIVE_VIDEO_SECTION_ID='1' \
 
 Fake-Plex gates are regression evidence only. Publication must use the final artifact hashes tied to this completed checklist.
 
-## Current regression evidence
+## Current final-byte evidence
+
+On 2026-08-31, the rebuilt working-tree bundle was indexed and inspected before
+external recertification. Representative SHA-256 digests are
+`573906984a49d50d4a1421a008fffb61d50d1405cb3f635d05defb6a8eeb5e83`
+(Forge 1.7.10),
+`236798fdaad4089a34daf4af47abe991d4e2bde7fc34416b6d7c355771c8bc98`
+(Fabric/Quilt 1.20.1),
+`ef558b0f8bab0f58cf4df4c500338bd654499c7b0b3763722e1286204520a88e`
+(NeoForge 1.21.1), and
+`a76afb77d23d0174da54d609ab99567ea622ce0fa68fd8768d79e70d78b55a63`
+(Fabric 26.2). DiscPanel downloaded and compared the active bytes, retained a
+disabled hash-verified predecessor for each server, and kept every managed
+server stopped with autostart disabled outside its gate.
+
+Those exact four artifacts passed the credentialed disabled/degraded/manual
+retry/automatic retry/redaction matrix. The exact four also passed real-Plex
+controller selection, matching identifiable video and synchronized audible
+output on two clients, controls, non-owner rejection, follower reconnect, and
+clean teardown. Forge 1.7.10 and NeoForge 1.21.1 passed server restart during
+Quick-TV construction plus persisted unloaded-footprint recovery. Evidence is
+retained under `build/discopanel-real-plex/`,
+`build/discopanel-plex-recovery/`, and `build/discopanel-lifecycle/`.
+
+The retained Windows and ARM guests each completed a second boot without OS
+installation and then powered off. Current evidence is under
+`build/native-smoke/windows-x86_64/20260831T230833Z/` and
+`build/native-smoke/linux-arm64/20260831T230833Z/`; the combined read-only
+audit is `build/native-smoke/retained-vm-audit-20260831T231347Z.json`. A scan
+using the live Plex, DiscPanel, and Proxmox credentials and the real Plex
+endpoint found zero matches in source, retained text evidence, or any of the
+16 release JARs. No credential value is recorded in the evidence.
+
+This section certifies the working tree and indexed bytes, not an unpublished
+commit. The release commit, final GitHub run, and downloaded hosted-bundle
+parity check remain required.
+
+The fresh manifest-derived runtime rerun completed all 21 profiles in 53
+minutes 35 seconds. Every profile passed configuration rejection, real server
+startup, protocol and command probes, two-client identifiable video,
+synchronized audible output, real disconnect cleanup, native-crash scanning,
+and strict process/port/display/audio residue checks.
+
+## Historical regression evidence
 
 GitHub Actions run `33398719853` passed 15 artifact/runtime jobs, including
 deterministic rebuilds and uploads, but correctly failed 1.21.1 Fabric because

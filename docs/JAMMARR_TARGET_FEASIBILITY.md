@@ -1,7 +1,7 @@
 # Jammarr target feasibility for Cinemarr
 
 This assessment compares Cinemarr with Jammarr commit
-`dacd81caaf9f0cdc58a6e6bcda7e2cfd20f52200` and its 1.1.0 target manifest.
+`6d4429bcb972a832198ac78b0e1a0b9030c22e3f` and its 1.1.0 target manifest.
 That manifest contains 78 implemented artifacts across 29 Minecraft versions
 and six loader IDs, mapped to 99 dedicated-server runtime profiles. Twenty-two
 of those artifacts are still marked preview, and three LiteLoader artifacts
@@ -71,6 +71,17 @@ future Cinemarr expansion:
   modules that the production aggregate JAR did not embed. Cinemarr must
   inspect and launch the packaged runtime with its exact external dependency
   set before certifying any legacy target.
+
+The current Jammarr checkout adds two further lessons. First, production
+server dependencies must be generated as explicit per-runtime data and tested
+on the installed server; its Ornithe and legacy-modern profiles built before
+their production dependency placement was corrected. Second, controls that
+fit technically are not necessarily understandable: Jammarr now verifies
+hover help on both modern and legacy private-display clients. Future Cinemarr
+ports should pair small-window clipping probes with screenshot/text evidence
+that every non-obvious control has discoverable help. Remote reconciliation
+must also audit free space, recover interrupted uploads conservatively, and
+leave stopped profiles reusable rather than forcing an expensive reinstall.
 
 A long matrix should be resumable only from sanitized evidence bound to the
 exact release version, artifact filename, SHA-256, fresh startup markers, and

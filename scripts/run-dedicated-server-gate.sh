@@ -745,7 +745,11 @@ start_audio_client() {
   fi
   [[ "$active_disable_configuration_cache" == true ]] && cache_args+=(--no-configuration-cache)
 
-  mkdir -p "$client_dir/config"
+  mkdir -p "$client_dir/config" "$client_dir/javacpp-cache"
+  # Each client represents an independent installation. Give JavaCPP a private
+  # native extraction cache so simultaneous FFmpeg initialization cannot race
+  # through the host user's shared ~/.javacpp/cache.
+  java_options+=" -Dorg.bytedeco.javacpp.cachedir=$client_dir/javacpp-cache"
   : > "$client_console"
   : > "$control_file"
   if [[ "$video_client_gate" == "true" ]]; then
@@ -1674,6 +1678,9 @@ run_two_client_video() {
   local target_dir=$2
   local java_home=$3
   local port=$4
+  local rcon_port=$5
+  local rcon_password=$6
+  local fifo_fd=$7
   local sink_prefix="cinemarr_${BASHPID}_${label//[^a-zA-Z0-9]/_}_video"
   local sink_leader="${sink_prefix}_leader" sink_follower="${sink_prefix}_follower"
   local raw_leader="$output_root/$label.video-leader.s16le"
@@ -1688,11 +1695,19 @@ run_two_client_video() {
   local leader_shot="$output_root/$label.audio-leader/screenshots/cinemarr-video-acceptance.png"
   local follower_shot="$output_root/$label.audio-follower/screenshots/cinemarr-video-acceptance.png"
   local server_log="$output_root/$label.console.log"
-  local module leader_pid follower_pid common_frame result=0 clients_ready=0
+  local leader_dir="$output_root/$label.audio-leader"
+  local follower_dir="$output_root/$label.audio-follower"
+  local module leader_pid follower_pid common_frame fatal_report result=0 clients_ready=0
+  local disconnect_line
   local sync_script="$repo_root/scripts/compare-pcm-sync.py"
   if [[ "$live_plex_gate" == true ]]; then
     sync_script="$repo_root/scripts/compare-live-pcm-sync.py"
   fi
+
+  # A prior interrupted run must not satisfy or contaminate this run's native
+  # crash check. These are task-owned client directories under the gate output.
+  rm -f -- "$leader_dir"/hs_err_pid*.log "$leader_dir"/core "$leader_dir"/core.* \
+    "$follower_dir"/hs_err_pid*.log "$follower_dir"/core "$follower_dir"/core.*
 
   module=$(pactl load-module module-null-sink sink_name="$sink_leader" rate=48000 channels=2) || return 1
   active_audio_modules+=("$module")
@@ -1863,7 +1878,44 @@ run_two_client_video() {
       if [[ "$video_adverse_network_gate" == true ]]; then cat "$output_root/$label.video-adverse-network.evidence.txt"; fi
     } > "$evidence"
   fi
+  if (( result == 0 )); then
+    # Exercise the real disconnect cleanup before terminating the headless game
+    # launchers. Killing clients while OpenAL is actively mixing can crash in
+    # libopenal and hide whether Cinemarr released its decoder/audio resources.
+    disconnect_line=$(wc -l < "$server_log")
+    if [[ -z "$rcon_port" && -z "$fifo_fd" ]] && declare -F command_output >/dev/null; then
+      command_output 'kick CinemarrVideoA Cinemarr acceptance teardown' > /dev/null \
+        && command_output 'kick CinemarrVideoB Cinemarr acceptance teardown' > /dev/null \
+        || result=1
+    elif [[ "$label" == "1.7.10-forge" ]]; then
+      printf 'kick CinemarrVideoA Cinemarr acceptance teardown\n' >&"$fifo_fd"
+      printf 'kick CinemarrVideoB Cinemarr acceptance teardown\n' >&"$fifo_fd"
+    else
+      python3 "$repo_root/scripts/minecraft-rcon.py" 127.0.0.1 "$rcon_port" "$rcon_password" \
+        'kick CinemarrVideoA Cinemarr acceptance teardown' > /dev/null \
+        && python3 "$repo_root/scripts/minecraft-rcon.py" 127.0.0.1 "$rcon_port" "$rcon_password" \
+          'kick CinemarrVideoB Cinemarr acceptance teardown' > /dev/null \
+        || result=1
+    fi
+    if (( result == 0 )) \
+        && { ! wait_for_marker_after "$server_log" "$disconnect_line" 'CinemarrVideoA left the game' 60 \
+          || ! wait_for_marker_after "$server_log" "$disconnect_line" 'CinemarrVideoB left the game' 60; }; then
+      echo "$label: clients did not complete the acceptance disconnect cleanup" >&2
+      result=1
+    fi
+    # Leave several client ticks between the disconnect callbacks and launcher
+    # termination so renderer and OpenAL teardown have completed.
+    sleep 3
+  fi
   cleanup_audio_processes
+  fatal_report=$(find "$leader_dir" "$follower_dir" -maxdepth 1 -type f \
+    \( -name 'hs_err_pid*.log' -o -name 'core' -o -name 'core.*' \) -print -quit 2>/dev/null)
+  if [[ -n "$fatal_report" ]]; then
+    echo "$label: client teardown produced a native JVM crash report: $fatal_report" >&2
+    result=1
+  elif (( result == 0 )); then
+    printf 'Both clients completed disconnect cleanup without native JVM crash reports.\n' >> "$evidence"
+  fi
   return "$result"
 }
 
@@ -2395,7 +2447,8 @@ run_target() {
   if (( result == 0 )) && [[ "$video_client_gate" == "true" ]]; then
     if [[ "$external_video_client_gate" == true ]]; then
       wait_for_external_video_client "$label" "$pid" "$console_log" || result=1
-    elif ! run_two_client_video "$label" "$target_dir" "$java_home" "$port"; then
+    elif ! run_two_client_video "$label" "$target_dir" "$java_home" "$port" \
+        "$rcon_port" "$rcon_password" "$fifo_fd"; then
       result=1
     fi
     if (( result == 0 )) && ! grep -Fq 'Acceptance Quick TV: controller=-3996 preset=144p dimensions=16x9 rendition=256x144 owner=CinemarrVideoA' \
@@ -2472,9 +2525,17 @@ run_target() {
     if [[ -n "$server_pid" ]]; then
       kill -TERM "$server_pid" 2>/dev/null || true
     else
-      echo "$label: console stop timed out and the listening server process could not be identified" >&2
-      stop_process_tree "$pid" TERM
-      result=1
+      if ! ss -ltnH "sport = :$port or sport = :$rcon_port" | grep -q .; then
+        echo "$label: Minecraft stopped cleanly; terminating its residual launcher process" >&2
+      else
+        echo "$label: console stop timed out and the listening server process could not be identified" >&2
+        result=1
+      fi
+      if [[ -n "$server_group" ]]; then
+        stop_group "$server_group" TERM
+      else
+        stop_process_tree "$pid" TERM
+      fi
     fi
     if [[ -n "$server_group" ]]; then
       wait_for_group_exit "$server_group" 30

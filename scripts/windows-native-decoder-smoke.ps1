@@ -1,5 +1,8 @@
 $ErrorActionPreference = "Stop"
 $work = "C:\CinemarrNativeSmoke"
+$persistentRoot = "C:\ProgramData\CinemarrNativeSmoke"
+$persistentRunner = Join-Path $persistentRoot "windows-native-decoder-smoke.ps1"
+$taskName = "CinemarrNativeSmoke"
 $media = $null
 $evidenceRoot = $null
 
@@ -46,6 +49,22 @@ try {
     $media = Resolve-VolumeRoot "CINEMARR"
     $evidenceRoot = Resolve-VolumeRoot "CINEVIDENCE"
     New-Item -ItemType Directory -Path $work -Force | Out-Null
+    New-Item -ItemType Directory -Path $persistentRoot -Force | Out-Null
+
+    # The unattended install invokes this script once. Persist the runner and
+    # an at-startup SYSTEM task so later native checks can reuse the installed
+    # guest with a fresh CINEMARR payload and CINEVIDENCE disk.
+    if ($PSCommandPath -ne $persistentRunner) {
+        Copy-Item -LiteralPath $PSCommandPath -Destination $persistentRunner -Force
+    }
+    $taskAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument `
+        "-NoProfile -ExecutionPolicy Bypass -File `"$persistentRunner`""
+    $taskTrigger = New-ScheduledTaskTrigger -AtStartup
+    $taskSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable `
+        -ExecutionTimeLimit (New-TimeSpan -Minutes 30)
+    Register-ScheduledTask -TaskName $taskName -Action $taskAction -Trigger $taskTrigger `
+        -Settings $taskSettings -User "SYSTEM" -RunLevel Highest -Force | Out-Null
+
     Copy-Item (Join-Path $media "bundle") (Join-Path $work "bundle") -Recurse -Force
     Expand-Archive -Path (Join-Path $media "jre.zip") -DestinationPath (Join-Path $work "java") -Force
     $java = Get-ChildItem (Join-Path $work "java") -Filter java.exe -Recurse |
@@ -132,6 +151,7 @@ try {
     Publish-File $csvPath "decoder-benchmark.csv"
     Publish-File $console "console.txt"
     Publish-File (Join-Path $output "system.txt") "system.txt"
+    Publish-File (Join-Path $media "run-id.txt") "run-id.txt"
     Publish-Text "Windows x86-64 native decoder smoke passed.`r`n" "passed.txt"
 } catch {
     New-Item -ItemType Directory -Path $work -Force | Out-Null
