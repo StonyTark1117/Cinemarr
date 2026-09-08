@@ -7,12 +7,16 @@ import time
 
 
 class PrivateMinecraftWindow:
-    def __init__(self, log, gate_pid):
+    def __init__(self, log, gate_pid, geometry="640x480x24"):
+        if geometry not in ("640x480x24", "1280x720x24"):
+            raise RuntimeError("Unsupported private Minecraft geometry")
+        self.geometry = geometry
         self.gate_pid = gate_pid
         self.gate_identity = self.identity(gate_pid)[1]
-        bindings = re.findall(r"Private Xvfb ready: display=(:[0-9]+) pid=([0-9]+) geometry=640x480x24", log)
+        bindings = re.findall(r"Private Xvfb ready: display=(:[0-9]+) pid=([0-9]+) geometry="
+                              + re.escape(geometry) + r"(?:\s|$)", log)
         if len(bindings) != 1:
-            raise RuntimeError("Expected exactly one 640x480 private-X binding")
+            raise RuntimeError("Expected exactly one " + geometry + " private-X binding")
         self.display, raw_pid = bindings[0]
         self.xpid = int(raw_pid)
         self.x_identity = self.identity(self.xpid)[1]
@@ -44,7 +48,7 @@ class PrivateMinecraftWindow:
         argv = Path("/proc", str(self.xpid), "cmdline").read_bytes().split(b"\0")
         if (not self.owned(self.xpid) or self.identity(self.xpid)[1] != self.x_identity
                 or Path(os.fsdecode(argv[0])).name != "Xvfb"
-                or self.display.encode() not in argv or b"640x480x24" not in argv):
+                or self.display.encode() not in argv or self.geometry.encode() not in argv):
             raise RuntimeError("Private X server no longer has the required ownership and identity")
 
     def run(self, *command):

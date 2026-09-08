@@ -29,6 +29,19 @@ def diagnostics(**changes):
 
 
 class SegmentTests(unittest.TestCase):
+    def test_all_managers_release_untracked_windows_before_publishing_returned_screens(self):
+        root=Path(__file__).resolve().parents[1]
+        for path in ('src/main/java/stonytark/cinemarr/server/ServerVideoManager.java',
+                     'platforms/mc26/common/src/main/java/stonytark/cinemarr/server/ServerVideoManager.java',
+                     'platforms/mc1.7.10/forge/src/main/java/stonytark/cinemarr/server/LegacyVideoManager.java'):
+            with self.subTest(path=path):
+                source=(root/path).read_text()
+                tracking=source.split('private void refreshTracking(',1)[1].split('\n    }',1)[0]
+                self.assertIn('trackedScreenSessions.put(television.id(), state.id())', tracking)
+                cleanup='if (transferGrants.releaseUntracked(playerId, trackedScreenSessions, previousTvs.keySet())) egress.remove(playerId);'
+                self.assertIn(cleanup, tracking)
+                self.assertLess(tracking.index(cleanup),tracking.index('sendCurrent(player,'))
+
     def test_requires_sustained_actual_network_traffic_and_both_rejection_paths(self):
         self.assertEqual(4000,probe.check_peer(samples())['requests'])
         for change in (dict(requests=1999),dict(requests=4001),dict(chunks=49),dict(bytes=999999),
@@ -75,7 +88,7 @@ class SegmentTests(unittest.TestCase):
         with self.assertRaises(RuntimeError): probe.recovered_diagnostics(before+after+diagnostics(),cursor)
         source=Path(__file__).with_name('run-dedicated-server-gate.sh').read_text()
         body=source.split('run_video_segment_pressure_scenarios() {',1)[1].split('\n}\n',1)[0]
-        self.assertLess(body.index('terminate_client_launch "$peer_pid"'),body.index('"${observer[@]}" departed'))
+        self.assertLess(body.index('finish_client_launch "$peer_pid"'),body.index('"${observer[@]}" departed'))
         self.assertLess(body.index('"${observer[@]}" departed'),body.index('for iteration in 1 2 3 4 5'))
 
     def test_evidence_is_never_overwritten(self):
@@ -113,7 +126,7 @@ class SegmentTests(unittest.TestCase):
         self.assertIn('peer CinemarrVideoC "$sink_peer"',body)
         self.assertLess(body.index('during-leader-capture'),body.index('wait "$pressure_pid"'))
         self.assertIn('during-peer.s16le',body)
-        self.assertIn('terminate_client_launch "$peer_pid"',body)
+        self.assertIn('finish_client_launch "$peer_pid"',body)
         self.assertIn('recovered-leader-capture',body)
 
 

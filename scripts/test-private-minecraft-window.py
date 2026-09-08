@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Private-window ownership regressions; all GUI commands are mocked."""
 import os
+import importlib.util
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -9,6 +10,25 @@ from private_minecraft_window import PrivateMinecraftWindow
 
 
 class PrivateWindowTests(unittest.TestCase):
+    def test_close_revalidates_ownership_before_opening_xlib(self):
+        spec = importlib.util.spec_from_file_location('private_close', Path(__file__).with_name('close-private-minecraft-window.py'))
+        close = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(close)
+        window = PrivateMinecraftWindow(self.log, 42)
+        self.identities[51] = (1, "x-start")
+        with patch.object(close.c, 'CDLL') as library:
+            with self.assertRaises(RuntimeError): close.request_close(window)
+            library.assert_not_called()
+
+    def test_full_size_geometry_is_explicit_and_still_identity_checked(self):
+        self.argv = self.argv.replace(b'640x480x24', b'1280x720x24')
+        log = self.log.replace('640x480x24', '1280x720x24')
+        window = PrivateMinecraftWindow(log, 42, geometry='1280x720x24')
+        window.validate()
+        self.identities[51] = (42, 'replacement')
+        with self.assertRaises(RuntimeError): window.validate()
+        with self.assertRaises(RuntimeError): PrivateMinecraftWindow(log, 42, geometry='1920x1080x24')
+
     def setUp(self):
         self.identities = {42: (1, "gate-start"), 51: (42, "x-start")}
         self.argv = b"\0".join((b"/usr/bin/Xvfb", b":91", b"-screen", b"0", b"640x480x24"))

@@ -120,7 +120,7 @@ class TerminalTests(unittest.TestCase):
         self.assertLess(body.index('> "$evidence"'), body.index('run_video_terminal_scenarios'))
         self.assertLess(body.index('run_video_terminal_scenarios'), body.index('# Exercise the real disconnect cleanup'))
         terminal = shell.split('run_video_terminal_scenarios() {', 1)[1].split('\n}\n', 1)[0]
-        self.assertLess(terminal.index('terminate_client_launch'), terminal.index('mv -- "$follower_log"'))
+        self.assertLess(terminal.index('finish_client_launch'), terminal.index('mv -- "$follower_log"'))
         self.assertLess(terminal.index('mv -- "$follower_log"'), terminal.index('start_audio_client'))
         self.assertIn('video_terminal_follower_pid=$follower_pid', terminal)
         self.assertIn('real_video_capture_is_silent', terminal)

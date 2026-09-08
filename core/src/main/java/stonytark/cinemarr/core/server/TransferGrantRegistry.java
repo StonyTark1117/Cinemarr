@@ -68,6 +68,22 @@ public final class TransferGrantRegistry {
     }
 
     public void remove(UUID client) { grants.remove(client); }
+    /** Preserve a window only while at least one of its screens stays visible. */
+    public boolean releaseUntracked(UUID client, java.util.Map<UUID, UUID> screenSessions,
+                                    java.util.Set<UUID> previousScreens) {
+        if (screenSessions == null || previousScreens == null) throw new IllegalArgumentException("screen visibility is required");
+        java.util.Set<UUID> continuousSessions = new java.util.HashSet<UUID>();
+        for (java.util.Map.Entry<UUID, UUID> screen : screenSessions.entrySet()) {
+            if (previousScreens.contains(screen.getKey())) continuousSessions.add(screen.getValue());
+        }
+        return releaseUntracked(client, continuousSessions);
+    }
+    /** Release an abandoned screen's window without cancelling a still-visible stream. */
+    public boolean releaseUntracked(UUID client, java.util.Set<UUID> trackedSessions) {
+        if (client == null || trackedSessions == null) throw new IllegalArgumentException("client and tracked sessions are required");
+        Grant grant = grants.get(client);
+        return grant != null && !trackedSessions.contains(grant.session) && grants.remove(client, grant);
+    }
     public void clear() { grants.clear(); }
     public int size() { return grants.size(); }
     /** Diagnostic only: never expires or removes evidence of an orphaned grant. */

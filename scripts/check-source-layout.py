@@ -35,6 +35,24 @@ MC26_UI_CAPTURES = {
 }
 
 
+def verify_playback_publication(text: str, label: str) -> None:
+    normalized = re.sub(r"\s+", "", text)
+    if "sessions.applyPlaybackMetadataIfCurrent(prepared.state,System.currentTimeMillis()," not in normalized:
+        raise SystemExit(f"{label} must bind metadata to the current playback revision")
+    if normalized.count("state=recordPlayback(prepared);if(state==null)return;") != 5:
+        raise SystemExit(f"{label} must publish the returned current snapshot in all five completion paths")
+    if normalized.count("playbackMetadataGenerations.put(restored.id(),restored.playbackGeneration());") != 2:
+        raise SystemExit(f"{label} must bind both restore paths to the restored playback revision")
+    if "metadataMatches(state)" not in normalized:
+        raise SystemExit(f"{label} must guard checkpoints by playback revision")
+    if 'state.paused()?"Paused":"Playing"' in normalized or "state.playbackMessage()" not in normalized:
+        raise SystemExit(f"{label} must not describe suspended playback as playing")
+    for message in ("Playing next queued video", "Continuing with next episode"):
+        call = 'state.playbackMessage("' + re.sub(r"\s+", "", message) + '")'
+        if normalized.count(call) != 1:
+            raise SystemExit(f"{label} must preserve state-aware contextual playback feedback: {message}")
+
+
 def main() -> None:
     for path in ("src/main/java/stonytark/cinemarr/server/ServerVideoManager.java",
                  "platforms/mc26/common/src/main/java/stonytark/cinemarr/server/ServerVideoManager.java",
@@ -185,8 +203,7 @@ def main() -> None:
             raise SystemExit(f"{source.relative_to(ROOT)} must discard stale health reports through the core policy")
         if "this::startMedia, true)" not in text:
             raise SystemExit(f"{source.relative_to(ROOT)} must use bounded asynchronous media retirement")
-        if "sessions.applyIfCurrent(" not in text or "metadataMatches(state)" not in text:
-            raise SystemExit(f"{source.relative_to(ROOT)} must guard playback metadata by generation")
+        verify_playback_publication(text, str(source.relative_to(ROOT)))
         if "tuned.generation()+1" in text.replace(" ", ""):
             raise SystemExit(f"{source.relative_to(ROOT)} must use the actual completed seek generation")
     for target in targets:

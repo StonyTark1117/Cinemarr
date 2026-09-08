@@ -6,13 +6,41 @@ Cinemarr is a required client-and-server Minecraft mod for server-authoritative 
 
 ## 1.0 prerelease status
 
-This checkout targets **Cinemarr 1.0.0**, protocol **10**, and screen-data schema **3**. It is a prerelease development build, not a release candidate. A green compile or fake-Plex run is regression evidence only; release readiness requires the complete 16-artifact / 21-runtime matrix plus a credentialed, two-client controller/UI playback run against real Plex and clean teardown.
+This checkout targets **Cinemarr 1.0.0**, protocol **10**, and screen-data
+schema **3**. It is a prerelease development build, **not a release candidate**.
+A green build or partial runtime run does not establish release readiness.
 
-Certification checkpoint (2026-09-08 UTC): the `release-audit-r3` candidate passed two byte-identical full builds, all ten required GameTests in each, all 37 main/supplementary development cases, four packaged real-Plex cases, recovery/lifecycle checks and retained Windows/ARM native tests with verified teardown. After the build/manifest-validation fixes, both `r4` forced builds passed and the complete bundle still matches r3 byte-for-byte. The deep configured-secret scan passed. The complete local gate on the final commit, followed by exact-SHA green GitHub CI and local/downloaded artifact parity, remain required. See [release acceptance](docs/RELEASE_ACCEPTANCE.md) for the exact scope and historical failures; these results are not a release-ready claim.
+Current checkpoint (2026-09-08): r13 passed two byte-identical full builds,
+all 89 tasks and ten GameTests each, but failed its first runtime case:
+zero accepted, one failed and 36 unattempted. The earlier suspension fix
+replaced queue-advancement feedback with generic "Playing," causing the
+unchanged terminal observer to time out despite actual queue advancement.
+The correction restores contextual queue/episode feedback only while playing;
+paused, suspended and idle snapshots retain truthful messages. Eight focused
+coordinator tests, six source-layout tests and representative builds pass.
+The isolated corrective legacy terminal run passed in 348 seconds, with all
+28 captures directly reviewed, five independently checked audio pairs, six
+clean client exits and no owned core dump. This is scoped development evidence.
+R14 tooling preflight passed, but its first full build was interrupted by user
+session shutdown. No second build or r14 runtime ran. Work is paused for a
+user-requested device migration; the tracked hardening plan contains the handoff.
+Complete runtime acceptance, fresh exact-byte production/native testing, the
+final-commit local gate and exact-SHA green GitHub CI with matching downloaded
+artifacts remain required. Failed and superseded attempts retain their
+original evidence in [release acceptance](docs/RELEASE_ACCEPTANCE.md).
 
-The subsequent final-commit attempt on `065b6c5` failed Quilt 1.20.1 startup after eight cleanly completed runtime cases. Concurrent client startup allowed Loom to rebuild a remap dependency while Quilt was reading it. The attempt is preserved as failed, not retried or counted as full acceptance. All Quilt profiles now use sequential startup before simultaneous two-client playback. Regression tests and a fresh 293-second Quilt 1.20.1 run pass, including all 33 directly reviewed images, independently measured 10 ms audio offset and clean teardown. Both corrected-source r5 builds passed with the full bundle byte-identical to r3/r4, and the refreshed deep secret scan passed. A fresh complete final-commit local gate and exact-SHA remote CI remain required.
+Earlier automation missed real defects, most recently a native client crash
+during teardown despite an automated pass. The failed r8 run remains rejected
+and preserved. Ordered private-display cleanup and normal-window-close/actual
+exit-status checks are implemented and have passed scoped regression tests;
+they do not retroactively certify failed attempts.
 
-Earlier candidates were rejected for connection/reset defects despite successful build and partial runtime gates. The current worktree applies connection-owned reset across all modern adapters and distinguishes JOIN acknowledgements from generic logout resets. Controller feedback, live time/seek, paused-frame retention, stale-generation handling and edit retention are also covered by the ongoing hardening. Historical passes do not certify the current bytes; see [release acceptance](docs/RELEASE_ACCEPTANCE.md) for the evidence and remaining gates.
+The **16-artifact / 21-runtime** release matrix and **16 supplemental cases**
+remain in scope, plus real-Plex two-client controller/UI playback,
+physical A/V, recovery/lifecycle, native-platform and cleanup checks. See
+[release acceptance](docs/RELEASE_ACCEPTANCE.md) for candidate-bound evidence,
+visual limitations and the preserved failure history, and the
+[hardening plan](docs/1.0_RELEASE_HARDENING_PLAN.md) for completion criteria.
 
 The old global Plex-music queue, stations, MP3 transport, music UI, and their bundled JLayer/Jump3r libraries have been removed. Cinemarr 1.0 is a television/video mod; it does not require Jammarr.
 
@@ -29,6 +57,12 @@ Implemented release foundations include:
 Supported packaged native targets are Linux x86-64, Linux ARM64, and Windows x86-64. Linux clients require the standard libudev, libdrm, and libva runtime libraries; see [compatibility](docs/COMPATIBILITY.md). macOS is not supported by the 1.0 artifact set.
 
 ## Configuration
+
+NeoForge 20.2.93 (Minecraft 1.20.2) acceptance requires
+`earlyWindowControl = false` in the instance's `config/fml.toml` to avoid a
+loader splash-screen race. Close Minecraft before changing that key and retain
+the other settings. This does not disable in-game rendering; splash-enabled
+startup is not certified. See [release acceptance](docs/RELEASE_ACCEPTANCE.md).
 
 On first start Cinemarr generates:
 

@@ -10,6 +10,16 @@ Minecraft client on Windows or ARM.
 
 These scripts do not attach to the user's desktop or open a graphical window. Windows uses QEMU `-display none`; ARM64 uses `-nographic`. Minecraft client gates use `scripts/run-private-xvfb.sh`: each client gets a separately bound X server in the 90–190 display range, with TCP disabled and owned-process cleanup. The launcher does not inherit or connect to the user's desktop. Allocation and signal-cleanup regressions run through `scripts/test-private-xvfb.py`.
 
+Normal Minecraft playback/protocol/command acceptance sends a window-close
+request only to an identity-checked private-X client, waits for its actual
+launcher exit and requires exactly one zero-status command receipt. Merely
+removing the window or stopping its X server is not clean-exit evidence.
+Forced teardown remains available for failure cleanup and deliberately
+interrupted lifecycle probes; the private launcher stops its command before
+stopping X. A forced lifecycle interruption must not be reported as a normal
+client exit. The release audit also checks the owned systemd unit for native
+core dumps, including those stored outside the client working directory.
+
 ## Persistent state
 
 The Proxmox host retains only the prepared guest state:
@@ -92,6 +102,22 @@ payloads, not an untested later artifact or a complete Minecraft client.
 The Windows installer was checksum-checked locally but was not uploaded or
 booted; ARM startup SSH retries completed within the original run, which was
 not restarted to obtain success.
+
+A read-only r7 preflight at September 8 11:46 UTC authenticated using the
+supplied password file and again found both exact ready markers, both installed
+disks and neither QEMU guest running. The local observation receipt is
+`build/native-smoke/retained-vm-audit-20260908-r7-runtime-readonly.json`.
+No guest was started, reinstalled or modified. This is historical availability/
+stopped-state evidence only, not certification of later candidates. Fresh
+decoder runs and a post-run stopped-state audit remain required for the final
+candidate.
+
+The September 8 14:53 UTC r11 read-only preflight authenticated from the
+designated password file and confirmed both installed disks ready and stopped:
+`build/native-smoke/retained-vm-audit-20260908-r11-build-readonly.json`.
+Neither guest was started or reinstalled. This refresh establishes availability,
+not acceptance of r11 or any later decoder payload; the r11 build subsequently
+failed a local timing-test fixture and has no native certification.
 
 ## Failure and reprovisioning
 

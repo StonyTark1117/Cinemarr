@@ -5,6 +5,7 @@ import pathlib
 import re
 import subprocess
 import tempfile
+import tomllib
 import unittest
 
 
@@ -20,6 +21,148 @@ WAITERS = (
 
 
 class LogMarkerPollingTest(unittest.TestCase):
+    def test_protocol_mismatch_launch_runs_once_on_success_or_failure(self):
+        source = (ROOT / "scripts/run-dedicated-server-gate.sh").read_text()
+        function = re.search(r"(?ms)^run_wrong_protocol_client\(\) \{\n.*?^\}", source)
+        self.assertIsNotNone(function)
+        profiles = subprocess.check_output(
+            ["python3", "scripts/target-matrix.py", "gate-lines"], cwd=ROOT, text=True)
+        for label in (line.split("|")[0] for line in profiles.splitlines()):
+            for status in (0, 27):
+                with self.subTest(label=label, status=status):
+                    shell = 'status=$2\nrun_acceptance_client() { echo "launch:$1:$6"; return "$status"; }\n'
+                    result = subprocess.run(["bash", "-c", shell + function.group()
+                                             + '\nrun_wrong_protocol_client "$1" target java 1 server.log',
+                                             "mismatch-launch", label, str(status)],
+                                            capture_output=True, text=True, timeout=5)
+                    self.assertEqual(result.returncode, status, result.stderr)
+                    self.assertEqual(result.stdout.splitlines(), [f"launch:{label}:wrong-protocol-client"])
+
+    def test_neoforge_splash_workaround_is_scoped_preserving_and_wired(self):
+        source = (ROOT / "scripts/run-dedicated-server-gate.sh").read_text()
+        match = re.search(r"(?ms)^configure_acceptance_loader\(\) \{\n.*?^\}", source)
+        self.assertIsNotNone(match)
+        for name in ("run_acceptance_client", "run_command_client", "start_audio_client"):
+            function = re.search(r"(?ms)^" + name + r"\(\) \{\n.*?^\}", source)
+            self.assertIsNotNone(function, name)
+            self.assertIn('configure_acceptance_loader "$label" "$client_dir" || return 1', function.group())
+            self.assertLess(function.group().index('configure_acceptance_loader'),
+                            function.group().index('exec setsid'))
+        with tempfile.TemporaryDirectory(prefix="cinemarr-loader-config-") as temporary:
+            root = pathlib.Path(temporary)
+            def invoke(label, directory):
+                return subprocess.run(["bash", "-c", 'set -euo pipefail\n' + match.group()
+                                       + '\nconfigure_acceptance_loader "$1" "$2"',
+                                       "loader-config", label, str(directory)],
+                                      capture_output=True, text=True, timeout=5)
+            client = root / "client"
+            self.assertEqual(invoke("1.20.2-neoforge", client).returncode, 0)
+            config = client / "config/fml.toml"
+            self.assertEqual(tomllib.loads(config.read_text()), {"earlyWindowControl": False})
+            config.write_text(config.read_text() + 'maxThreads = 7\n')
+            previous = config.read_bytes()
+            self.assertEqual(invoke("1.20.2-neoforge", client).returncode, 0)
+            self.assertEqual(config.read_bytes(), previous)
+            config.write_text('earlyWindowControl = true\n')
+            previous = config.read_bytes()
+            self.assertNotEqual(invoke("1.20.2-neoforge", client).returncode, 0)
+            self.assertEqual(config.read_bytes(), previous, "Do not overwrite conflicting config")
+            config.unlink()
+            outside = root / "outside.toml"
+            outside.write_text('earlyWindowControl = true\n')
+            config.symlink_to(outside)
+            self.assertNotEqual(invoke("1.20.2-neoforge", client).returncode, 0)
+            self.assertEqual(outside.read_text(), 'earlyWindowControl = true\n')
+            profiles = subprocess.check_output(
+                ["python3", "scripts/target-matrix.py", "gate-lines"], cwd=ROOT, text=True)
+            for label in (line.split("|")[0] for line in profiles.splitlines()):
+                if label == "1.20.2-neoforge":
+                    continue
+                untouched = root / label
+                self.assertEqual(invoke(label, untouched).returncode, 0)
+                self.assertFalse(untouched.exists(), label)
+
+    def invoke_audio_stability(self, label, mode, wall_clock_pause=False):
+        source = (ROOT / "scripts/run-dedicated-server-gate.sh").read_text()
+        functions = []
+        for name in ("wait_for_video_audio_pair_stable", "video_audio_timeline_within_bounds"):
+            match = re.search(r"(?ms)^" + name + r"\(\) \{\n.*?^\}", source)
+            self.assertIsNotNone(match)
+            functions.append(match.group())
+        with tempfile.TemporaryDirectory(prefix="cinemarr-audio-stability-") as temporary:
+            shell = r'''
+set -uo pipefail
+output_root=$1
+label=$2
+mode=$3
+wall_clock_pause=$4
+# Bash SECONDS otherwise keeps advancing with real elapsed time even after
+# assignment. Remove its special behavior only in this mocked-clock fixture;
+# the extracted production waiter and its real eight-second limit are unchanged.
+unset SECONDS
+SECONDS=0
+tick=0
+prefix='Acceptance video audio'
+buffer='javaBufferMs=500'
+started=''
+if [[ "$label" == 1.7.10-forge ]]; then
+  prefix='Acceptance legacy video audio'
+  buffer='pendingFrames=500'
+  started='started=true'
+fi
+emit() {
+  local role=$1 position=$((10000 + tick * 1000))
+  printf '%s timeline: targetMs=%s videoMs=%s driftMs=0 %s %s underruns=0\n' \
+    "$prefix" "$position" "$position" "$started" "$buffer" >> "$output_root/$label.audio-$role.console.log"
+}
+for role in leader follower; do
+  printf '%s scheduled: framePtsMs=10000\n' "$prefix" > "$output_root/$label.audio-$role.console.log"
+  emit "$role"
+done
+group_alive() { return 0; }
+sleep() {
+  tick=$((tick + 1))
+  SECONDS=$tick
+  emit leader
+  case "$mode" in
+    fresh) emit follower ;;
+    delayed) if (( tick >= 20 )); then emit follower; fi ;;
+    stalled) if (( tick <= 4 )); then emit follower; fi ;;
+    stale) : ;;
+  esac
+  # Cross a real clock boundary while the synthetic clock is still at 27.
+  if [[ "$wall_clock_pause" == true ]] && (( tick == 27 )); then command sleep 1.1; fi
+}
+'''
+            return subprocess.run(["bash", "-c", shell + "\n".join(functions)
+                                   + '\nwait_for_video_audio_pair_stable "$label" 1 2\n'
+                                     'result=$?\necho "ticks=$tick"\nexit "$result"',
+                                   "stability-test", temporary, label, mode, str(wall_clock_pause).lower()],
+                                  capture_output=True, text=True, timeout=15)
+
+    def test_audio_stability_rejects_stale_and_stalled_timelines(self):
+        for label in ("1.7.10-forge", "1.21.1-neoforge"):
+            for mode in ("stale", "stalled"):
+                with self.subTest(label=label, mode=mode):
+                    result = self.invoke_audio_stability(label, mode)
+                    self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_audio_stability_requires_eight_seconds_after_fresh_audio_returns(self):
+        for label in ("1.7.10-forge", "1.21.1-neoforge"):
+            for mode, minimum in (("fresh", 9), ("delayed", 28)):
+                with self.subTest(label=label, mode=mode):
+                    result = self.invoke_audio_stability(label, mode)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertGreaterEqual(int(re.search(r"ticks=(\d+)", result.stdout)[1]), minimum)
+
+    def test_synthetic_audio_clock_does_not_advance_with_wall_time(self):
+        for label in ("1.7.10-forge", "1.21.1-neoforge"):
+            with self.subTest(label=label):
+                result = self.invoke_audio_stability(label, "delayed", wall_clock_pause=True)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(int(re.search(r"ticks=(\d+)", result.stdout)[1]), 28,
+                                 "Only synthetic ticks may advance this test's clock")
+
     def invoke_video_startup(self, label, fail_role=""):
         source = (ROOT / "scripts/run-dedicated-server-gate.sh").read_text()
         match = re.search(r"(?ms)^run_two_client_video\(\) \{\n.*?^\}", source)
@@ -95,6 +238,9 @@ wait_for_audio_playing() {
                  'java.lang.RuntimeException: java.nio.file.NoSuchFileException: missing.jar\n', True),
                 ('[main/INFO] (Quilt Loader) Loading Minecraft\n', False),
                 ('Optional asset warning: java.nio.file.NoSuchFileException\n', False),
+                ('[pool-2-thread-1/ERROR] [EARLYDISPLAY/]: BARF java.nio.file.FileSystemNotFoundException: null\n', True),
+                ('[Render thread/ERROR] [EARLYDISPLAY/]: BARF java.lang.IllegalStateException: Already building.\n', True),
+                ('[Render thread/INFO] [EARLYDISPLAY/]: Requested GL version 4.6 got version 4.6\n', False),
             ):
                 with self.subTest(content=content):
                     log.write_text(content)

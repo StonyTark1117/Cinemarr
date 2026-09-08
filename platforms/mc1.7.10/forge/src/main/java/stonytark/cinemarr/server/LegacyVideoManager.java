@@ -102,9 +102,10 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
             if (current == null || library == null || !library.rule().allows(record.item(), 4)) continue;
             playbackLibraries.put(current.id(), record.libraryId());
             playbackOptions.put(current.id(), new StartOptions(renditionForSession(record.sessionName()),
-                    new StreamSelection(Collections.<VideoStreamOption>emptyList(), record.audioStreamId(), record.subtitleStreamId())));playbackMetadataGenerations.put(current.id(), current.generation());
+                    new StreamSelection(Collections.<VideoStreamOption>emptyList(), record.audioStreamId(), record.subtitleStreamId())));
             queues.put(current.id(), new ArrayList<QueuedVideo>(record.queue()));
-            sessions.restore(record.sessionName(), record.item(), record.positionMs(), record.paused(), now);
+            VideoSessionCoordinator.Snapshot restored = sessions.restore(record.sessionName(), record.item(), record.positionMs(), record.paused(), now);
+            playbackMetadataGenerations.put(restored.id(), restored.playbackGeneration());
         }
     }
 
@@ -296,12 +297,20 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
         for (String name : previous) if (!nextSessions.contains(name)) sessions.viewerLeft(name, playerId, now);
         for (String name : nextSessions) if (!previous.contains(name)) sessions.viewerEntered(name, playerId);
         viewingSessions.put(playerId, nextSessions);
+        Map<UUID, Long> previousTvs = visibleTelevisions.get(playerId);
+        if (previousTvs == null) previousTvs = Collections.emptyMap();
+        Map<UUID, UUID> trackedScreenSessions = new LinkedHashMap<UUID, UUID>();
+        for (LegacyWorldScreens.Television television : televisions.values()) {
+            VideoSessionCoordinator.Snapshot state = sessions.snapshotIfPresent(television.sessionName(), now);
+            if (state != null) trackedScreenSessions.put(television.id(), state.id());
+        }
+        // World/screen departure abandons the client's assembler and its ACK.
+        // Do not leave that window blocking a same-generation return until expiry.
+        if (transferGrants.releaseUntracked(playerId, trackedScreenSessions, previousTvs.keySet())) egress.remove(playerId);
         for (String name : nextSessions) {
             VideoSessionCoordinator.Snapshot state = sessions.snapshotIfPresent(name, now);
             if (state != null && state.item() != null && !state.transcoding() && !state.paused()) restartIfNeeded(name, state);
         }
-        Map<UUID, Long> previousTvs = visibleTelevisions.get(playerId);
-        if (previousTvs == null) previousTvs = Collections.emptyMap();
         for (Map.Entry<UUID, Long> old : previousTvs.entrySet()) if (!televisions.containsKey(old.getKey())) {
             send(player, LegacyPacketTypes.VIDEO_TELEVISION_REMOVED, new VideoPackets.TelevisionRemoved(old.getValue()));
         }
@@ -317,7 +326,7 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
     private void sendCurrent(EntityPlayerMP player, LegacyWorldScreens.Television television, long now) {
         VideoSessionCoordinator.Snapshot state = television.sessionName().isEmpty() ? null : sessions.snapshotIfPresent(television.sessionName(), now);
         if (state == null) sendIdle(player, television, "TV is idle");
-        else { sendState(player, television, state, television.presentationMode(), state.paused() ? "Paused" : "Playing"); sendQueue(player, state); sendManifest(player, state); }
+        else { sendState(player, television, state, television.presentationMode(), state.playbackMessage()); sendQueue(player, state); sendManifest(player, state); }
     }
 
     public void sendLibraries(EntityPlayerMP player) {
@@ -412,7 +421,7 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
                 return new PreparedPlayback(state, options, library.rule().id());
             } catch (IOException failure) { throw new WrappedFailure(failure); }
         }).whenComplete((prepared, failure) -> scheduleMain(() -> {VideoSessionCoordinator.Snapshot state=prepared==null?null:prepared.state;
-            if (failure != null) { failure(player, failure); return; } if(!recordPlayback(prepared))return; persist(state); publish(player, television, state, presentation, state.paused()?"Paused":"Playing", true);
+            if (failure != null) { failure(player, failure); return; } state=recordPlayback(prepared);if(state==null)return; persist(state); publish(player, television, state, presentation, state.playbackMessage(), true);
         }));
     }
 
@@ -430,7 +439,7 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
             } catch (IOException failure) { throw new WrappedFailure(failure); }
         }).whenComplete((prepared, failure) -> scheduleMain(() -> {VideoSessionCoordinator.Snapshot state=prepared==null?null:prepared.state;
             if (failure != null) { failure(player, failure); return; }
-            if(!recordPlayback(prepared))return; persist(state); publish(player, television, state, presentation, state.paused()?"Paused":"Playing", true);
+            state=recordPlayback(prepared);if(state==null)return; persist(state); publish(player, television, state, presentation, state.playbackMessage(), true);
         }));
     }
 
@@ -482,9 +491,9 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
         }).whenComplete((prepared, failure) -> scheduleMain(() -> {VideoSessionCoordinator.Snapshot state=prepared==null?null:prepared.state;
             advancingSessions.remove(expected.id());
             if (failure != null) { if (requester != null) failure(requester, failure); else Cinemarr.LOGGER.warn("Unable to advance video queue: {}", SecretRedactor.message(failure, CinemarrSettings.plexToken(), CinemarrSettings.plexUrl())); return; }
-            if(!recordPlayback(prepared))return;
+            state=recordPlayback(prepared);if(state==null)return;
             List<QueuedVideo> current = queues.get(expected.id()); if (current != null) { current.remove(next); if (current.isEmpty()) queues.remove(expected.id()); }
-            persist(state); publishSession(state, "Playing next queued video", true, requester);
+            persist(state); publishSession(state, state.playbackMessage("Playing next queued video"), true, requester);
         }));
     }
 
@@ -505,7 +514,7 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
                 return new PreparedPlayback(state, options, null);
             } catch (IOException failure) { throw new WrappedFailure(failure); }
         }).whenComplete((prepared, failure) -> scheduleMain(() -> {VideoSessionCoordinator.Snapshot state=prepared==null?null:prepared.state;
-            if (failure != null) { failure(player, failure); return; } if(!recordPlayback(prepared))return; persist(state); publishSession(state, "Continuing with next episode", true, player);
+            if (failure != null) { failure(player, failure); return; } state=recordPlayback(prepared);if(state==null)return; persist(state); publishSession(state, state.playbackMessage("Continuing with next episode"), true, player);
         }));
     }
 
@@ -633,7 +642,7 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
             restartingSessions.remove(expected.id());
             if (failure != null) { Cinemarr.LOGGER.warn("Unable to resume saved video session {}: {}", name,
                     SecretRedactor.message(failure, CinemarrSettings.plexToken(), CinemarrSettings.plexUrl())); return; }
-            if(!recordPlayback(prepared))return; persist(state); publishSession(state, state.paused() ? "Paused" : "Playing", true, null);
+            state=recordPlayback(prepared);if(state==null)return; persist(state); publishSession(state, state.playbackMessage(), true, null);
         }));
     }
 
@@ -645,8 +654,9 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
         saved.put(new LegacyVideoSavedData.Record(state.name(), library, state.item(), state.positionMs(), state.paused(),
                 options.streams.audioId, options.streams.subtitleId, queue));
     }
-    private boolean recordPlayback(PreparedPlayback prepared) {
-        return !closed && sessions.applyIfCurrent(prepared.state, () -> {
+    private VideoSessionCoordinator.Snapshot recordPlayback(PreparedPlayback prepared) {
+        if (closed) return null;
+        return sessions.applyPlaybackMetadataIfCurrent(prepared.state, System.currentTimeMillis(), () -> {
             playbackOptions.put(prepared.state.id(), prepared.options);
             if (prepared.libraryId != null) playbackLibraries.put(prepared.state.id(), prepared.libraryId);
             playbackMetadataGenerations.put(prepared.state.id(), prepared.state.playbackGeneration());
@@ -666,9 +676,11 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
         if (record == null || library == null || !library.rule().allows(record.item(), 4)) return tuned;
         playbackLibraries.put(tuned.id(), record.libraryId());
         playbackOptions.put(tuned.id(), new StartOptions(renditionForSession(tuned.name()),
-                new StreamSelection(Collections.<VideoStreamOption>emptyList(), record.audioStreamId(), record.subtitleStreamId())));playbackMetadataGenerations.put(tuned.id(), tuned.generation());
+                new StreamSelection(Collections.<VideoStreamOption>emptyList(), record.audioStreamId(), record.subtitleStreamId())));
         queues.put(tuned.id(), new ArrayList<QueuedVideo>(record.queue()));
-        return sessions.restore(tuned.name(), record.item(), record.positionMs(), true, System.currentTimeMillis());
+        VideoSessionCoordinator.Snapshot restored = sessions.restore(tuned.name(), record.item(), record.positionMs(), true, System.currentTimeMillis());
+        playbackMetadataGenerations.put(restored.id(), restored.playbackGeneration());
+        return restored;
     }
 
     public void televisionRemoved(UUID televisionId, String sessionName) {

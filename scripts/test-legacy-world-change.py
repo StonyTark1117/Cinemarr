@@ -61,6 +61,15 @@ class WorldTests(unittest.TestCase):
         self.away()
         with self.assertRaises(RuntimeError): probe.run(self.observer,'returned',1)
 
+    def test_return_rejects_abandoned_transfer_stall_even_after_playback_recovers(self):
+        self.away()
+        self.values['follower'] += ('Acceptance legacy world unloaded: dimension=-1\n'
+            '[CHAT] Cinemarr: A video transfer window is already awaiting acknowledgement\n'
+            + world(101,0,1) + session(False))
+        with self.assertRaisesRegex(RuntimeError, 'abandoned transfer'):
+            probe.run(self.observer,'returned',1)
+        self.assertFalse((self.output/'world-returned-1.json').exists())
+
     def test_replaced_jvm_cannot_prove_return(self):
         self.away()
         self.values['follower']+='Acceptance legacy world unloaded: dimension=-1\n'+world(102,0,1)+session(False)

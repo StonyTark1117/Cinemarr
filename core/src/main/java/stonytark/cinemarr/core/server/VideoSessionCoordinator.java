@@ -208,8 +208,10 @@ public final class VideoSessionCoordinator implements AutoCloseable {
 
     /** Restores durable playback metadata without contacting Plex until a viewer arrives. */
     public synchronized Snapshot restore(String name, VideoMediaItem item, long positionMs, boolean paused, long nowMs) {
+        requireOpen();
         Session value = required(name);
         if (value.media != null || value.pending != null) throw new IllegalStateException("Cannot restore over active playback");
+        invalidate(value);
         value.item = item;
         value.playbackGeneration = value.generation;
         value.positionAtStartMs = Math.max(0, positionMs);
@@ -229,6 +231,13 @@ public final class VideoSessionCoordinator implements AutoCloseable {
             if (value.item == null) throw new IllegalStateException("No video is selected");
             expectedGeneration = value.generation;
             position = value.snapshotAt(nowMs).positionMs();
+            if (value.pausedAtMs >= 0) {
+                // New stream options replace metadata even without opening a transcode.
+                // A paused cursor-only seek, in contrast, keeps the same options.
+                seek(name, position, nowMs, expectedGeneration);
+                value.playbackGeneration = value.generation;
+                return value.snapshotAt(nowMs);
+            }
         }
         return seek(name, position, nowMs, expectedGeneration);
     }
@@ -383,6 +392,22 @@ public final class VideoSessionCoordinator implements AutoCloseable {
         return true;
     }
 
+    /**
+     * Installs metadata for the same playback, including after pause/suspension.
+     * A worker can commit media before its main-thread completion runs;
+     * suspension must retire that media without losing its restart metadata.
+     * Callers must publish the returned current snapshot, never expected.
+     * Only short metadata mutations are allowed in action, never I/O.
+     */
+    public synchronized Snapshot applyPlaybackMetadataIfCurrent(Snapshot expected, long nowMs, Runnable action) {
+        if (closed || expected == null || expected.item() == null) return null;
+        Session value = sessions.get(expected.name());
+        if (value == null || !value.id.equals(expected.id()) || value.item == null
+                || value.playbackGeneration != expected.playbackGeneration()) return null;
+        action.run();
+        return value.snapshotAt(nowMs);
+    }
+
     @Override public void close() throws IOException {
         List<RetiredMedia> detached = new ArrayList<>();
         List<Thread> starters = new ArrayList<>();
@@ -526,11 +551,19 @@ public final class VideoSessionCoordinator implements AutoCloseable {
             this.viewers = Collections.unmodifiableSet(new HashSet<UUID>(viewers));
         }
         public UUID id() { return id; } public String name() { return name; } public long generation() { return generation; }
-        /** Changes on media replacement, not on pause/suspend; prevents checkpointing a new item with old stream options. */
+        /** Changes on media/stream-option replacement or restore, not pause/suspend or paused cursor-only seek. */
         public long playbackGeneration() { return playbackGeneration; }
         public VideoMediaItem item() { return item; } public long positionMs() { return positionMs; }
         public long serverEpochMs() { return serverEpochMs; }
         public boolean paused() { return paused; } public boolean transcoding() { return transcoding; }
+        public String playbackMessage() {
+            return playbackMessage("Playing");
+        }
+        /** Preserve action-specific feedback only while the current snapshot is playing. */
+        public String playbackMessage(String playingMessage) {
+            if (playingMessage == null) throw new IllegalArgumentException("Playing message is required");
+            return item == null ? "TV is idle" : paused ? "Paused" : transcoding ? playingMessage : "Suspended";
+        }
         public Set<UUID> televisions() { return televisions; } public Set<UUID> viewers() { return viewers; }
     }
 }

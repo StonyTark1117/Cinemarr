@@ -69,4 +69,5 @@ command_pid=$!
 set +e
 wait "$command_pid"
 status=$?
+echo "Private X command exited: status=$status" >&2
 exit "$status"

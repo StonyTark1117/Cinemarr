@@ -6,6 +6,50 @@ import org.junit.jupiter.api.Test;
 import stonytark.cinemarr.core.protocol.VideoPackets;
 
 final class TransferGrantRegistryTest {
+    @Test void replacingEveryScreenOfSamePartyAbandonsWindowButOneRetainedScreenPreservesIt() {
+        TransferGrantRegistry registry = new TransferGrantRegistry(30_000);
+        UUID client = UUID.randomUUID(), session = UUID.randomUUID();
+        UUID oldScreen = UUID.randomUUID(), newScreen = UUID.randomUUID(), otherScreen = UUID.randomUUID();
+        java.util.Set<UUID> previous = java.util.Collections.singleton(oldScreen);
+        java.util.Map<UUID, UUID> visible = new java.util.HashMap<UUID, UUID>();
+        VideoPackets.SegmentRequest window = request(session, 3, 71, 60);
+        assertTrue(registry.tryAcquire(client, window, 100));
+        visible.put(oldScreen, session);
+        visible.put(newScreen, session);
+        assertFalse(registry.releaseUntracked(client, visible, previous));
+        assertTrue(registry.owns(client, window, 101));
+        visible.remove(oldScreen);
+        visible.put(otherScreen, UUID.randomUUID());
+        assertTrue(registry.releaseUntracked(client, visible, previous),
+                "all old TVs are removed before replacements arrive, resetting the client assembler even in the same party");
+        assertFalse(registry.owns(client, window, 102));
+        assertTrue(registry.tryAcquire(client, request(session, 3, 1, 61), 103));
+        assertFalse(registry.releaseUntracked(client, visible, visible.keySet()));
+        assertTrue(registry.releaseUntracked(client, java.util.Collections.<UUID, UUID>emptyMap(), visible.keySet()));
+    }
+
+    @Test void leavingScreenReleasesWindowBeforeTimeoutWithoutDisturbingOtherViewers() {
+        TransferGrantRegistry registry = new TransferGrantRegistry(30_000);
+        UUID client = UUID.randomUUID(), other = UUID.randomUUID(), session = UUID.randomUUID();
+        VideoPackets.SegmentRequest abandoned = request(session, 3, 71, 60);
+        VideoPackets.SegmentRequest returned = request(session, 3, 1, 74);
+        assertTrue(registry.tryAcquire(client, abandoned, 100));
+        assertTrue(registry.tryAcquire(other, abandoned, 100));
+        assertFalse(registry.releaseUntracked(client, java.util.Collections.singleton(session)),
+                "still-visible playback must retain flow control");
+        assertFalse(registry.tryAcquire(client, returned, 101));
+        assertTrue(registry.releaseUntracked(client, java.util.Collections.<UUID>emptySet()));
+        assertTrue(registry.owns(other, abandoned, 102));
+        assertFalse(registry.owns(client, abandoned, 102), "late completion must not enqueue departed work");
+        assertTrue(registry.tryAcquire(client, returned, 103), "same-generation world return cannot wait for expiry");
+        registry.release(client, abandoned);
+        assertFalse(registry.acknowledge(client, acknowledgement(abandoned), 104));
+        assertTrue(registry.owns(client, returned, 105));
+        assertTrue(registry.releaseUntracked(client, java.util.Collections.singleton(UUID.randomUUID())),
+                "switching to another screen also abandons the old window");
+        assertFalse(registry.releaseUntracked(client, java.util.Collections.<UUID>emptySet()));
+    }
+
     @Test void disconnectedOwnershipIsVisibleEvenWhileOtherClientsKeepStreaming() {
         TransferGrantRegistry registry = new TransferGrantRegistry(1_000);
         UUID active = UUID.randomUUID(), departed = UUID.randomUUID();

@@ -460,8 +460,32 @@ rejection_observed() {
 
 client_bootstrap_failed() {
   local console_log=$1
-  grep -Eq 'Timed out trying to setup the Game Window|Failed to initialize the mod loading system and display|ArrayIndexOutOfBoundsException: 0|\(Quilt Loader\) Uncaught exception in thread "main"' \
+  grep -Eq 'Timed out trying to setup the Game Window|Failed to initialize the mod loading system and display|ArrayIndexOutOfBoundsException: 0|\(Quilt Loader\) Uncaught exception in thread "main"|\[EARLYDISPLAY/\]: BARF (java.nio.file.FileSystemNotFoundException|java.lang.IllegalStateException: Already building)' \
     "$console_log" 2>/dev/null
+}
+
+configure_acceptance_loader() {
+  local label=$1 client_dir=$2
+  [[ "$label" == '1.20.2-neoforge' ]] || return 0
+  # FML 1.0.16's splash renderer reads SecureJarHandler 2.1.24's filesystem
+  # HashMap while discovery resizes it. A standalone lookup probe reproduces
+  # FileSystemNotFoundException without Minecraft or Cinemarr. Use FML's
+  # supported no-splash path, not a retry or a changed playback oracle.
+  # This compatibility prerequisite is explicit in RELEASE_ACCEPTANCE.md.
+  if [[ -L "$client_dir" || -L "$client_dir/config" || -L "$client_dir/config/fml.toml" ]]; then
+    echo "$label: refusing a symlinked acceptance loader configuration" >&2
+    return 1
+  fi
+  mkdir -p "$client_dir/config"
+  if [[ -e "$client_dir/config/fml.toml" ]]; then
+    # Reconnect reuses its task-owned configuration. Never replace unknown or
+    # conflicting settings to force a launch to pass.
+    grep -Eq '^earlyWindowControl[[:space:]]*=[[:space:]]*false[[:space:]]*$' \
+      "$client_dir/config/fml.toml" || return 1
+  else
+    printf '%s\n' '# Cinemarr acceptance: documented NeoForge 20.2.93 splash race workaround.' \
+      'earlyWindowControl = false' > "$client_dir/config/fml.toml"
+  fi
 }
 
 run_wrong_protocol_client() {
@@ -470,19 +494,12 @@ run_wrong_protocol_client() {
   local java_home=$3
   local port=$4
   local server_console=$5
-  local attempt
-  for attempt in 1 2; do
-    if run_acceptance_client "$label" "$target_dir" "$java_home" "$port" "$server_console" \
-        wrong-protocol-client CinemarrMismatch \
-        '-Dcinemarr.acceptance.enabled=true -Dcinemarr.acceptance.clientProtocol=4 -Dorg.lwjgl.opengl.Display.allowSoftwareOpenGL=true' \
-        'Cinemarr protocol mismatch: server requires' true; then
-      return 0
-    fi
-    if (( attempt == 1 )); then
-      echo "$label: retrying the wrong-protocol client once after a failed headless launch" >&2
-    fi
-  done
-  return 1
+  # Preserve the first failed launch and its evidence. Retrying here used the
+  # same console/world paths and could silently replace a loader failure.
+  run_acceptance_client "$label" "$target_dir" "$java_home" "$port" "$server_console" \
+    wrong-protocol-client CinemarrMismatch \
+    '-Dcinemarr.acceptance.enabled=true -Dcinemarr.acceptance.clientProtocol=4 -Dorg.lwjgl.opengl.Display.allowSoftwareOpenGL=true' \
+    'Cinemarr protocol mismatch: server requires' true
 }
 
 run_missing_hello_client() {
@@ -512,11 +529,14 @@ run_acceptance_client() {
   local client_console="$output_root/$label.$scenario.console.log"
   local evidence="$output_root/$label.$scenario.server.txt"
   local pid deadline exit_grace_deadline result=0
+  local -a cache_args=()
+  [[ "$active_disable_configuration_cache" == true ]] && cache_args+=(--no-configuration-cache)
   local -a runtime_args=()
   [[ "$label" == *-quilt ]] && runtime_args+=(-PcinemarrRuntimeLoader=quilt)
   [[ "$label" == *-quilt && "$quilt_modmenu_gate" == true ]] && runtime_args+=(-PcinemarrIncludeModMenu=true)
   [[ "$label" == *-fabric && -n "$fabric_loader_version" ]] && runtime_args+=(-PcinemarrFabricLoaderVersion="$fabric_loader_version")
 
+  configure_acceptance_loader "$label" "$client_dir" || return 1
   mkdir -p "$client_dir"
   : > "$client_console"
   printf '%s\n' \
@@ -532,7 +552,7 @@ run_acceptance_client() {
       JAVA_TOOL_OPTIONS="$java_tool_options" \
       LIBGL_ALWAYS_SOFTWARE=1 \
       ./gradlew "$active_client_task" --no-daemon --max-workers=1 --console=plain \
-      "${runtime_args[@]}" \
+      "${cache_args[@]}" "${runtime_args[@]}" \
       -PcinemarrAcceptanceUsername="$username" \
       -PcinemarrAcceptanceServer="${acceptance_server_host}:${port}" \
       -PcinemarrAcceptanceGameDir="$client_dir" \
@@ -582,6 +602,7 @@ run_acceptance_client() {
         -e 'Client disconnected with reason: Disconnected' "$client_console" | tail -n 1
     } > "$evidence"
   fi
+  if (( result == 0 )); then finish_client_launch "$pid" 120 "$client_console" || result=1; fi
   terminate_client_launch "$pid" 20 || result=1
   active_client_pid=""
   return "$result"
@@ -602,11 +623,14 @@ run_command_client() {
   local diagnostics="$output_root/$label.$scenario.diagnostics.txt"
   local evidence="$output_root/$label.$scenario.evidence.txt"
   local pid deadline result=0
+  local -a cache_args=()
+  [[ "$active_disable_configuration_cache" == true ]] && cache_args+=(--no-configuration-cache)
   local -a runtime_args=()
   [[ "$label" == *-quilt ]] && runtime_args+=(-PcinemarrRuntimeLoader=quilt)
   [[ "$label" == *-quilt && "$quilt_modmenu_gate" == true ]] && runtime_args+=(-PcinemarrIncludeModMenu=true)
   [[ "$label" == *-fabric && -n "$fabric_loader_version" ]] && runtime_args+=(-PcinemarrFabricLoaderVersion="$fabric_loader_version")
 
+  configure_acceptance_loader "$label" "$client_dir" || return 1
   mkdir -p "$client_dir"
   : > "$client_console"
   : > "$diagnostics"
@@ -633,7 +657,7 @@ run_command_client() {
       JAVA_TOOL_OPTIONS='-Dcinemarr.acceptance.enabled=true -Dcinemarr.acceptance.commandProbe=true -Dorg.lwjgl.opengl.Display.allowSoftwareOpenGL=true' \
       LIBGL_ALWAYS_SOFTWARE=1 \
       ./gradlew "$active_client_task" --no-daemon --max-workers=1 --console=plain \
-      "${runtime_args[@]}" \
+      "${cache_args[@]}" "${runtime_args[@]}" \
       -PcinemarrAcceptanceUsername="$username" \
       -PcinemarrAcceptanceServer="${acceptance_server_host}:${port}" \
       -PcinemarrAcceptanceGameDir="$client_dir" \
@@ -747,6 +771,7 @@ run_command_client() {
     } > "$evidence"
   fi
 
+  if (( result == 0 )); then finish_client_launch "$pid" 120 "$client_console" || result=1; fi
   terminate_client_launch "$pid" 20 || result=1
   active_client_pid=""
   return "$result"
@@ -797,6 +822,7 @@ start_audio_client() {
   fi
   [[ "$active_disable_configuration_cache" == true ]] && cache_args+=(--no-configuration-cache)
 
+  configure_acceptance_loader "$label" "$client_dir" || return 1
   mkdir -p "$client_dir/config" "$client_dir/javacpp-cache"
   # Each client represents an independent installation. Give JavaCPP a private
   # native extraction cache so simultaneous FFmpeg initialization cannot race
@@ -958,9 +984,11 @@ wait_for_video_audio_pair_stable() {
   local leader_log="$output_root/$label.audio-leader.console.log"
   local follower_log="$output_root/$label.audio-follower.console.log"
   local deadline=$((SECONDS + 180))
-  local stable_since=$SECONDS
+  local stable_since=-1
   local signature="" previous_signature=""
   local leader_event follower_event leader_timeline follower_timeline
+  local initial_leader initial_follower previous_leader previous_follower
+  local leader_updated=-1 follower_updated=-1
   local event_pattern='Acceptance video audio (scheduled|rebuffer):'
   local timeline_marker='Acceptance video audio timeline:'
   local buffer_pattern='javaBufferMs=[1-9][0-9]*'
@@ -969,6 +997,13 @@ wait_for_video_audio_pair_stable() {
     timeline_marker='Acceptance legacy video audio timeline:'
     buffer_pattern='pendingFrames=[1-9][0-9]*'
   fi
+  # A world unload can leave a healthy final timeline in the log for tens of
+  # seconds. Only telemetry produced after this call may establish readiness;
+  # both clients must keep reporting throughout the eight-second interval.
+  initial_leader=$(grep -nF "$timeline_marker" "$leader_log" 2>/dev/null | tail -n 1)
+  initial_follower=$(grep -nF "$timeline_marker" "$follower_log" 2>/dev/null | tail -n 1)
+  previous_leader=$initial_leader
+  previous_follower=$initial_follower
 
   while (( SECONDS < deadline )); do
     if ! group_alive "$leader_pid" || ! group_alive "$follower_pid"; then
@@ -985,23 +1020,37 @@ wait_for_video_audio_pair_stable() {
     signature="$leader_event|$follower_event"
     if [[ "$signature" != "$previous_signature" ]]; then
       previous_signature=$signature
-      stable_since=$SECONDS
+      stable_since=-1
     fi
-    leader_timeline=$(grep -F "$timeline_marker" "$leader_log" 2>/dev/null | tail -n 1)
-    follower_timeline=$(grep -F "$timeline_marker" "$follower_log" 2>/dev/null | tail -n 1)
+    leader_timeline=$(grep -nF "$timeline_marker" "$leader_log" 2>/dev/null | tail -n 1)
+    follower_timeline=$(grep -nF "$timeline_marker" "$follower_log" 2>/dev/null | tail -n 1)
+    if [[ "$leader_timeline" != "$previous_leader" ]]; then
+      previous_leader=$leader_timeline
+      leader_updated=$SECONDS
+    fi
+    if [[ "$follower_timeline" != "$previous_follower" ]]; then
+      previous_follower=$follower_timeline
+      follower_updated=$SECONDS
+    fi
     if [[ "$leader_event" == *'audio scheduled:'* && "$follower_event" == *'audio scheduled:'* \
+        && "$leader_timeline" != "$initial_leader" && "$follower_timeline" != "$initial_follower" \
         && "$leader_timeline" == *'underruns=0'* && "$follower_timeline" == *'underruns=0'* \
         && "$leader_timeline" =~ $buffer_pattern \
         && "$follower_timeline" =~ $buffer_pattern ]] \
+        && (( leader_updated >= 0 && follower_updated >= 0 \
+              && SECONDS - leader_updated <= 2 && SECONDS - follower_updated <= 2 )) \
+        && { [[ "$label" != '1.7.10-forge' ]] \
+             || [[ "$leader_timeline" == *'started=true'* && "$follower_timeline" == *'started=true'* ]]; } \
         && video_audio_timeline_within_bounds "$leader_timeline" \
         && video_audio_timeline_within_bounds "$follower_timeline"; then
+      if (( stable_since < 0 )); then stable_since=$SECONDS; fi
       if (( SECONDS - stable_since >= 8 )); then return 0; fi
     else
-      stable_since=$SECONDS
+      stable_since=-1
     fi
     sleep 1
   done
-  echo "$label: video audio did not remain rebuffer-free and within A/V timeline bounds on both real clients for 8 seconds" >&2
+  echo "$label: video audio did not maintain fresh, rebuffer-free, in-bounds timelines on both real clients for 8 seconds" >&2
   [[ -n "$leader_timeline" ]] && echo "$label: latest leader timeline: $leader_timeline" >&2
   [[ -n "$follower_timeline" ]] && echo "$label: latest follower timeline: $follower_timeline" >&2
   return 1
@@ -1324,7 +1373,7 @@ run_video_control_scenarios() {
   fi
   wait_for_marker_after "$follower_log" "$first_follower" 'Acceptance client media reset complete' 60 \
     || { echo "$label: follower did not finish client-thread cleanup before reconnect" >&2; return 1; }
-  terminate_client_launch "$follower_pid" 20 \
+  finish_client_launch "$follower_pid" 120 "$follower_log" \
     || { echo "$label: follower did not disconnect cleanly" >&2; return 1; }
   cp -- "$follower_log" "$output_root/$label.audio-follower.pre-reconnect.console.log"
   verify_video_health_reports "$label" || return 1
@@ -1993,7 +2042,7 @@ run_video_segment_pressure_scenarios() {
   fi
   wait_for_marker_after "$peer_log" "$reset_line" 'Acceptance client media reset complete' 60 || return 1
   wait_for_marker_after "$output_root/$label.console.log" "$disconnect_line" 'CinemarrVideoC left the game' 60 || return 1
-  terminate_client_launch "$peer_pid" 10 || return 1
+  finish_client_launch "$peer_pid" 120 "$peer_log" || return 1
   "${observer[@]}" departed || return 1
   for iteration in 1 2 3 4 5; do
     sleep 1
@@ -2037,7 +2086,10 @@ run_legacy_world_change_scenarios() {
       "$terminal/world-return-$cycle-leader.s16le" "$terminal/world-return-$cycle-follower.s16le" \
       "$terminal/world-return-$cycle-alignment.json" || return 1
     for role in leader follower; do
-      audio_capture_is_audible "$terminal/world-return-$cycle-$role.s16le" "$terminal/world-return-$cycle-$role.metrics.txt" || return 1
+      if ! audio_capture_is_audible "$terminal/world-return-$cycle-$role.s16le" "$terminal/world-return-$cycle-$role.metrics.txt"; then
+        echo "$label: world return $cycle $role failed physical audio audibility; see $terminal/world-return-$cycle-$role.metrics.txt" >&2
+        return 1
+      fi
     done
     python3 "$repo_root/scripts/compare-pcm-sync.py" "$terminal/world-return-$cycle-leader.s16le" \
       "$terminal/world-return-$cycle-follower.s16le" > "$terminal/world-return-$cycle-sync.json" || return 1
@@ -2082,7 +2134,7 @@ run_video_terminal_scenarios() {
           'kick CinemarrVideoB Cinemarr terminal reconnect' >/dev/null || return 1
       fi
       wait_for_marker_after "$follower_log" "$first_follower" 'Acceptance client media reset complete' 60 || return 1
-      terminate_client_launch "$follower_pid" 20 || return 1
+      finish_client_launch "$follower_pid" 120 "$follower_log" || return 1
       verify_video_health_reports "$label" || return 1
       mv -- "$follower_log" "$output_root/$label.audio-follower.pre-terminal-reconnect.console.log" || return 1
       cp -a -- "$output_root/$label.audio-follower/screenshots" "$terminal/pre-reconnect-screenshots" || return 1
@@ -2424,6 +2476,10 @@ run_two_client_video() {
     # instead of observing it. Closed logs are checked for suppressed GL errors.
     sleep 3
   fi
+  if (( result == 0 )); then
+    finish_client_launch "$leader_pid" 120 "$leader_log" || result=1
+    finish_client_launch "$follower_pid" 120 "$follower_log" || result=1
+  fi
   cleanup_audio_processes
   fatal_report=$(find "$leader_dir" "$follower_dir" -maxdepth 1 -type f \
     \( -name 'hs_err_pid*.log' -o -name 'core' -o -name 'core.*' \) -print -quit 2>/dev/null)
@@ -2431,7 +2487,7 @@ run_two_client_video() {
     echo "$label: client teardown produced a native JVM crash report: $fatal_report" >&2
     result=1
   elif (( result == 0 )); then
-    printf 'Both clients completed disconnect cleanup without native JVM crash reports.\n' >> "$evidence"
+    printf 'Both clients completed disconnect cleanup and normal window shutdown with verified zero process exits and no native JVM crash reports.\n' >> "$evidence"
   fi
   if (( result == 0 )) && ! verify_video_health_reports "$label"; then result=1; fi
   return "$result"
@@ -2573,21 +2629,84 @@ wait_for_process_tree_exit() {
   done
 }
 
+finish_client_launch() {
+  local root=$1 seconds=$2 log=$3 status=0 deadline pid
+  local -a remaining=()
+  # Only a normal application close followed by a successful wait is evidence
+  # of clean exit. TERM/KILL cleanup and missing hs_err files cannot prove it.
+  if group_alive "$root"; then
+    python3 "$repo_root/scripts/close-private-minecraft-window.py" \
+      --gate-pid "$root" --log "$log" || return 1
+  fi
+  deadline=$((SECONDS + seconds))
+  while group_alive "$root"; do
+    if (( SECONDS >= deadline )); then
+      echo "Client normal shutdown timed out; see $log" >&2
+      return 1
+    fi
+    sleep 1
+  done
+  wait "$root" || status=$?
+  if (( status != 0 )); then
+    echo "Client did not exit cleanly (status=$status); see $log" >&2
+    return 1
+  fi
+  if [[ "$(grep -c '^Private X command exited:' "$log")" != 1 ]] \
+      || ! grep -Fxq 'Private X command exited: status=0' "$log"; then
+    echo "Client lacks one successful private command exit receipt; see $log" >&2
+    return 1
+  fi
+  # Do not retain a completed PID for later forced cleanup or PID reuse.
+  if declare -p active_audio_client_pids >/dev/null 2>&1; then
+    for pid in "${active_audio_client_pids[@]}"; do
+      [[ "$pid" == "$root" ]] || remaining+=("$pid")
+    done
+    active_audio_client_pids=("${remaining[@]}")
+  fi
+  return 0
+}
+
 terminate_client_launch() {
   local root=$1
   local seconds=$2
-  local pid group deadline live result=0
+  local pid group deadline live result=0 private_wrapper=''
   local gate_group
   local -a pids=() groups=()
   gate_group=$(ps -o pgid= -p "$$" 2>/dev/null | tr -d ' ')
   mapfile -t pids < <({ printf '%s\n' "$root"; process_tree_pids "$root"; } | sort -un)
   for pid in "${pids[@]}"; do
+    if [[ -r "/proc/$pid/cmdline" ]] \
+        && grep -Fxq "$repo_root/scripts/run-private-xvfb.sh" \
+          < <(tr '\0' '\n' < "/proc/$pid/cmdline" 2>/dev/null); then
+      private_wrapper=$pid
+    fi
     group=$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ')
     if [[ -n "$group" && "$group" != "$gate_group" && "$group" != "$active_server_group" ]]; then
       groups+=("$group")
     fi
   done
   mapfile -t groups < <(printf '%s\n' "${groups[@]}" | sed '/^$/d' | sort -unr)
+
+  if [[ -n "$private_wrapper" ]]; then
+    # Let the private display owner stop its command before its X server.
+    # Broadcasting TERM to every group kills X while the JVM is still using
+    # it: the legacy client can then crash in native XIO/shutdown handling.
+    # Snapshot groups above so bounded fallback can still collect descendants
+    # if a broken launcher exits before its children do.
+    kill -TERM "$private_wrapper" 2>/dev/null || true
+    deadline=$((SECONDS + seconds))
+    while true; do
+      live=0
+      for group in "${groups[@]}"; do group_alive "$group" && live=1; done
+      [[ -n "$(process_tree_pids "$root")" ]] && live=1
+      if (( live == 0 )); then
+        wait "$root" 2>/dev/null || true
+        return 0
+      fi
+      if (( SECONDS >= deadline )); then break; fi
+      sleep 1
+    done
+  fi
 
   for group in "${groups[@]}"; do stop_group "$group" TERM; done
   # xvfb-run and Gradle can move descendants into another session between the

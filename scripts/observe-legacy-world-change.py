@@ -64,6 +64,8 @@ def run(observer, phase, cycle):
             away = json.loads((observer.output / ('world-away-' + str(cycle) + '.json')).read_text())
             def returned(values):
                 fresh = values['follower'][away['returnOffset']:]
+                if 'A video transfer window is already awaiting acknowledgement' in fresh:
+                    raise RuntimeError('Dimension return stalled behind an abandoned transfer window')
                 rows = worlds(fresh); sessions = terminal.states(fresh)
                 return (bool(rows) and bool(sessions) and rows[-1]['clientPid'] == pid and rows[-1]['dimension'] == 0
                     and all(rows[-1][key] == 1 for key in FIELDS[2:])

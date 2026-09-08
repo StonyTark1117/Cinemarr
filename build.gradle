@@ -514,7 +514,14 @@ tasks.register('verifyAllTargets') {
     dependsOn(familyReleaseGates, verifyGameTests)
 }
 
+tasks.register('verifySourceLayoutTests', Exec) {
+    group = 'verification'
+    description = 'Exercise source-layout playback-publication guards with mutations.'
+    commandLine 'python3', 'scripts/test-source-layout.py'
+}
+
 tasks.register('verifySourceLayout', Exec) {
+    dependsOn tasks.named('verifySourceLayoutTests')
     group = 'verification'
     description = 'Rejects duplicated version-specific Java sources and validates family-shared source sets.'
     commandLine 'python3', 'scripts/check-source-layout.py'
@@ -561,6 +568,12 @@ tasks.register('verifyPrivateXvfb', Exec) {
     group = 'verification'
     description = 'Proves atomic private-display allocation and owned-process teardown.'
     commandLine 'python3', 'scripts/test-private-xvfb.py'
+}
+
+tasks.register('verifyClientExit', Exec) {
+    group = 'verification'
+    description = 'Rejects failed native client exits even without local crash files.'
+    commandLine 'python3', 'scripts/test-client-exit.py'
 }
 
 tasks.register('verifyClientJoinOrder', Exec) {
@@ -639,7 +652,7 @@ tasks.named('verifyAllTargets') {
     dependsOn tasks.named('verifySourceLayout'), tasks.named('verifyTargetManifest'),
             tasks.named('verifyReleaseHygiene'), tasks.named('verifyPcmCaptureAlignment'),
             tasks.named('verifyLogMarkerPolling'), tasks.named('verifyLegacyProbePlayerState'),
-            tasks.named('verifyPrivateXvfb'), tasks.named('verifyClientJoinOrder'),
+            tasks.named('verifyPrivateXvfb'), tasks.named('verifyClientExit'), tasks.named('verifyClientJoinOrder'),
             tasks.named('verifyPrivateMinecraftWindow'), tasks.named('verifyFabricLoaderVersion'),
             tasks.named('verifyPackagedClientInputs'), tasks.named('verifyOwnerTimeline'),
             tasks.named('verifyPostReconnectCapture'), tasks.named('verifyVideoResourceReload'),

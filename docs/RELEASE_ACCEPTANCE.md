@@ -2,6 +2,806 @@
 
 ## Current certification boundary — 2026-09-08 UTC
 
+R13 failed its first runtime case: zero scoped accepted cases, one failed and
+36 unattempted, after 229 seconds (the case itself ran 224 seconds). Its unchanged
+terminal observer requires `Playing next queued video`; the suspension fix had
+replaced that feedback with generic `Playing` across all three managers. The
+legacy leader and follower did advance from near-EOS generation 2 to generation
+3, item 9001 near zero, and both received an empty queue. That does not excuse
+the missing feedback or count as terminal acceptance. No runtime retry was made.
+The failed unit is terminal with exit 1; 152 evidence files are preserved in
+`build/clock-fix-gate/release-audit-r13-runtime-failure-preserved-20260908.json`.
+Four owned private displays and owned sinks/game/RCON ports are closed, with no
+owned-unit core dump. Playback clients lack normal exit receipts and were
+cleaned up on the failure path, not accepted as clean normal exits.
+
+The contextual-feedback correction now keeps the queue/next-episode messages
+only for currently transcoding snapshots. Paused, suspended and empty snapshots
+still report their actual state. New source checks first failed against unchanged
+r13 managers across all three families, retained in
+`build/clock-fix-gate/r13-feedback-before-fix-20260908.json` and its log. Eight
+publication/feedback tests and six source-layout tests now pass. Broader counts
+are core 201 total/200 passed/1 skipped, modern 40/38/2 and legacy 246/244/2;
+these suites overlap and retain the existing opt-in live/backend skips.
+Root modern, Fabric 26.1.2 and legacy release builds pass. The source-bound
+legacy terminal case under `cinemarr-queue-feedback-fix-20260908.service`
+passed in 348 seconds. Its 28 original captures were directly reviewed:
+advancing test video on both clients through queue/restart and two same-JVM
+world returns, plus two Nether-away views without a television picture.
+Captures retain cropped top counters, HUD/hand and initial leader construction
+chat. Paired exposures are sequential, not simultaneous-frame proof.
+Five eight-second PCM pairs were independently recomputed: initial +40 ms /
+0.993701, queue -10 / 0.999613, restarted +20 / 0.999923, world return one
+-20 / 0.993038 and world return two -10 / 0.998829. Four terminal drains and
+both away-follower recordings measure -91 dBFS; the away leader remains audible.
+All six single-launch clients exited zero, the unit closed normally without a
+core dump, original world/properties were restored and private displays,
+owned sinks and game/RCON ports were closed.
+
+The scoped review is
+`build/clock-fix-gate/queue-feedback-fix-1.7.10-forge-20260908.direct-review.json`.
+The `.preserved.json` receipt retains 258 hashed evidence references and a copy
+of the development JAR (SHA-256
+`7879ad0f2375bc9e191252fa1cdad36b7744b9c9af55b47d62015be061f27302`).
+This is corrective development acceptance, not packaged release certification.
+Neither the terminal observer's feedback assertion nor timing limits changed.
+
+R14 tooling preflight passed in 24 seconds on unchanged source. Its first full
+build under `cinemarr-release-audit-r14-build-20260908.service` was interrupted
+after 489 seconds by user-session shutdown (SIGTERM 15, child exit 143).
+It did not complete the root build, second build or reproducibility checks.
+The preserved interruption receipt contains 24 hashed references. No r14
+runtime or production/native acceptance ran. A separately named resumed build
+was prepared but never launched before the user requested a pause and Git
+handoff for another device. See the migration handoff in
+`1.0_RELEASE_HARDENING_PLAN.md`; ignored local evidence does not accompany Git.
+The handoff commit/push is not final certification, and any resulting CI remains
+unverified until inspected. Earlier full builds and corrective passes do not
+certify this bundle.
+
+### R13 build evidence and earlier suspension corrective case
+
+R13's tooling preflight passed in 23 seconds. Its two forced full builds passed
+in 521/507 seconds, each executing all 89 tasks, passing all ten GameTests and
+inspecting all sixteen artifacts. The eighteen-file bundles match byte-for-byte
+across 833 unchanged non-documentation inputs, independently checked after
+`cinemarr-release-audit-r13-build-20260908.service` exited zero with no owned
+core dump. The fresh 37-case runtime batch started at 11:09 Arizona under
+`cinemarr-release-audit-r13-runtimes-20260908.service`; that batch subsequently
+failed as described above. Fifteen handoff/GUI-exit/final-review identity guard
+tests pass. Production, native, final-commit and remote-CI certification remain open.
+
+The earlier suspension/publication fix had scoped corrective runtime acceptance;
+its original source identity does not certify the later contextual-feedback fix.
+All three server managers install metadata only for the same playback revision
+and use the returned current snapshot for persistence and publication. A
+pause/suspension can retain its restart metadata without reviving the retired
+media or publishing an obsolete playing snapshot. Paused stream-option changes
+and restores receive distinct playback revisions; stop, replacement, removal,
+name reuse and close reject obsolete completions. Initial/reconnected idle
+snapshots now say `Suspended` rather than `Playing` when an item has no media.
+Seven new coordinator tests pass, covering the observed ordering and its
+negative cases. Five source-layout mutation tests cover all three managers,
+all fifteen completion paths and restored-revision/status-message checks.
+The new layout tests are dependencies of the existing release verification.
+
+Broader local tests report core 200 total (199 passed, one existing live-Plex
+skip), modern 40 total (38 passed, two skips), and legacy 245 total (243 passed,
+two skips). These suites overlap; their counts must not be summed as unique
+tests. Root modern, Fabric 26.1.2 and Forge 1.7.10 release builds passed, including
+legacy reobfuscation. The skips are live-Plex tests plus the explicitly enabled
+hardware-backend decoder tests in modern/legacy suites. Credentialed playback
+and native/backend certification remain
+separate requirements. The original failing model and r12 bundle remain unchanged;
+its exact pre-fix coordinator bytecode has also been recovered by hash from
+the retained r12 artifact because the original `build/classes` path is mutable.
+That provenance is recorded in
+`build/clock-fix-gate/r12-suspension-publication-bytecode-provenance-20260908.json`.
+
+The single corrective development runtime passed in 252 seconds; its service
+`cinemarr-suspension-publication-fix-20260908.service` is inactive, main PID 0,
+exit 0, with frozen inputs at
+`build/clock-fix-gate/suspension-publication-fix-26.1.2-fabric-20260908.inputs.json`.
+All 33 original captures were directly reviewed and hashed in the sibling
+`.visual-review.json`: clock advancement, stable paused world frame 195,
+paused seek/Commentary selection and resume, permission-error persistence and
+expiry, and draft/selection preservation through state and queue/browse changes.
+Playing seek and stream-switch captures are dark; later captures show restored
+video. Initial unsigned-chat toasts obscure the upper-right picture, leader
+build/join chat crosses the lower picture, and the close camera crops the top
+counter band. These are recorded limitations, not flawless-UI claims.
+The independent eight-second PCM comparison reports 0 ms lag and correlation
+0.990489. All five GUI roles launched once and exited zero; no owned-unit core
+dump was recorded. Private displays, owned sinks and game/RCON ports are closed;
+original world/properties and frozen source/development artifact are unchanged.
+The deterministic tests reproduce the failed ordering; this corrective runtime
+was not forced to trigger that exact race. It is not a packaged production,
+full-bundle or final-release gate.
+The exact corrective development JAR and 43 evidence references are retained
+in the sibling `.preserved.json` receipt before later builds replace mutable
+development outputs. R13 reproducibility passed but its runtime failed as
+described above; no new commit or remote CI has started.
+
+R12 is failed, not a release candidate. The batch stopped at Fabric 26.1.2
+after 6,595 seconds: nineteen scoped accepted cases, one failed and seventeen
+not attempted. The leader initialized but never reached video-ready within
+the original timeout. Its first playback was suspended at position 23 ms
+with generation 2 and no stream metadata because the TV chunks were unloaded.
+The later follower snapshot was also `status=IDLE`, with the contradictory
+`message=Playing`; neither client produced a ready frame. Read-only RCON
+checks found players at the intended camera positions, loaded TV-area chunks,
+two tracking clients, zero active streams and no pending or retiring work.
+These observations establish a stalled session, not recovery.
+
+The unchanged compiled r12 coordinator reproduces the ordering
+`play -> suspend -> applyIfCurrent(prepared)`: generation advances 1 to 2 while
+playback generation remains 1, the metadata callback is rejected and the
+item remains selected with no active stream. The current manager requires
+that metadata to persist the checkpoint used by restart. This deterministic
+model is not a runtime rerun and does not yet prove a fix. Its original failing
+result is retained at
+`build/clock-fix-gate/r12-suspension-publication-before-fix-20260908.json`.
+The implementation above addresses the race and misleading idle message;
+scoped corrective verification passed, while complete recertification remains pending.
+
+The terminal batch and 4,386 evidence files are preserved by hash in
+`build/clock-fix-gate/release-audit-r12-runtime-failure-preserved-20260908.json`.
+The owned service is failed with main PID 0 and exit 1; 105 private X processes,
+owned audio sinks and game ports are gone, the failed RCON port is closed and
+no owned-unit core dump was recorded. The failed playback clients have no
+normal zero-exit receipt; failure cleanup is not normal-exit acceptance.
+The generated failed world is retained and the original absent `run/world`
+state restored. The retained r12 bundles match their original frozen inputs;
+current source has changed for the correction and is not certified by r12.
+No r12 production/native/final-commit or remote certification
+was started. Earlier scoped results below retain their original identities.
+
+### Earlier scoped work and r12 case evidence
+
+The follow-up exit oracle is implemented and passed scoped corrective testing.
+It sends `WM_DELETE_WINDOW` directly on an identity-checked owned display
+(private X has no window manager), waits for the launcher, and requires a zero
+exit plus exactly one zero-status command receipt. Forced cleanup cannot
+satisfy those checks. Required protocol/command clients, playback reconnects,
+pressure peers and final playback teardown use this path. Seven focused
+Gradle tasks pass 63 tests, including actual private-X normal closes and a
+deliberate SIGSEGV with core writing disabled. The exit-status regressions are
+also wired into GitHub CI. The fresh legacy terminal corrective run passed in
+357 seconds: all six GUI command exits are zero and an independent journal
+audit finds no core dump for the owned unit. All 28 original images were
+directly reviewed; five independently recomputed eight-second PCM pairs show
+10–20 ms absolute offset (correlations 0.990074–0.999611). Both same-JVM world
+returns, queue/EOS/reconnect/restart and terminal silence checks pass. All
+private displays, sinks and the game port are closed, and original world/
+properties and the retained release bundle are unchanged. The close camera
+crops the top timestamp band; initial leader build chat is below the video.
+Away-world images show a dark empty Nether view with no retained video.
+Receipts: `build/clock-fix-gate/client-exit-fix-1.7.10-forge-20260908.result.json`
+and `build/clock-fix-gate/client-exit-fix-1.7.10-forge-20260908.direct-review.json`.
+This closes the corrective case only. Both r9 full builds subsequently passed
+at 06:27 Arizona (505/495 seconds, 88 executed tasks and ten required GameTests
+each). All sixteen inspected JARs and both manifest files are byte-identical;
+all 831 frozen non-documentation inputs are unchanged. The fresh 37-case
+runtime batch later failed its tenth case, as recorded below. Its first legacy
+terminal case passed in 362 seconds: six zero-exit GUI launches, no owned-unit
+core dump, all 28 original PNGs directly reviewed, five independently recomputed
+eight-second PCM pairs at 0–40 ms absolute offset (correlations
+0.990611–0.999883), both same-process world-return cycles and verified closed
+displays/sinks/port. Away-world images contain no retained TV; returned/queue/
+restart captures show changing identifiable test video without avatar
+obstruction. The close camera crops the upper counter band; initial leader
+build chat is below the video. The scoped receipt is
+`build/clock-fix-gate/release-audit-r9-terminal-1.7.10-forge-20260908.direct-review.json`.
+The modern terminal case subsequently passed in 243 seconds: all five GUI
+exits zero, no owned-unit core dump, all fourteen original images reviewed and
+three independently recomputed eight-second PCM pairs at 0–10 ms absolute
+offset (correlations 0.988076–0.999207). All four terminal drain recordings
+measure -91 dB mean/maximum after the first second; no vanilla-toast audio
+exception was used. The initial leader and pre-reconnect follower captures
+have the vanilla unsigned-chat warning over the upper picture, and initial
+build chat overlaps the lower picture/HUD. Queue/restarted sequences are clear
+of that warning and show changing video on both clients. Receipt:
+`build/clock-fix-gate/release-audit-r9-terminal-1.21.1-neoforge-20260908.direct-review.json`.
+Legacy pressure subsequently passed in 487 seconds, with seven zero-exit GUI
+clients and no owned-unit core dump. Its normal-control and pressure reviews
+cover 39 and 42 image references respectively (75 distinct original PNGs,
+including six shared post-reload captures). All were directly reviewed.
+Browse sent 261 requests over 40 seconds with forty media HTTP requests still
+served during the held-browse phase; the third peer sent 3,950 requests and
+remained network-only and silent. Four independent eight-second during/
+recovered PCM pairs measured 0 ms offset (correlations 0.994490–0.995988);
+the post-reload pair measured 20 ms (0.989612). Bounded-work diagnostics,
+recovery, two reloads per client and closed displays/sinks/port passed.
+Browse-overload chat obscures part of the requesting follower picture during
+the flood; recovery captures are clear. The close camera crops the upper band.
+Owner seek/stream-change and the non-owner snapshot catch dark TV tiles during
+transitions; later editing, final-controller and all post-reload captures show
+the picture restored. Paused clock/frame retention, visible expiring denial
+messages and text-selection/draft retention are directly reviewed. Receipts:
+`build/clock-fix-gate/release-audit-r9-pressure-1.7.10-forge-20260908.visual-review.json`
+and `build/clock-fix-gate/release-audit-r9-pressure-1.7.10-forge-20260908.pressure-review.json`.
+Modern pressure subsequently passed in 427 seconds: six zero-exit GUI clients,
+no owned-unit core dump and all 69 original images reviewed (33 controls,
+36 pressure). Browse sent 264 requests with forty media requests served during
+the held phase; the third peer sent 3,730 requests and remained network-only
+and silent. Four independently recomputed eight-second during/recovery PCM
+pairs measured 0 ms (correlations 0.996490–0.998162), and the post-reconnect
+pair measured 10 ms (0.999526). Work bounds, recovery and closed resources
+passed. Initial world captures retain unsigned-chat warnings, browse-overload
+chat partly covers the requesting client during the flood, and playing-seek/
+stream-change snapshots catch dark tiles before video returns in later edits
+and final controllers. Paused frame/clock, denial expiry and selected-text/
+draft retention were directly reviewed; hover tooltips transiently cover
+neighboring controls. Receipts:
+`build/clock-fix-gate/release-audit-r9-pressure-1.21.1-neoforge-20260908.visual-review.json`
+and `build/clock-fix-gate/release-audit-r9-pressure-1.21.1-neoforge-20260908.pressure-review.json`.
+Legacy fault recovery then passed in 422 seconds: six zero-exit GUI clients,
+no owned-unit core dump and all 57 original images directly reviewed (39
+controls/reload and eighteen post-fault). Transient, slow and exhausted fault
+phases used distinct recovery generations 12/13/14 and recorded 159/48/6
+actual fault-mode HTTP requests. Independent eight-second recovered PCM pairs
+measured 0/10/0 ms absolute offset (correlations 0.990017–0.999984); the final
+post-reload/reconnect pair measured 0 ms (0.998798). Both clients completed
+two resource/sound reloads. All recovered sequences show moving identifiable
+video without an avatar or chat obscuring the picture. Close-camera top-band
+cropping, initial leader build chat below the picture and transient dark tiles
+during control changes remain explicit. Later edit, final controller and
+post-reload captures show restored video. Text selection, drafts, permission
+feedback and paused frame/clock checks pass. Receipts:
+`build/clock-fix-gate/release-audit-r9-fault-1.7.10-forge-20260908.visual-review.json`
+and `build/clock-fix-gate/release-audit-r9-fault-1.7.10-forge-20260908.fault-review.json`.
+Modern fault recovery passed in 337 seconds: five zero-exit GUI clients, no
+owned-unit core dump and all 51 original images directly reviewed. Recovery
+generations 12/13/14 correspond to 150/49/6 actual fault-mode HTTP requests.
+Three independent eight-second recovered PCM pairs measured 10/0/0 ms
+absolute offset (correlations 0.990971–0.996236); final reconnect PCM measured
+0 ms (0.989532). All eighteen recovery images show moving identifiable video
+without avatar, chat toast or persistent dark tiles obscuring it. Baseline
+world captures retain vanilla unsigned-chat warnings and initial leader build
+chat. Paused clock/frame 00:00:57.600/counter 288 remain fixed; seek, stream
+change, resume, selected substring and draft retention pass. Immediate playing
+seek/stream snapshots show dark tiles, with video restored by the later edit
+capture at 2:04 and both final controllers. Hover tooltips briefly overlap
+neighboring buttons. Receipts:
+`build/clock-fix-gate/release-audit-r9-fault-1.21.1-neoforge-20260908.visual-review.json`
+and `build/clock-fix-gate/release-audit-r9-fault-1.21.1-neoforge-20260908.fault-review.json`.
+The main Forge 1.7.10 case passed in 336 seconds with six zero-exit GUI
+clients, no owned-unit core dump and all 39 images directly reviewed. Both
+clients completed two resource/sound reloads, the follower reconnected and
+independent eight-second PCM measured 0 ms offset (correlation 0.987970).
+Playing advances 1:09 to 1:12; paused time holds at 1:13 with byte-identical
+original paused-world PNGs and counter 365. An apparent shape discrepancy
+during grouped image inspection was disproved by direct byte comparison,
+matching SHA256 and individual original-resolution views; no runtime retry
+or source change was made. Paused seek/stream, resume, selected substring,
+draft retention and permission-error expiry pass. Immediate seek/stream and
+non-owner snapshots retain the transient dark-tile caveat; later editing,
+both final controllers and all six post-reload/reconnect images show restored
+video. Top-band camera cropping and initial build chat below the picture remain
+explicit. Receipt:
+`build/clock-fix-gate/release-audit-r9-matrix-1.7.10-forge-20260908.visual-review.json`.
+Main Fabric 1.20.1 passed in 263 seconds: five zero-exit GUI clients, no
+owned-unit core dump, 33 directly reviewed images, follower reconnect and
+independent eight-second PCM at 10 ms offset (correlation 0.993608). Paused
+world captures hold 00:00:39.600/counter 198; seek, stream change, resume,
+selection/draft retention and error expiry pass. Baseline world captures
+retain vanilla unsigned-chat warnings and initial leader build/join chat.
+Immediate seek/stream snapshots show backing tiles, with video restored by
+the later editing capture at 1:46 and saved controllers. The owner/follower
+controller files were captured at different times (1:51 English versus 2:45
+Commentary); they are not used as simultaneous synchronization proof. Menus
+strongly dim the video and hover tooltips temporarily overlap neighboring
+buttons. Closed logs/private displays/audio checks pass. Receipt:
+`build/clock-fix-gate/release-audit-r9-matrix-1.20.1-fabric-20260908.visual-review.json`.
+Main Quilt 1.20.1 passed in 303 seconds: five zero-exit GUI clients, no
+owned-unit core dump, all 33 images reviewed and independent eight-second
+PCM at 10 ms (correlation 0.997900). Paused time/frame holds at
+00:01:03.000/counter 315; selection/draft retention and permission expiry pass.
+The playing-seek snapshot shows dark tiles, but video is restored by the
+stream-change capture at 2:09 and later edits. Baseline unsigned-chat warnings,
+initial build chat and dimmed menus remain explicit. Saved owner/follower
+controllers are from different times and are not simultaneous sync evidence.
+Follower reconnect and closed resources pass. Receipt:
+`build/clock-fix-gate/release-audit-r9-matrix-1.20.1-quilt-20260908.visual-review.json`.
+
+**R9 then failed Forge 1.20.1 and is not accepted as a batch.** The protocol
+mismatch was correctly rejected, but the Gradle launcher exited 1 while
+storing an unsupported configuration cache. This was a launcher-policy
+omission, not a native crash: both protocol and command clients lacked the
+manifest's cache-disable argument. The batch stopped after 3,299 seconds,
+with nine scoped accepted cases, one failure in 65 seconds and 27 unattempted.
+All 52 private displays, audio sinks and game ports are closed; the generated
+world is retained and original world/properties restored. There are no
+owned-unit journal core dumps. All original receipts plus the copied Gradle
+configuration-cache report are preserved across 2,288 hashed files:
+`build/clock-fix-gate/release-audit-r9-runtime-failure-preserved-20260908.json`.
+The actual argument regression reproduced ten failures (both launchers across
+five cache-disabled targets). Both launchers now pass the manifest flag.
+All 21 profiles' cache and Quilt/Mod Menu/minimum-loader arguments pass the
+new test; focused Gradle exit/polling verification passes 20 tests in 15 seconds.
+Fresh full certification remains required; neither old
+r9 builds nor the nine scoped passes certify the changed launcher scripts.
+A separate corrective Forge 1.20.1 run passed in 258 seconds, bound to the
+two changed launcher/test files and unchanged r9 artifact bytes. All 33 original
+images were directly reviewed; all five GUI roles launched once and exited zero,
+with no owned-unit core dump. Independent eight-second reconnect PCM measures
+20 ms offset (correlation 0.993393). Original world/properties are restored,
+and owned displays/audio/port are closed. Paused clock/frame, draft/selection
+retention and permission-feedback lifetime pass. Baseline vanilla chat warnings,
+brief hover-tooltip overlap and transient seek/stream dark tiles remain explicit;
+later controls show restored video. Final owner/follower controllers were captured
+at different times and are not simultaneous-sync proof. The evidence root is
+`build/cache-policy-fix-1.20.1-forge-20260908`; the complete scoped receipt is
+`build/clock-fix-gate/cache-policy-fix-1.20.1-forge-20260908.visual-review.json`.
+The failed r9 batch is not resumed. The first r10 build subsequently failed
+README matrix-label validation after 552 seconds and 80 executed tasks, despite
+all ten GameTests passing. It is not a successful build or reproducibility pair.
+The required literal `16-artifact` / `21-runtime` labels are restored without
+changing the validator. Its original log, 831-input manifest, false result,
+closure-time README and previous eighteen-file bundle are preserved in
+`build/clock-fix-gate/release-audit-r10-build-failure-preserved-20260908.json`
+(22 hashed files). Documentation was excluded from the code freeze; the README
+snapshot is explicitly its closure-time state, not a frozen input claim.
+No second build or r10 runtime started. The corrected documentation passes all
+sixteen manifest tests and the three focused Gradle manifest/hygiene tasks.
+Fresh r11 builds started at 07:51 Arizona with no maintained code changes
+since r10, but the first build failed after 487 seconds and 71 executed tasks
+on a separate synthetic-clock test failure. All ten GameTests passed. Bash
+`SECONDS` continued advancing with real time inside the mocked-clock fixture;
+the eight-second assertion returned at tick 27 instead of 28. A deliberate
+real-time-boundary regression failed for both legacy and modern fixtures.
+Unsetting `SECONDS` before assigning the fixture clock fixes its timing, without
+changing the extracted production waiter or live eight-second requirement.
+All seventeen polling tests and five focused Gradle tasks pass. The failed build,
+exact pre-fix test source, deterministic red regression and prior bundle are
+preserved across 23 hashed files in
+`build/clock-fix-gate/release-audit-r11-build-failure-preserved-20260908.json`.
+No second build or r11 runtime started. The full r12 tooling preflight passed
+all twenty maintained prerequisite tasks in 23 seconds on unchanged inputs;
+`build/clock-fix-gate/release-audit-r12-tooling-preflight-20260908.json` binds its
+source and log. Both r12 forced builds passed in 511/508 seconds, executing all
+88 tasks, passing all ten GameTests and inspecting all sixteen artifacts in
+each. All eighteen bundle files are byte-identical across 831 unchanged inputs:
+`build/clock-fix-gate/release-audit-r12-20260908.build-reproducibility.json`.
+An independent closed-service check verified the source and retained/current
+bundle hashes. The fresh 37-case runtime batch started at 08:24 Arizona under
+`cinemarr-release-audit-r12-runtimes-20260908.service`; full direct/physical
+runtime review, exact-byte production/native, final-commit and remote CI
+certification remain pending.
+
+R12 Forge 1.7.10 terminal acceptance is closed in 352 seconds. All 28 original
+images were directly reviewed: both same-JVM world returns, queued playback and
+restarted playback show moving video on both clients, without another avatar or
+chat covering the program. Both away-world images have no stale television
+picture. Initial build chat remains below the picture, and the close camera
+crops the top counter band. Initial leader and saved pre-reconnect follower
+images were taken at different times and are not simultaneous-sync proof.
+Five independent eight-second PCM pairs measure 30/20/20/0/20 ms absolute
+offset for initial/queue/restarted/world-return-1/world-return-2 respectively.
+All terminal and away-follower drain measurements are -91 dB; the leader stays
+audible while the follower is away. All six expected GUI roles launched once
+and exited zero, with no owned-unit core dump and closed displays/sinks/port.
+The scoped receipt is
+`build/clock-fix-gate/release-audit-r12-terminal-1.7.10-forge-20260908.direct-review.json`.
+The other 36 cases are not accepted by this legacy receipt.
+
+R12 NeoForge 1.21.1 terminal acceptance is also closed in 249 seconds. All
+fourteen original images were directly reviewed. Queue and restarted sequences
+show advancing video and readable follower timestamps without avatars or chat
+covering the program. Initial leader and saved pre-reconnect images retain
+Minecraft's unsigned-chat warning; initial build chat also crosses the lower
+leader picture. Those baseline captures have different capture times and are
+not simultaneous-sync proof. Three independent eight-second PCM pairs measure
+0 ms offset (correlations 0.999622/0.999907/0.999368). Five expected GUI roles
+launched once and exited zero, with no owned-unit core dump and closed private
+displays/sinks/port.
+
+The initial strict drain review withheld acceptance: queued-follower mean/peak
+levels are -63.9/-36.6 dB, not digital silence. Its entire measured 0.257125-second
+tail matches the exact installed vanilla toast-dismissal asset at correlation
+0.903363, starting at 3.692875 seconds. The replacement client was idle and had
+received no media or scheduled audio before its subsequent first playback.
+The older helper's fixed 3.7-second onset assumption also rejected this capture;
+that helper is preserved as
+`build/clock-fix-gate/review-r12-terminal-before-measured-toast-20260908.py`.
+The measured-onset matcher checks the entire tail rather than truncating it to
+a historical timing window. Five synthetic tests reject earlier program audio,
+unrelated noise/tone and silence-as-toast, and accept matching tails at different
+late onsets. No maintained source, live threshold or runtime capture changed.
+The other three terminal drain captures are -91 dB. Diagnosis is retained in
+`build/clock-fix-gate/release-audit-r12-modern-terminal-drain-diagnosis-20260908.json`;
+the scoped acceptance receipt is
+`build/clock-fix-gate/release-audit-r12-terminal-1.21.1-neoforge-20260908.direct-review.json`.
+R12 Forge 1.7.10 pressure acceptance is closed in 494 seconds. The direct
+control review covers 39 images and the pressure review covers 42, sharing six
+post-reload images (75 distinct originals). All seven GUI roles launched once
+and exited zero, with no owned-unit core dump. Independently recomputed
+eight-second PCM pairs are 30 ms/0.992956 during browse pressure,
+30 ms/0.993560 after browse recovery, 30 ms/0.992498 during segment pressure,
+30 ms/0.993820 after segment recovery, and -10 ms/0.999753 after reconnect.
+The browse flood sent 255 requests, hit the bounded 16-item queue and recovered
+without publishing stale browse results. Media HTTP continued during the held
+browse phase. The third, network-only peer sent 3,820 requests over 40 seconds,
+remained digitally silent and reset cleanly; no orphaned grants/egress remained.
+Owned private displays, audio sinks and game port are closed.
+
+Direct observations show advancing video during both overloads and after two
+resource reloads per client, a fixed paused frame, advancing resumed clock,
+retained text selection/drafts and readable denial/expiry feedback. Repeated
+queue-full chat obscures the follower's lower picture during browse saturation;
+recovery captures are clear. Playing seek/stream-change captures and the small
+non-owner UI have dark television tiles, with video restored in later captures.
+The close camera crops the top counter band, and saved initial/final world
+images from different capture times do not prove simultaneous synchronization.
+These are explicit visual limitations, not hidden by the scoped pass.
+Receipts:
+`build/clock-fix-gate/release-audit-r12-pressure-1.7.10-forge-20260908.visual-review.json`
+and
+`build/clock-fix-gate/release-audit-r12-pressure-1.7.10-forge-20260908.pressure-review.json`.
+R12 NeoForge 1.21.1 pressure acceptance is closed in 423 seconds. All 69
+original images were directly reviewed (33 normal controls and 36 pressure).
+All six GUI roles launched once and exited zero; no owned-unit core dump
+occurred. All five independently recomputed eight-second PCM pairs have 10 ms
+offsets: browse during/recovery correlations 0.992863/0.990430, segment
+during/recovery 0.989529/0.994887, and post-reconnect 0.999989. The browse flood
+sent 263 requests while 40 media HTTP requests continued in the held phase.
+The network-only peer sent 3,730 requests over 40 seconds, remained digitally
+silent and reset cleanly. Workload/recovery bounds, no orphaned grants/egress,
+and owned display/sink/game-port closure pass.
+
+Direct views show advancing video during overload and recovery, readable
+controls and feedback, retained drafts/selection and a fixed paused frame.
+Browse queue-full messages obscure the follower's lower picture; peer-join chat
+initially crosses the lower picture during segment setup. Later recovery is
+clear. Baseline unsigned-chat toast, cropped left timestamp on the angled
+leader camera and dark-tile seek/stream transitions are explicitly retained.
+Sequential screenshot pairs can differ one frame; unrelated initial/final world
+captures are not simultaneous synchronization proof. The paused action receipt
+records 220692 ms, seek 250692 ms and resume 250695 ms before advancement,
+consistent with the displayed 3:40, 4:10 and subsequently advancing clock.
+Receipts:
+`build/clock-fix-gate/release-audit-r12-pressure-1.21.1-neoforge-20260908.visual-review.json`
+and
+`build/clock-fix-gate/release-audit-r12-pressure-1.21.1-neoforge-20260908.pressure-review.json`.
+R12 Forge 1.7.10 fault acceptance is closed in 415 seconds. All 57 original
+images were directly reviewed (39 normal/reload controls and 18 post-fault
+captures). All six GUI roles launched once and exited zero, with no owned-unit
+core dump. Independently recomputed eight-second post-fault PCM offsets and
+correlations are transient -10 ms/0.991249, slow -20 ms/0.990858 and exhausted
+-10 ms/0.999638; post-reconnect is 0 ms/0.998211. The actual fault sequence
+records five transient HTTP attempts, four slow responses and six exhausted
+attempts before recovery, advancing to generations 12/13/14. The review's
+`actualFaultHttpRequests` field counts all segment requests tagged with each
+phase, including recovered successful requests, not just failed responses.
+Owned displays/sinks/port are closed.
+
+Both clients show clear advancing test patterns after every fault and after
+two resource reloads each. These are post-recovery images, not a claim of
+uninterrupted output while retries were exhausted. Pause holds frame 301,
+paused seek changes 1:00 to 1:30, and resume advances to 1:33. Permission
+feedback and draft/selection retention remain readable. Playing seek/stream
+changes and one selection capture have dark tiles, with video subsequently
+restored. The small non-owner UI also has a dark-tile background. Cropped top
+counter framing and nonsimultaneous initial/final world images remain explicit.
+Receipts:
+`build/clock-fix-gate/release-audit-r12-fault-1.7.10-forge-20260908.visual-review.json`
+and
+`build/clock-fix-gate/release-audit-r12-fault-1.7.10-forge-20260908.fault-review.json`.
+R12 NeoForge 1.21.1 fault acceptance is closed in 337 seconds. All 51 original
+images were directly reviewed (33 normal controls and 18 post-fault captures).
+All five GUI roles launched once and exited zero, with no owned-unit core dump
+and closed owned displays/sinks/port. Four independently recomputed eight-second
+PCM pairs have 0 ms offsets: transient correlation 0.997172, slow 0.999037,
+exhausted 0.998207 and post-reconnect 0.996292. The fault sequence records eight
+transient attempts, eight slow responses and six exhausted attempts before
+recovery in generations 12/13/14. As above, the review's phase-tagged request
+counts include successful recovered traffic, not just failed responses.
+
+All eighteen recovered images show unobscured changing video on both clients.
+Paused frame 277 at 55.400 seconds remains fixed; the clock advances on resume,
+and draft selection/replacement, queue/browse retention and feedback expiry are
+visible. The stream-change capture has dark tiles, with video restored in later
+images. Initial world captures retain the unsigned-chat warning and leader
+build chat over the picture. Angled leader framing crops the left timestamp;
+sequential pairs can differ one frame and initial/final world images are not
+simultaneous sync proof. No claim of uninterrupted playback through exhausted
+retries is made. Receipts:
+`build/clock-fix-gate/release-audit-r12-fault-1.21.1-neoforge-20260908.visual-review.json`
+and
+`build/clock-fix-gate/release-audit-r12-fault-1.21.1-neoforge-20260908.fault-review.json`.
+
+The r12 main Forge 1.7.10 case passed in 336 seconds. All 39 original images
+were directly reviewed; six GUI roles launched once and exited zero, no
+owned-unit core dump was recorded, and owned displays/audio sinks/game port
+are closed. Independently recomputed eight-second PCM has -10 ms lag and
+0.998685 correlation. Pause holds frame 373 at 1:14, paused seek reaches 1:44,
+Commentary selection remains paused and resume advances. Selected text survives
+state changes; replacement and queue/browse drafts behave correctly, and
+permission feedback persists then expires. Both clients show changing colored
+program geometry after two resource reloads each. Playing seek/stream-change
+and the small non-owner UI contain dark transition tiles, with later video
+restored. Initial leader build chat is below the picture, the close camera
+crops the upper counter, and the saved initial leader/follower frames are not
+simultaneous synchronization proof. Receipt:
+`build/clock-fix-gate/release-audit-r12-matrix-1.7.10-forge-20260908.visual-review.json`.
+
+The r12 main Fabric 1.20.1 case passed in 243 seconds. All 33 original images
+were directly reviewed; five GUI roles launched once and exited zero, no
+owned-unit core dump was recorded, and owned displays/audio sinks/game port
+are closed. Independently recomputed eight-second PCM has 10 ms lag and
+0.999663 correlation. Playing advances 0:34 to 0:37; pause retains identical
+frame 188 at 37.600 seconds. Paused seek reaches 1:07, Commentary remains
+paused, and resume advances to 1:10. Draft selection survives state changes,
+replacement and queue/browse retention work, and permission feedback expires.
+English stream-change and selection-after captures have dark tiles; subsequent
+editing views restore visible video. Initial world captures show the vanilla
+unsigned-chat warning over the upper picture, with build/join chat across the
+leader's lower picture. The dedicated feedback row stays legible even when a
+duplicate chat message remains behind lower controls. Saved leader controller
+English at 1:49 and follower Commentary at 2:45 are different capture times,
+not simultaneous selected-stream agreement. Angled leader framing crops the
+left timestamp. Receipt:
+`build/clock-fix-gate/release-audit-r12-matrix-1.20.1-fabric-20260908.visual-review.json`.
+
+The r12 main Quilt 1.20.1 case passed in 302 seconds. All 33 original images
+were directly reviewed; five GUI roles launched once and exited zero, no
+owned-unit core dump was recorded, and owned displays/audio sinks/game port
+are closed. Independently recomputed eight-second PCM has 0 ms lag and
+0.990295 correlation. Playing advances 0:59 to 1:03; pause holds frame 316 at
+63.200 seconds. Paused seek reaches 1:33, Commentary selection remains paused,
+and resume advances to 1:36. Selected text survives the intervening state
+changes, replacement and queue/browse drafts behave correctly, and feedback
+expires. Stream-change and selection-after captures show dark tiles with video
+restored on replacement and subsequent images. Initial unsigned-chat warnings
+cover the upper picture, with leader build chat crossing the lower picture.
+Dedicated feedback is legible despite a duplicate chat message behind lower
+controls. Saved leader English at 2:14 and follower Commentary at 3:09 are
+different capture times, not simultaneous stream-selection agreement. The
+angled leader camera crops the left timestamp. Receipt:
+`build/clock-fix-gate/release-audit-r12-matrix-1.20.1-quilt-20260908.visual-review.json`.
+
+The r12 main Forge 1.20.1 case passed in 260 seconds, beyond the profile that
+stopped r9 on configuration-cache serialization. The mismatch launcher completed
+successfully in its single invocation; no retry was used. All 33 original
+images were directly reviewed, five GUI roles launched once and exited zero,
+no owned-unit core dump was recorded and owned displays/audio sinks/game port
+are closed. Independent eight-second PCM has 10 ms lag and 0.997816 correlation.
+Playing advances 0:34 to 0:38; pause retains frame 191 at 38.200 seconds.
+Paused seek reaches 1:08, Commentary remains paused and resume advances 1:11.
+Selected text survives state changes, replacement and queue/browse drafts work,
+and permission feedback persists then expires. Playing seek, stream change and
+selection-after captures show dark tiles; replacement and later editing images
+restore video. Initial unsigned-chat warnings cover the upper picture and
+leader build chat crosses the lower picture. Dedicated feedback remains
+legible despite duplicate chat behind lower controls. Saved leader English at
+1:49 and follower Commentary at 2:45 are different capture times, not proof of
+simultaneous stream-selection agreement; angled leader framing crops the left
+timestamp. Receipt:
+`build/clock-fix-gate/release-audit-r12-matrix-1.20.1-forge-20260908.visual-review.json`.
+
+The r12 main NeoForge 1.20.1 case passed in 261 seconds. All 33 original images
+were directly reviewed, five GUI roles launched once and exited zero, no
+owned-unit core dump was recorded and owned displays/audio sinks/game port
+are closed. Independent eight-second PCM has 20 ms lag and 0.996184 correlation.
+Playing advances 0:34 to 0:38, pause holds frame 190 at 38.000 seconds, paused
+seek reaches 1:08, Commentary remains paused and resume advances 1:11. Selected
+text survives state changes, replacement and queue/browse drafts work, and
+permission feedback persists then expires. The stream-change capture at 1:44
+has dark tiles; all seven editing captures, including the next at 1:45, show
+program geometry. Initial unsigned-chat warnings cover the upper picture and
+leader build chat crosses the lower picture. Dedicated feedback stays legible
+despite duplicate chat behind lower controls. Saved leader English at 1:49 and
+follower Commentary at 2:43 are different capture times, not simultaneous
+stream-selection agreement; angled leader framing crops the left timestamp.
+Receipt:
+`build/clock-fix-gate/release-audit-r12-matrix-1.20.1-neoforge-20260908.visual-review.json`.
+
+The r12 main Fabric 1.20.2 case passed in 251 seconds. All 33 original images
+were directly reviewed, five GUI roles launched once and exited zero, no
+owned-unit core dump was recorded and owned displays/audio sinks/game port
+are closed. Independent eight-second PCM has 10 ms lag and 0.994242 correlation.
+Playing advances 0:35 to 0:39; pause holds frame 195 at 39.000 seconds. Paused
+seek reaches 1:09, Commentary remains paused and resume advances 1:12. Selected
+text survives state changes, replacement and queue/browse drafts work, and
+permission feedback persists then expires. The open controller substantially
+dims the program behind it, while controls remain legible and world-view video
+is clearly visible. Playing seek, stream change and selection-after captures
+have dark tiles, with program geometry restored in later editing views. Initial
+unsigned-chat warnings cover the upper picture; leader build/join chat crosses
+the lower picture. Saved leader English at 1:49 and follower Commentary at
+2:46 are different capture times, not simultaneous stream-selection agreement;
+angled leader framing crops the left timestamp. Receipt:
+`build/clock-fix-gate/release-audit-r12-matrix-1.20.2-fabric-20260908.visual-review.json`.
+
+The r12 main Quilt 1.20.2 case passed in 292 seconds. All 33 original images
+were directly reviewed, five GUI roles launched once and exited zero, no
+owned-unit core dump was recorded and owned displays/audio sinks/game port
+are closed. Independent eight-second PCM has 10 ms lag and 0.999676 correlation.
+Playing advances 0:58 to 1:01; pause holds frame 310 at 62.000 seconds and clock
+1:02. Paused seek reaches 1:32, Commentary remains paused and resume advances
+1:35. Selected text survives state changes, replacement and queue/browse drafts
+work, and permission feedback persists then expires. Open-controller backgrounds
+are substantially dimmed while controls are readable and world video is clear.
+Playing seek, stream change and selection-after have dark tiles, with geometry
+restored in later editing captures. Initial unsigned-chat warnings cover the
+upper picture and leader build chat crosses the lower picture. Saved leader
+English at 2:13 and follower Commentary at 3:07 are different capture times,
+not simultaneous stream-selection agreement; angled leader framing crops the
+left timestamp. Receipt:
+`build/clock-fix-gate/release-audit-r12-matrix-1.20.2-quilt-20260908.visual-review.json`.
+
+The r12 main Forge 1.20.2 case passed in 254 seconds. All 33 original images
+were directly reviewed, five GUI roles launched once and exited zero, no
+owned-unit core dump was recorded and owned displays/audio sinks/game port
+are closed. Independent eight-second PCM has 10 ms lag and 0.998223 correlation.
+Playing advances 0:36 to 0:39; pause holds frame 199 at 39.800 seconds and clock
+0:39. Paused seek reaches 1:09, Commentary remains paused and resume advances
+1:13. Selected text survives state changes, replacement and queue/browse drafts
+work, and permission feedback persists then expires. Controller backgrounds
+are substantially dimmed while controls are readable and world video is clear.
+The stream-change capture has dark tiles; all seven editing captures show
+program geometry, including the next at 1:46. Initial unsigned-chat warnings
+cover the upper picture and leader build/join chat crosses the lower picture.
+Saved leader English at 1:51 and follower Commentary at 2:43 are different
+capture times, not simultaneous stream-selection agreement; angled leader
+framing crops the left timestamp. Receipt:
+`build/clock-fix-gate/release-audit-r12-matrix-1.20.2-forge-20260908.visual-review.json`.
+
+The r12 main NeoForge 1.20.2 case passed in 267 seconds under the documented
+`earlyWindowControl = false` prerequisite. All three playback launch logs confirm
+the splash screen was disabled; default splash-enabled startup remains
+uncertified. All 33 original images were directly reviewed, five GUI roles
+launched once and exited zero, no owned-unit core dump was recorded and owned
+displays/audio sinks/game port are closed. Independent eight-second PCM has
+10 ms lag and 0.995005 correlation. Playing advances 0:35 to 0:38; pause holds
+frame 194 at 38.800 seconds and clock 0:38. Paused seek reaches 1:08, Commentary
+remains paused and resume advances 1:12. Selected text survives state changes,
+replacement and queue/browse drafts work, and permission feedback persists
+then expires. Controller backgrounds substantially dim video while controls
+are readable and world video is clear. Playing seek, stream change and
+selection-after have dark tiles, with geometry restored on replacement and
+later editing captures. Initial unsigned-chat warnings cover the upper picture;
+leader build/join chat crosses the lower picture. Saved leader English at 1:50
+and follower Commentary at 2:44 are different capture times, not simultaneous
+stream-selection agreement; angled leader framing crops the left timestamp.
+Receipt:
+`build/clock-fix-gate/release-audit-r12-matrix-1.20.2-neoforge-20260908.visual-review.json`.
+
+The r12 main Fabric 1.21.1 case passed in 248 seconds. All 33 original images
+were directly reviewed, five GUI roles launched once and exited zero, no
+owned-unit core dump was recorded and owned displays/audio sinks/game port
+are closed. Independent eight-second PCM has 10 ms lag and 0.995635 correlation.
+Playing advances 0:36 to 0:39; pause holds frame 198 at 39.600 seconds and clock
+0:39. Paused seek reaches 1:09 while retaining the old paused picture (not a
+decoded seek preview), Commentary remains paused and resume advances 1:13.
+Selected text survives state changes, replacement and queue/browse drafts
+work, and permission feedback persists then expires. Playing seek at 1:43 and
+stream change at 1:46 have dark tiles; all seven editing captures show restored
+video geometry. Controls remain readable against blurred video. Initial
+unsigned-chat warnings cover the upper picture and leader build/join chat
+crosses the lower picture. Initial leader frame 30 and follower 939 are
+non-simultaneous captures; saved leader English at 1:52 and follower Commentary
+at 2:46 likewise do not establish simultaneous stream-selection agreement.
+Angled framing crops the upper/left timestamp. Receipt:
+`build/clock-fix-gate/release-audit-r12-matrix-1.21.1-fabric-20260908.visual-review.json`.
+
+The r12 main Quilt 1.21.1 case passed in 294 seconds. All 33 original images
+were directly reviewed, five GUI roles launched once and exited zero, no
+owned-unit core dump was recorded and owned displays/audio sinks/game port
+are closed. Independent eight-second PCM has 0 ms lag and 0.990503 correlation.
+Playing advances 1:00 to 1:03; pause holds frame 318 at 63.600 seconds and clock
+1:03. Paused seek reaches 1:33 while retaining the old paused picture (not a
+decoded seek preview), Commentary remains paused and resume advances 1:36.
+Selected text survives state changes, replacement and queue/browse drafts
+work, and permission feedback persists then expires. Playing seek at 2:07 and
+stream change at 2:10 have dark tiles; all seven editing captures show video
+geometry. Controls remain readable against blurred video. Initial unsigned-chat
+warnings cover the upper picture and leader build chat crosses the lower
+picture. Initial leader frame 30 and follower 1075 are non-simultaneous;
+saved leader English at 2:15 and follower Commentary at 3:09 likewise do not
+establish simultaneous stream-selection agreement. Angled framing crops the
+upper/left timestamp. Receipt:
+`build/clock-fix-gate/release-audit-r12-matrix-1.21.1-quilt-20260908.visual-review.json`.
+
+The r12 main Forge 1.21.1 case passed in 263 seconds. All 33 original images
+were directly reviewed, five GUI roles launched once and exited zero, no
+owned-unit core dump was recorded and owned displays/audio sinks/game port
+are closed. Independent eight-second PCM has 10 ms lag and 0.999263 correlation.
+Playing advances 0:37 to 0:41; pause holds frame 206 at 41.200 seconds and clock
+0:41. Paused seek reaches 1:11 while retaining the old paused picture (not a
+decoded seek preview), Commentary remains paused and resume advances 1:14.
+Selected text survives state changes, replacement and queue/browse drafts
+work, and permission feedback persists then expires. Playing seek at 1:44 and
+stream change at 1:48 have dark tiles; all seven editing captures show video
+geometry. Controls remain readable against blurred video. Initial unsigned-chat
+warnings cover the upper picture and leader build/join chat crosses the lower
+picture. Initial leader frame 31 and follower 954 are non-simultaneous;
+saved leader English at 1:54 and follower Commentary at 2:50 likewise do not
+establish simultaneous stream-selection agreement. Angled framing crops the
+upper/left timestamp; surrounding terrain does not obscure program picture.
+Receipt:
+`build/clock-fix-gate/release-audit-r12-matrix-1.21.1-forge-20260908.visual-review.json`.
+
+The r12 main NeoForge 1.21.1 case passed in 254 seconds. All 33 original images
+were directly reviewed, five GUI roles launched once and exited zero, no
+owned-unit core dump was recorded and owned displays/audio sinks/game port
+are closed. Independent eight-second PCM has 10 ms lag and 0.999147 correlation.
+Playing advances 0:53 to 0:57; pause holds frame 286 at 57.200 seconds and clock
+0:57. Paused seek reaches 1:27 while retaining the old paused picture (not a
+decoded seek preview), Commentary remains paused and resume advances 1:30.
+Selected text survives state changes, replacement and queue/browse drafts
+work, and permission feedback persists then expires. Playing seek at 2:00 and
+stream change at 2:04 have dark tiles; all seven editing captures show video
+geometry. Controls remain readable against blurred video. Initial unsigned-chat
+warnings cover the upper picture and leader build chat crosses the lower
+picture. Initial leader frame 30 and follower 1016 are non-simultaneous;
+saved leader English at 2:09 and follower Commentary at 3:03 likewise do not
+establish simultaneous stream-selection agreement. Angled framing crops the
+upper/left timestamp. Receipt:
+`build/clock-fix-gate/release-audit-r12-matrix-1.21.1-neoforge-20260908.visual-review.json`.
+
+Nineteen of 37 r12 cases are scoped accepted for their original inputs.
+Fabric 26.1.2 subsequently failed and seventeen cases were not attempted, as
+recorded at the current certification boundary above. Corrected-source runtime
+and complete production/native/final-commit/remote gates remain open.
+
+A fresh read-only review of the accumulated non-documentation diff confirmed
+the shared grant cleanup is called in all three managers before replacement
+screens are published, mismatch probes launch only once, all GUI exit paths
+require successful waits and exactly one zero-status receipt, and freshness
+checks still require eight seconds of new telemetry from both clients.
+The new synthetic-clock fixture removes Bash's special `SECONDS` behavior only
+inside its mock; production timing is unchanged. The new private-X close helper,
+actual X protocol/crash regressions, all-target probe argument tests and
+CI/Gradle wiring were also reviewed. This source review found no additional
+implementation change to make; it does not close the still-pending full final
+documentation/source binding or any runtime/remote gate.
+
+Eleven isolated handoff/exit tests
+pass; each real case independently requires its complete expected GUI-role
+set, exactly one launch/zero exit per role and no owned-unit journal core dump.
+Production/native and final-commit/remote certification remain outstanding.
+The prepared final-commit review audit additionally rejects a mismatched or
+missing review commit and images borrowed from another run/case. Four
+isolated identity-guard tests pass; they are tooling fixtures, not acceptance
+of the still-unrun final-commit gate.
+
+The evidence scanner now streams Zstandard-compressed ELF core contents as
+well as their compressed bytes, including literal matches across read
+boundaries. Five synthetic tests cover hidden matches and fail-closed handling
+of damaged or unsupported compressed payloads. A separate configured-secret
+scan of the actual preserved r8 core subsequently passed: 298,821,744 compressed
+bytes and 4,163,739,648 decoded ELF bytes, with no literal matches or decode
+errors and the compressed core unchanged. It used read-only configuration
+reads from the four stopped test servers. Receipt:
+`build/clock-fix-gate/r8-preserved-core-configured-scan-20260908.json`.
+This certifies only that single artifact against the configured scan values;
+the final current-source/full-evidence scan remains required.
+
+**R8 runtime acceptance is rejected.** The first legacy terminal case emitted
+an automated pass, but its leader JVM (PID 680245) received SIGSEGV at 05:45:51
+Arizona, four seconds after the disconnect/reset acknowledgement. The gate's
+local `hs_err`/core-file search missed systemd's external core storage. The
+37-case batch was deliberately interrupted during case two after 558 seconds;
+zero cases are accepted, one receipt is a false positive, one case was
+interrupted and 35 were not attempted. Original receipts are preserved without
+rewriting their reported results. The overriding failure audit is
+`build/clock-fix-gate/release-audit-r8-runtime-failure-preserved-20260908.json`:
+466 hashed files include the copied compressed core and debugger output, with
+all observed private X PIDs/audio sinks absent and both game ports closed.
+
+The core shows the client in `_XDefaultIOErrorExit`/`_XIOError` during shutdown.
+The gate previously broadcast TERM to the JVM and its private X server
+simultaneously. A new regression runs the actual shell cleanup against a real
+private-X client and fails because X is unavailable inside the client's TERM
+handler. Signaling the private display owner first lets it stop the command
+before X; all four private-X tests passed at that checkpoint. That narrow
+correction did not itself close the missing native-crash oracle or certify
+Minecraft teardown; the later exit oracle and corrective run above address it.
+Fresh complete source-bound runtime and subsequent production/native/final
+commit/remote checks remain required; r8 build receipts retain their earlier
+source identity.
+
 **Prerelease under hardening; final-commit certification remains open.**
 The detailed sections below retain failed and superseded attempts as well as
 accepted runs. A historical pass is not an assertion about later source.
@@ -28,12 +828,425 @@ accepted runs. A historical pass is not an assertion about later source.
 - The configured-secret scan passed across 57,675 files and 927,188 distinct
   decoded payloads, with no matches or scan errors. The three scoped commits
   were created, but the first final-commit runtime attempt failed as recorded
-  below. Corrective validation and the r5 build pair now pass. The corrective
-  commit, a fresh complete local gate, exact-SHA
+  below. The Quilt correction and r5 build pair passed, but the subsequent
+  final gate failed as recorded next. A new corrected product bundle,
+  exact-byte acceptance, a fresh complete local gate, exact-SHA
   green GitHub CI and downloaded/local artifact parity remain required.
   No tag or publication is authorized.
 
-## September 8 final-commit attempt: Quilt startup cache race
+## Historical September 8 failure: abandoned world-return transfer
+
+The `e7d5f005829ad151c086dc353ffc46bf55ccbc0c` final gate was interrupted
+by the graphical-session/user-manager shutdown after 1,923 seconds and three
+closed cases (exit 143, SIGTERM). Its output is hash-preserved under
+`build/final-commit-session-interrupted-r5-20260908`; it is not a full pass.
+
+The fresh `session2` attempt failed normally after 741 seconds (exit 1, no
+signal). All sixteen artifact inspections and ten GameTests passed; no runtime
+case reached complete acceptance. The legacy terminal follower failed physical
+audio audibility after its second same-JVM world return. The aligned capture
+contained only about 0.73 seconds of filtered program audio, against about seven
+seconds on the leader. The original eight-second captures, metrics, logs,
+screenshots and generated world remain hash-preserved under
+`build/final-commit-failed-r5-session2-20260908`. The archive receipt is
+`build/clock-fix-gate/final-commit-failed-r5-session2-20260908.archive.json`.
+Its source-bound full-gate result remains false and unchanged.
+
+Two distinct problems were found:
+
+- The stability waiter reused the follower's 02:52:32 pre-unload audio timeline
+  while it was returning to the overworld at 02:52:44. No new audio was scheduled
+  until 02:53:11. The waiter now requires new samples from both clients after
+  entry, continued freshness, and eight seconds of unchanged strict A/V bounds.
+  Regression fixtures reject stale-only and stalled logs and delayed startup
+  cannot borrow earlier healthy time. Physical audibility and sync limits are
+  unchanged; failed world-return audibility now names the role and evidence.
+- Screen departure removed viewer membership but retained the unacknowledged
+  transfer grant. Returning clients received repeated window-rejection messages
+  until its 30-second expiry. All three server managers now release a grant
+  when its session is no longer tracked, removing that client's queued egress.
+  Still-visible sessions and other viewers retain their flow-control ownership.
+  Core regression coverage checks same-generation return, late old ownership /
+  acknowledgement rejection and preservation of unrelated viewers. Wiring
+  checks cover all three managers. The world-return observer now rejects this
+  stall even if playback later recovers.
+
+Fourteen log-polling, ten pressure and eight world-change tests pass. Current
+unit reports contain 193 core, 40 modern and 238 legacy tests, zero failures /
+errors and one/two/two opt-in skips respectively. The corrective private-X
+legacy terminal run passed in 369 seconds on its recorded unchanged source.
+All 28 required images were directly reviewed; five independently recomputed
+eight-second PCM pairs passed at 10–50 ms absolute offset and correlations
+0.991577–0.999743. Both world-return pairs measured 10 ms. Follower audio was
+scheduled within about one to two seconds after each return, with no abandoned
+window errors. All six expected-silent captures measured -91 dB maximum;
+the leader remained audible during both follower absences. Queue, EOS,
+reconnect, replay, stop and closed client/display/audio/port checks passed.
+The baseline leader image includes a construction chat message below the TV;
+the remaining reviewed program views are clear. The scoped receipt is
+`build/clock-fix-gate/world-transfer-fix-1.7.10-forge-20260908.direct-review.json`.
+
+A subsequent fixture audit found modern timelines do not emit the legacy
+`started` field. The waiter now requires it only for legacy; realistic modern
+fixtures first failed the unconditional check and pass after correction. The
+corrective runtime keeps its original source identity; it is not relabelled
+as a run of this later tooling edit. These edits change product Java, so
+historical bundle continuity is no longer sufficient.
+Fresh exact-byte real-Plex acceptance, full local and remote gates, artifact
+parity and final cleanup remain required.
+
+The first r6 build was subsequently stopped deliberately after 300 seconds
+(SIGTERM/exit 143, source unchanged); no second build ran and no reproducibility
+pass is claimed. The stopped receipt and prior bundle remain preserved under
+`build/clock-fix-gate/release-audit-r6-20260908*` and
+`build/reproducibility/release-audit-r6-20260908-previous-bundle`.
+Further review found that removing every visible screen before publishing a
+replacement can reset the client assembler even when both TVs belong to the
+same party. A new deterministic core test fails the session-only retention
+policy. The shared registry now retains a reservation only if its session has
+a continuously visible TV, using current TV/session mappings and previous TV
+IDs supplied by all three managers. A partial screen change that leaves one
+old party TV visible preserves flow control. Root/core checks pass after the
+correction; full updated validation remains required. This extension is later
+source than the accepted 369-second corrective run and is not retroactively
+certified by that receipt.
+
+Both r7 forced full builds then passed in 521 and 501 seconds, with all 87
+tasks executed and all ten required GameTests passing in each. Both inspected
+all sixteen artifacts; all eighteen bundle files are byte-identical. The
+independent candidate binding checks the 829 frozen non-documentation inputs,
+the first-build snapshot and the current release bundle. The source-bound
+37-case r7 runtime batch subsequently failed; no full runtime pass is claimed.
+The build receipt is
+`build/clock-fix-gate/release-audit-r7-20260908.build-reproducibility.json`.
+Current exact-byte production/native acceptance and final-commit local/remote
+certification are still required.
+
+The first two r7 terminal cases now have closed scoped acceptance. Legacy
+completed in 344 seconds: all 28 original PNGs directly reviewed, five
+independent eight-second PCM comparisons at 0–20 ms absolute offset and
+correlations 0.991832–0.999880, both same-JVM world returns, queue/EOS,
+reconnect/replay/stop and complete owned-resource cleanup. The away images
+show the Nether with no retained program; both return sequences show clear
+advancing program frames without the abandoned-window error. Initial leader
+construction chat is below the TV. The receipt is
+`build/clock-fix-gate/release-audit-r7-terminal-1.7.10-forge-20260908.direct-review.json`.
+
+Modern terminal completed in 249 seconds: fourteen directly reviewed PNGs,
+three independent eight-second PCM pairs at 0 ms and correlations
+0.994589–0.999363, and closed logs/displays/audio sinks/game port. Queue and
+replay captures are clear. Initial leader and pre-reconnect follower images
+contain the vanilla unverified-chat warning over the upper-right region; the
+identifying program remains visible. The first strict review stopped on a
+non-silent post-EOS follower sample. It was not discarded or rerun: direct
+waveform attribution matches the hash-verified installed vanilla
+`minecraft/sounds/ui/toast/out.ogg` asset at correlation 0.902725, after 3.7
+seconds of digital silence. The capture measures -66.9 dB mean/-42 dB maximum;
+the other three terminal captures measure -91 dB. It is explicitly not
+described as digitally silent. The maintained gate thresholds are unchanged.
+The resulting scoped receipt is
+`build/clock-fix-gate/release-audit-r7-terminal-1.21.1-neoforge-20260908.direct-review.json`.
+Neither terminal receipt accepts the complete batch or final release gates.
+
+R7 legacy pressure then completed in 511 seconds and has both scoped reviews:
+`build/clock-fix-gate/release-audit-r7-pressure-1.7.10-forge-20260908.pressure-review.json`
+and the adjacent `.visual-review.json`. All 75 distinct images were directly
+reviewed (42 pressure/reload references plus 39 normal-control references,
+sharing six post-reconnect images). Four independent eight-second pressure
+PCM pairs measure 40 ms; the final post-reload/reconnect pair measures 50 ms
+absolute offset. Correlations are 0.998454–0.999890. The browse flood issued
+262 requests while playback continued; the network-only third peer issued
+3,450 requests over 40 seconds and produced no local media audio. All observed
+orphaned grant/egress item/byte counts are zero. Two resource/sound reloads per
+client, follower reconnect, controls, strict closed client logs and complete
+owned display/audio/port cleanup passed. Browse-flood feedback covers part of
+the follower's lower program view; recovery and all six post-reconnect views
+are clear. Immediate playing-seek/stream-change UI captures show the backing
+TV texture; later frames show recovered video. Paused frame retention, draft
+selection/replacement, permission feedback lifetime and clock progression
+are directly reviewed without claiming uninterrupted transition imagery.
+Modern pressure subsequently completed in 421 seconds with all 69 distinct
+images directly reviewed: 36 pressure captures and 33 normal-control captures.
+All four independent eight-second pressure PCM pairs measure 0 ms; the final
+reconnect comparison measures 10 ms, with correlations 0.996587–0.999695.
+The browse flood issued 264 requests; the third network-only peer issued
+3,720 requests over 40 seconds. Orphaned transfer/egress diagnostics remain
+zero, the peer is locally silent, and all closed client logs/private displays,
+owned audio sinks and the port pass cleanup. The scoped receipts are
+`build/clock-fix-gate/release-audit-r7-pressure-1.21.1-neoforge-20260908.pressure-review.json`
+and the adjacent `.visual-review.json`. Both world screenshots have vanilla
+unverified-chat toasts, while the identifying fixture remains visible. Flood
+feedback partly covers the requesting follower's lower view. Playing seek and
+stream-change captures show backing texture; later editing/controller/world
+captures show recovered video. Paused clock/frame retention, draft selection
+and replacement, permission feedback lifetime and full small-window controls
+are directly reviewed.
+
+R7 legacy fault recovery subsequently passed in 418 seconds. All 57 original
+PNGs were directly reviewed: eighteen post-fault images plus 39 normal-control,
+baseline and post-reload/reconnect images. Each of the transient, slow-delivery
+and exhausted-retry recovery sequences shows identifiable advancing video on
+both clients without overlay/avatar obstruction. Independent eight-second PCM
+pairs measure 10/10/30 ms absolute offset for these three phases; the final
+post-reload/reconnect comparison is 30 ms. Correlations span 0.992030–0.997160.
+The observer records actual HTTP phase traffic and distinct recovery
+generations 12, 13 and 14. Both clients completed two resource/sound reloads,
+and the follower reconnected. Permissions, edit retention, paused-frame and
+clock behavior, closed client logs, private displays, owned audio sinks and
+the game port pass. Immediate seek/stream-change and small-window transition
+images retain their backing-texture caveat; later recovery and final UI/world
+images are clear. Initial leader construction chat appears below the TV.
+The receipts are
+`build/clock-fix-gate/release-audit-r7-fault-1.7.10-forge-20260908.fault-review.json`
+and the adjacent `.visual-review.json`.
+
+R7 modern fault recovery passed in 354 seconds, with all 51 original images
+directly reviewed. The eighteen post-fault images show clear, advancing fixture
+patterns/counters on both clients after transient, slow and exhausted-retry
+faults. Their independent eight-second PCM pairs measure 10/10/0 ms, with
+correlations 0.992464/0.997077/0.991351; the final reconnect pair measures 0 ms
+and 0.993019. Actual HTTP traffic in the three fault modes is 147/47/6 requests
+(these are phase traffic counts, not claims that every request failed), with
+distinct recovery generations 12/13/14. Controls, closed client logs, owned
+private displays/audio sinks and the game port pass. Both baseline world images
+retain vanilla unverified-chat toasts; the initial leader also has construction
+chat below the program. All recovered-video captures are clear. The playing-seek
+capture retains video; the immediate stream-change image shows backing texture,
+followed by visible recovery in editing and later captures. Receipts are
+`build/clock-fix-gate/release-audit-r7-fault-1.21.1-neoforge-20260908.fault-review.json`
+and the adjacent `.visual-review.json`.
+
+The main Forge 1.7.10 matrix case then passed in 338 seconds. Its 39 original
+images have completed direct review, with two resource/sound reloads per client,
+follower reconnect, closed client logs/displays/audio sinks and an independent
+eight-second PCM pair at 10 ms (correlation 0.993577). The owner clock advances
+1:04 to 1:07, stays paused at 1:07 with an unchanged frame, seeks while paused
+to 1:37 and resumes to 1:41. Selected draft text survives updates and replacement;
+search/session drafts survive navigation and explicit clearing works. Playing
+seek/stream-change and non-owner small-window transition captures show backing
+texture; subsequent editing, final controllers and all six post-reconnect
+captures show recovered program. The close camera crops the fixture timestamp
+and part of the counter, so these images establish identifying moving content,
+not whole-screen framing. Initial leader construction chat is below the TV;
+later recovered video has no warning or other-player obstruction. Receipt:
+`build/clock-fix-gate/release-audit-r7-matrix-1.7.10-forge-20260908.visual-review.json`.
+
+Main Fabric 1.20.1 passed in 255 seconds, with all 33 original images reviewed,
+follower reconnect, closed client logs/displays/audio sinks and an independent
+eight-second PCM comparison at 10 ms (correlation 0.998570). The owner clock
+advances 0:35 to 0:38; pause holds identical fixture time 00:00:38.400/counter
+192 across the world-image pair, paused seek reaches 1:08, Commentary selection
+stays paused and resume reaches 1:11. Permission feedback persists and expires;
+draft selection/replacement and navigation retention pass. Immediate playing
+seek/stream and editing-state-change images show backing texture, with program
+recovered in subsequent editing and final controller images. Both baseline
+world images have vanilla unverified-chat toasts; leader construction/join chat
+is below the TV, and no other player obstructs it. Separately timed leader UI
+at 1:49 and follower UI at 2:41 are not presented as simultaneous synchronization
+proof; the physical PCM pair supplies that measurement. Receipt:
+`build/clock-fix-gate/release-audit-r7-matrix-1.20.1-fabric-20260908.visual-review.json`.
+The refreshed focused checks pass all 14 log-polling, eight world-change and ten
+segment-pressure tests, plus shell syntax and diff whitespace checks.
+
+Main Quilt 1.20.1 passed in 305 seconds without the earlier cache-race startup
+failure. All 33 original images were directly reviewed, with follower reconnect,
+closed client logs/private displays/audio sinks and independently recomputed
+eight-second PCM at 10 ms (correlation 0.998408). Playing clock advances 1:02 to
+1:05; pause holds identical fixture 00:01:05.400/counter 327, paused seek reaches
+1:35, Commentary remains paused and resume reaches 1:38. Playing seek at 2:09
+shows backing texture, but stream-change at 2:12 and all seven editing captures
+show program. Draft selection/replacement/navigation and permission-feedback
+expiry pass. Both baseline world captures have vanilla unverified-chat toasts;
+initial construction chat is below the TV, and no other player obstructs it.
+The three contained 640x480 controller views have visible program; leader and
+follower captures are separately timed, not contemporaneous clock measurements.
+Receipt:
+`build/clock-fix-gate/release-audit-r7-matrix-1.20.1-quilt-20260908.visual-review.json`.
+
+Main Forge 1.20.1 passed in 261 seconds, with all 33 original images reviewed,
+follower reconnect, closed client logs/private displays/audio sinks and an
+independent eight-second PCM pair at 20 ms (correlation 0.997478). Playing
+clock advances 0:35 to 0:39; pause holds fixture 00:00:39.000/counter 195,
+paused seek reaches 1:09, Commentary remains paused and resume reaches 1:12.
+Playing seek/stream images show backing texture, followed by visible program
+in all seven editing captures and final controllers. Draft retention, selected
+text replacement and permission-feedback expiry pass. Baseline world images
+retain vanilla unverified-chat toasts and leader construction/join chat below
+the TV; no other player obstructs the program. Separately timed leader 1:50
+and follower 2:44 controller screenshots are not clock-sync proof. Receipt:
+`build/clock-fix-gate/release-audit-r7-matrix-1.20.1-forge-20260908.visual-review.json`.
+
+Main NeoForge 1.20.1 passed in 267 seconds with all 33 original images reviewed,
+follower reconnect, closed client logs/private displays/audio sinks and an
+independent eight-second PCM pair at 10 ms (correlation 0.995411). Clock advances
+0:35 to 0:38 and remains paused at 0:38; the paired paused world images hold
+identical fixture 00:00:39.000/counter 195. Paused seek reaches 1:08, Commentary
+stays paused and resume reaches 1:12. Playing seek/stream captures show backing
+texture; all seven editing and final controller images show program again.
+Draft selection/replacement/navigation and permission-feedback expiry pass.
+Both baseline world images have vanilla chat-warning toasts, leader construction
+chat remains below the TV and no other player obstructs program. Controller
+capture times are distinct (leader 1:50, follower 2:46); PCM supplies the
+independent synchronization measurement. Receipt:
+`build/clock-fix-gate/release-audit-r7-matrix-1.20.1-neoforge-20260908.visual-review.json`.
+
+Main Fabric 1.20.2 passed in 248 seconds with 33 original images reviewed,
+reconnect, closed client logs/private displays/audio sinks and independent
+eight-second PCM at 10 ms (correlation 0.998523). Clock advances 0:35 to 0:38;
+pause holds clear fixture 00:00:38.600/counter 193, paused seek reaches 1:08,
+Commentary stays paused and resume reaches 1:11. Permissions, error lifetime,
+selected-text replacement and navigation/clearing of drafts pass. Controller
+background video is strongly dimmed, so those captures establish readable,
+contained controls, not clear video; world captures identify the program.
+Immediate playing seek/stream captures show backing texture before dimmed
+program returns in editing/final UI. Baseline world views retain vanilla chat
+toasts and initial leader construction/join chat below the TV; no other player
+obstructs it. Receipt:
+`build/clock-fix-gate/release-audit-r7-matrix-1.20.2-fabric-20260908.visual-review.json`.
+
+Main Quilt 1.20.2 passed in 295 seconds, with all 33 images directly reviewed,
+reconnect, closed client logs/private displays/audio sinks and independently
+recomputed eight-second PCM at 10 ms (correlation 0.999878). Playing clock
+advances 0:58 to 1:01; pause holds fixture 00:01:01.600/counter 308, paused
+seek reaches 1:31, Commentary stays paused and resume reaches 1:35. Playing
+seek at 2:05 retains dimmed video; stream change at 2:08 shows backing texture,
+then editing/final UI have faint program again. Draft selection/replacement,
+navigation retention/clearing and permission-feedback expiry pass. Background
+video is strongly dimmed under the UI but controls remain readable; clear
+paused-world captures provide unobscured fixture evidence. Baseline world
+views retain vanilla chat toasts and initial construction chat below the TV;
+no other player obstructs the program. Controller capture times differ and
+are not simultaneous clock proof. Receipt:
+`build/clock-fix-gate/release-audit-r7-matrix-1.20.2-quilt-20260908.visual-review.json`.
+
+Main Forge 1.20.2 passed in 265 seconds: 33 original images reviewed, follower
+reconnect, closed client logs/private displays/audio sinks and independent
+eight-second PCM at 10 ms (correlation 0.995061). Clock advances 0:33 to 0:37;
+pause holds identical fixture 00:00:37.200/counter 186, paused seek reaches
+1:07 with Commentary still paused, and resume reaches 1:10. Playing seek/stream
+captures show backing texture, followed by faint program behind strongly dimmed
+editing/final UI. Controls, permission-feedback expiry, selected-text replacement,
+draft navigation retention and clearing pass. Clear paused-world captures
+establish unobscured fixture content; baseline world captures retain vanilla
+chat-warning toasts and initial leader construction chat below the TV, with no
+other player blocking program. Separately timed controller views are not
+simultaneous clock evidence. Receipt:
+`build/clock-fix-gate/release-audit-r7-matrix-1.20.2-forge-20260908.visual-review.json`.
+Fourteen of 37 development cases passed their scoped reviews, comprising 564
+distinct directly reviewed images. The batch then failed main NeoForge 1.20.2
+follower startup: 107 seconds, exit 1, no interruption signal, unchanged source
+and bundle. The first exception is `FileSystemNotFoundException` in
+`UnionFileSystemProvider.getFileSystem`, reached from the early loading-window
+renderer. Repeated `Already building` exceptions culminate in a rendering-overlay
+crash. This is not a passed case or an accepted batch; twenty-two later cases
+were not attempted. The 4,720-second terminal batch receipt is
+`build/clock-fix-gate/release-audit-r7-runtime-batch-20260908.result.json`;
+the failed case receipt is
+`build/clock-fix-gate/release-audit-r7-matrix-1.20.2-neoforge-20260908.result.json`.
+Original logs, crash report and generated world remain under
+`build/release-audit-r7-runtimes-20260908/matrix/1.20.2-neoforge`.
+Corrective verification, complete runtime certification and all external/final
+gates remain open. No retry has been used to turn this failure into a pass.
+
+The loader diagnosis reproduced missing-filesystem lookups without loading
+Minecraft or Cinemarr: the installed `cpw.mods:securejarhandler:2.1.24` returned
+2,668 missing-existing-filesystem results during 3,348,971 concurrent lookups;
+the original filesystem was never closed and was still present afterward.
+Its published source synchronizes writes to a `HashMap` but not the lookups.
+This reproduces the same exception mechanism; it is not a replay of the exact
+thread schedule of the failed Minecraft run. The source-only diagnostic is
+`build/clock-fix-gate/UnionLookupRace.java`. A hash inventory preserves 3,363
+failed-batch evidence files in place, with all four failed-case private X
+processes absent, both owned audio sinks absent, port 25580 closed and the
+generated world retained:
+`build/clock-fix-gate/release-audit-r7-runtime-failure-preserved-20260908.json`.
+
+NeoForge 20.2.93 acceptance now explicitly uses FML's supported
+`earlyWindowControl = false` setting in each task-owned client's
+`config/fml.toml`. This selects FML's normal no-splash window handoff instead
+of its concurrent early-display renderer. It does not change Cinemarr bytes,
+disable in-game rendering, or relax any playback/audio/UI/lifecycle check.
+Configuration is scoped to the `1.20.2-neoforge` profile; reconnect preserves
+existing settings, and conflicting or symlinked configuration is rejected.
+Fifteen log-polling/configuration tests passed, after the new configuration and
+fatal-error assertions failed on the previous implementation. The corrective
+runtime subsequently passed as described below. This is a loader compatibility prerequisite, not
+certification of the loader's default splash-enabled launch.
+Users encountering this startup signature should close Minecraft and set
+`earlyWindowControl = false` in that instance's `config/fml.toml`; retain its
+other settings. Neither newer loaders nor unrelated instances are changed by
+the gate. The authoritative implementation is in the published
+[FML 1.0.16 sources](https://maven.neoforged.net/releases/net/neoforged/fancymodloader/loader/1.0.16/loader-1.0.16-sources.jar),
+`ImmediateWindowHandler.load` and its `DummyProvider`; the lookup race is in
+[SecureJarHandler 2.1.24 sources](https://maven.neoforged.net/releases/cpw/mods/securejarhandler/2.1.24/securejarhandler-2.1.24-sources.jar),
+`UnionFileSystemProvider.getFileSystem`.
+
+The corrective no-splash run completed in 263 seconds with unchanged source,
+unchanged r7 bundle bytes, and original world/properties restored. All 33
+required originals were directly reviewed; the independent eight-second PCM
+comparison measured 0 ms lag with correlation 0.991556. All five GUI launches
+(mismatch, command, leader, follower, reconnected follower) explicitly logged
+the no-splash path and started exactly once; their private X processes and
+owned audio sinks were absent after completion, and port 25580 was closed.
+The modern missing-client check uses the separate protocol probe, not a sixth
+GUI. Paused world views hold `00:00:39.400` / counter 197; control clocks
+advance 0:36 to 0:39, hold while paused, seek to 1:09, resume to 1:12, and
+seek while playing to 1:43. Immediate playing-seek/stream captures show backing
+texture before later clear program. Baseline chat-warning toasts, construction
+chat below the leader's TV, and strongly dimmed UI video remain explicit
+caveats. Permission feedback and draft/selection retention pass. The receipt
+is `build/clock-fix-gate/neoforge-splash-1.20.2-20260908.visual-review.json`;
+this scoped correction does not convert failed r7 into a complete batch.
+
+Follow-up inspection found an older automatic second launch in the
+wrong-protocol GUI wrapper, reusing the same evidence paths. A standalone
+execution of the actual wrapper produced two launches after one failure.
+The wrapper now propagates the first result without retry. Sixteen focused
+tests pass, including success/failure launch counts on all 21 profiles;
+eight world-change and ten pressure regressions also pass. The no-splash
+runtime above predates this final wrapper correction and retains its own
+source identity. R8 will freshly bind both launcher corrections, rerun all
+37 cases and still require all production/native/final-commit/remote gates.
+
+Both r8 forced full builds passed in 505 and 494 seconds: all 87 actionable
+tasks executed, all sixteen artifacts inspected, and all ten GameTests passed
+in each actual GameTest server log. Both eighteen-file bundles match
+byte-for-byte; an independent check verifies those files and all 829 unchanged
+non-documentation inputs at that checkpoint. The serial 37-case runtime batch
+was subsequently interrupted on the teardown finding at the top of this
+document; no r8 runtime case is accepted. Reproducibility receipt:
+`build/clock-fix-gate/release-audit-r8-20260908.build-reproducibility.json`.
+Task-local r8 handoff checks require the independently closed 37-case/41-review
+audit and unchanged referenced evidence before deployment/native preparation.
+Six isolated guard tests pass; their temporary fixtures are not release
+evidence. The r8 precommit check includes hash preservation of the failed r7
+batch, and requires the failed/corrective NeoForge roots in the final deep scan.
+The source-only configured-secret scan separately passed for its recorded
+840 inputs and 739 decoded payloads with zero matches/errors, authenticating
+the four stopped/autostart-off DiscPanel test servers from the designated
+credential file. Receipt:
+`build/clock-fix-gate/release-audit-r8-current-source-secret-scan-20260908.json`.
+That scan predates this documentation checkpoint and does not replace the
+post-acceptance deep source/artifact/evidence scan.
+
+A read-only Proxmox audit at 11:46 UTC successfully authenticated via the supplied
+password file and verified both retained native guests ready and powered off.
+The Windows/ARM disk sizes remain 18,980,405,248 and 1,237,909,504 bytes. Nothing
+was booted, reinstalled or modified. Observation receipt:
+`build/native-smoke/retained-vm-audit-20260908-r7-runtime-readonly.json`.
+This proves current availability/stopped state, not r7 native acceptance.
+
+Task-local final-gate orchestration now recognizes r7 as a new acceptance
+boundary, not historical byte continuity. The precommit binding requires
+the complete r7 development closure, all four packaged reviews, six external
+recovery/lifecycle cases, native payload parity and a fresh source-hash-bound
+configured-secret scan before the final gate can start. Its negative check
+currently stops on the absent full-runtime closure without writing a result
+or launching anything. Syntax/argument checks pass; its positive acceptance
+path is still unverified until the actual prerequisites finish. No final gate,
+commit or push has occurred for these changes.
+
+## September 8 earlier final-commit attempt: Quilt startup cache race
 
 The complete local gate on `065b6c5352d7abd403e251bee270cd4ab689c3d3`
 completed its build/inspection phase and eight runtime cases: both legacy
@@ -104,7 +1317,10 @@ The receipt is
 `build/clock-fix-gate/release-audit-r5-configured-secret-scan-20260908.json`.
 The corrected source is not yet final-commit or remote-CI certified.
 
-## September 8 final review pass
+## Historical September 8 r4 review pass
+
+This section records the r4 review and its then-current evidence, not completion
+of the later r12 source review, runtime certification or final-commit CI gates.
 
 The complete changed-file inventory contains 187 plan-scoped paths: 121 Java
 implementation/test files, 57 build/verification files and nine documents.
@@ -1022,7 +2238,7 @@ and the adjacent `.world-acceptance.json`. These prove the development-launcher
 case only. Fresh final-bundle acceptance, live unfair-client/queued-work stress,
 final local gates and exact-commit hosted CI remain required.
 
-## Current checkpoint: recorded checks passed; requirement audit still open (2026-09-07)
+## Historical September 7 checkpoint: recorded checks passed; requirement audit remained open
 
 The 21-profile development matrix and four representative exact-production-JAR
 real-Plex cases have passed their recorded checks and direct visual reviews.
@@ -1167,7 +2383,7 @@ eighteen bundle files are byte-identical. Evidence:
 Source membership and hashes, both complete bundles, free runtime ports and
 absent task audio modules were checked after the build unit exited. The fresh
 21-profile runtime matrix passed in 5,729 seconds and its batch exited successfully.
-Accepted current-candidate cases:
+Accepted cases for that historical `explicit-join` candidate (not r12):
 
 | Profile | Seconds | Reviewed captures | PCM separation | Correlation |
 | --- | ---: | ---: | ---: | ---: |
