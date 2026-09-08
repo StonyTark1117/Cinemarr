@@ -19,16 +19,90 @@ accepted runs. A historical pass is not an assertion about later source.
   payload parity across all sixteen r3 JARs and the installed/ready/off audit.
   Native tests do not certify full Windows/ARM Minecraft clients; ARM is
   emulated functional/ABI coverage.
-- Subsequent edits affect only three build/manifest validation inputs, not
+- Edits between r3 and r4 affect only three build/manifest validation inputs, not
   product Java. Sixteen manifest regressions and the complete dependency dry
   run pass. Both `release-audit-r4-20260908` frozen builds passed (536 and 508
   seconds), with 87 executed tasks and ten GameTests each. All eighteen bundle
   files match each other and r3. The independent continuity receipt explicitly
   binds the updated source to these unchanged, previously accepted bytes.
 - The configured-secret scan passed across 57,675 files and 927,188 distinct
-  decoded payloads, with no matches or scan errors. Scoped commits, the complete
-  local gate on the final commit, exact-SHA green GitHub CI and downloaded/local
-  artifact parity remain required. No tag or publication is authorized.
+  decoded payloads, with no matches or scan errors. The three scoped commits
+  were created, but the first final-commit runtime attempt failed as recorded
+  below. Corrective validation and the r5 build pair now pass. The corrective
+  commit, a fresh complete local gate, exact-SHA
+  green GitHub CI and downloaded/local artifact parity remain required.
+  No tag or publication is authorized.
+
+## September 8 final-commit attempt: Quilt startup cache race
+
+The complete local gate on `065b6c5352d7abd403e251bee270cd4ab689c3d3`
+completed its build/inspection phase and eight runtime cases: both legacy
+and modern terminal, pressure and fault supplements, then Forge 1.7.10 and
+Fabric 1.20.1 in the main matrix. These eight cases have scoped direct-image,
+independent PCM and closed-resource reviews. Quilt 1.20.1 then failed before
+Cinemarr initialized. Its leader crashed at 22:38:18 Arizona time because
+the intermediary Minecraft JAR in Loom's cache was absent. The concurrently
+starting follower logged a missing previous cache-lock owner and a cache
+rebuild; the missing JAR was recreated at 22:38:20. This is development
+launcher failure, not successful playback or evidence of a packaged decoder
+failure.
+
+The matrix recorded the failure and began the next Forge profile. The parent
+attempt was deliberately terminated before changing source. Its original
+receipt records 3,765 seconds, exit 143, signal 15, unchanged source/HEAD and
+a clean worktree, with `automatedPassed: false`. No runtime retry was made.
+The original log, crash report, partial next case and all eight scoped reviews
+remain under `build/clock-fix-gate/final-commit-*20260908*` and
+`build/packaged-final-commit-local-gate-20260908/matrix`. Its three supplemental
+roots were subsequently moved, without changing their 1,604 files, to
+`build/final-commit-failed-065b6c5-20260908`. The hash-checked archive inventory
+and original-to-archived path mapping are recorded in
+`build/clock-fix-gate/final-commit-failed-065b6c5-20260908.archive.json` and its
+`.archive-inputs.json` companion. Old receipts retain their original paths;
+that map resolves them without misidentifying a later run as old evidence.
+The stopped unit has
+no main PID. Owned ports/audio sinks are absent. The interrupted Forge case's
+29 original world files and server properties were restored and hash-checked;
+the generated world/properties remain preserved. The restoration receipt is
+`build/clock-fix-gate/final-commit-local-gate-20260908.manual-restoration.json`.
+
+The correction extends the existing sequential-startup branch to all five
+Quilt profiles. Both clients still remain connected throughout the complete
+two-client controls/A/V/reconnect acceptance. A fatal Quilt loader exception
+now fails bootstrap immediately instead of leaving its error dialog until the
+180-second initialization deadline. Three regressions execute the actual
+shell startup/error checks: all maintained Quilt launch orders, first-attempt
+terminal failure for either role, and fatal-versus-benign loader diagnostics.
+They fail on the old implementation; all twelve log-polling tests pass after
+the correction. The fresh source-bound Quilt run completed in 293 seconds with
+exit zero and unchanged source. Its 33 required images were directly reviewed,
+and the independently recomputed eight-second PCM comparison passed at 10 ms
+lag and 0.999732 correlation. Both initial clients started once, the leader
+reaching readiness before follower startup. The follower reconnected normally;
+all three closed logs, private displays, owned sinks and game port passed
+cleanup checks. Immediate seek/stream-change captures show backing texture;
+later edit captures visibly restore video. Vanilla chat-warning toasts overlap
+the upper time area of initial/reconnected world views without obscuring the
+identifying central program. These limitations are retained in the review.
+Receipts are `build/clock-fix-gate/quilt-launch-order-1.20.1-20260908.result.json`
+and its `.visual-review.json` sibling. This is separate corrective validation,
+not a retry counted toward the failed candidate.
+
+Both r5 forced builds subsequently passed in 542 and 517 seconds. Each executed
+all 87 actionable tasks, all ten GameTests and all sixteen artifact inspections.
+All eighteen bundle files are byte-identical to each other and r3/r4. The
+independent `release-audit-r5-byte-continuity-20260908.json` audit checks the
+exact five non-documentation changes since r3 (only two since r4), all 37 r3
+runtime receipts and 41 scoped reviews, closed packaged/native evidence and
+the new corrective Quilt review. No product Java changed; old source identities
+are preserved. The build unit exited successfully with no remaining main PID.
+
+The refreshed deep configured-secret scan passed across 60,242 files and
+944,978 decoded payloads with no matches or scan errors. It includes the
+archived failed supplements, partial matrix and corrective Quilt evidence.
+The receipt is
+`build/clock-fix-gate/release-audit-r5-configured-secret-scan-20260908.json`.
+The corrected source is not yet final-commit or remote-CI certified.
 
 ## September 8 final review pass
 

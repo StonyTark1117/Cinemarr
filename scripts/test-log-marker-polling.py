@@ -20,6 +20,88 @@ WAITERS = (
 
 
 class LogMarkerPollingTest(unittest.TestCase):
+    def invoke_video_startup(self, label, fail_role=""):
+        source = (ROOT / "scripts/run-dedicated-server-gate.sh").read_text()
+        match = re.search(r"(?ms)^run_two_client_video\(\) \{\n.*?^\}", source)
+        self.assertIsNotNone(match)
+        boundary = '  if (( result == 0 )); then\n    wait_for_video_audio_pair_stable'
+        self.assertIn(boundary, match.group())
+        # Execute the actual startup branch, replacing only external processes.
+        # A second start before the first finishes models Loom rebuilding a
+        # remap classpath while Quilt is still consuming it.
+        startup = match.group().split(boundary, 1)[0] + '\n  [[ "$launch_race" == false ]] || return 98\n  return "$result"\n}\n'
+        launcher = re.search(r"(?ms)^launch_audio_client\(\) \{\n.*?^\}", source)
+        self.assertIsNotNone(launcher)
+        shell = r'''
+set -uo pipefail
+output_root=/unused
+repo_root=/unused
+live_plex_gate=false
+video_follower_first_gate=false
+active_audio_modules=()
+started_audio_client_pid=""
+ready_audio_client_pid=""
+pending=""
+launch_race=false
+fail_role=$2
+rm() { :; }
+pactl() { echo 123; }
+start_audio_client() {
+  echo "start:$5"
+  [[ -z "$pending" ]] || launch_race=true
+  pending=$5
+  started_audio_client_pid=$5
+}
+wait_for_audio_playing() {
+  echo "ready:$2"
+  pending=""
+  [[ "$2" != "$fail_role" ]]
+}
+'''
+        return subprocess.run(["bash", "-c", shell + launcher.group() + "\n" + startup
+                               + '\nrun_two_client_video "$1" unused unused 1 2 unused 3',
+                               "startup-test", label, fail_role],
+                              capture_output=True, text=True, timeout=5)
+
+    def test_every_quilt_profile_finishes_first_start_before_second_remap(self):
+        profiles = subprocess.check_output(
+            ["python3", "scripts/target-matrix.py", "gate-lines"], cwd=ROOT, text=True)
+        labels = [line.split("|")[0] for line in profiles.splitlines()
+                  if line.split("|")[0].endswith("-quilt")]
+        self.assertEqual(len(labels), 5)
+        for label in labels + ["1.21.1-neoforge", "1.7.10-forge"]:
+            with self.subTest(label=label):
+                result = self.invoke_video_startup(label)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(result.stdout.splitlines(),
+                                 ["start:leader", "ready:leader", "start:follower", "ready:follower"])
+
+    def test_sequential_startup_failure_is_terminal_without_retry(self):
+        for role, events in (("leader", ["start:leader", "ready:leader"]),
+                             ("follower", ["start:leader", "ready:leader", "start:follower", "ready:follower"])):
+            with self.subTest(role=role):
+                result = self.invoke_video_startup("1.20.1-quilt", role)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(result.stdout.splitlines(), events)
+
+    def test_quilt_fatal_loader_dialog_is_detected_before_bootstrap_timeout(self):
+        source = (ROOT / "scripts/run-dedicated-server-gate.sh").read_text()
+        match = re.search(r"(?ms)^client_bootstrap_failed\(\) \{\n.*?^\}", source)
+        self.assertIsNotNone(match)
+        with tempfile.TemporaryDirectory(prefix="cinemarr-loader-fatal-") as temporary:
+            log = pathlib.Path(temporary) / "client.log"
+            for content, expected in (
+                ('[22:38:18] [main/ERROR] (Quilt Loader) Uncaught exception in thread "main"\n'
+                 'java.lang.RuntimeException: java.nio.file.NoSuchFileException: missing.jar\n', True),
+                ('[main/INFO] (Quilt Loader) Loading Minecraft\n', False),
+                ('Optional asset warning: java.nio.file.NoSuchFileException\n', False),
+            ):
+                with self.subTest(content=content):
+                    log.write_text(content)
+                    result = subprocess.run(["bash", "-c", match.group() + '\nclient_bootstrap_failed "$1"',
+                                             "bootstrap-test", str(log)], capture_output=True, timeout=5)
+                    self.assertEqual(result.returncode == 0, expected)
+
     def test_gametest_gate_requires_all_ten_tests_not_a_passing_subset(self):
         source = (ROOT / "scripts/run-gametest-gate.sh").read_text()
         match = re.search(r"(?ms)^gametests_passed\(\) \{\n.*?^\}", source)

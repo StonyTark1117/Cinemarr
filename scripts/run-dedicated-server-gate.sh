@@ -460,7 +460,7 @@ rejection_observed() {
 
 client_bootstrap_failed() {
   local console_log=$1
-  grep -Eq 'Timed out trying to setup the Game Window|Failed to initialize the mod loading system and display|ArrayIndexOutOfBoundsException: 0' \
+  grep -Eq 'Timed out trying to setup the Game Window|Failed to initialize the mod loading system and display|ArrayIndexOutOfBoundsException: 0|\(Quilt Loader\) Uncaught exception in thread "main"' \
     "$console_log" 2>/dev/null
 }
 
@@ -922,7 +922,7 @@ wait_for_audio_playing() {
   while ! grep -Fq "$ready_marker" "$client_console" 2>/dev/null; do
     if grep -Eq 'Acceptance (audio state:|video session:|video libraries:)' "$client_console" 2>/dev/null; then initialized=1; fi
     if client_bootstrap_failed "$client_console"; then
-      echo "$label: $role client could not initialize its headless display; see $client_console" >&2
+      echo "$label: $role client failed during bootstrap; see $client_console" >&2
       return 1
     fi
     if grep -Eq 'Acceptance audio state: ERROR|Cinemarr rejected video segment|Client disconnected with reason:|Connection reset by peer|Couldn.t connect to server|Failed to open OpenAL device|Error starting SoundSystem|NoClassDefFoundError: (javazoom|de/sciss)' \
@@ -2167,14 +2167,15 @@ run_two_client_video() {
       start_audio_client "$label" "$target_dir" "$java_home" "$port" leader CinemarrVideoA "$sink_leader"
       leader_pid=$started_audio_client_pid
     fi
-  elif [[ "$label" == "1.21.1-neoforge" || "$label" == "1.20.2-quilt" \
+  elif [[ "$label" == "1.21.1-neoforge" || "$label" == *-quilt \
       || "$label" == "1.7.10-forge" ]]; then
     # Two cold NeoGradle clients can retain the same project lock, while two
     # simultaneous Forge 1.7.10 handshakes can race inside FML's shared network
-    # dispatcher. Minecraft 1.20.2 can also concurrently mutate RegistryOps'
-    # lookup cache while two login packets are encoded. Launch these profiles
-    # sequentially, then keep both viewers connected for the complete two-client
-    # A/V gate. Every client/runtime failure remains first-attempt terminal.
+    # dispatcher. Quilt clients can rebuild Loom's shared remap cache while
+    # another client is still reading it during loader initialization. Minecraft
+    # 1.20.2 can also concurrently mutate RegistryOps' login lookup cache.
+    # Complete startup sequentially, then keep both viewers connected for the
+    # complete two-client A/V gate. Every failure remains first-attempt terminal.
     if launch_audio_client "$label" "$target_dir" "$java_home" "$port" leader CinemarrVideoA "$sink_leader"; then
       leader_pid=$ready_audio_client_pid
     else
