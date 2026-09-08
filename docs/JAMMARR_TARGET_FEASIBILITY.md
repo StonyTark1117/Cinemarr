@@ -1,14 +1,20 @@
 # Jammarr target feasibility for Cinemarr
 
+This is a historical planning assessment, not the final requested comparison.
+The current hardening plan requires a fresh Jammarr checkout assessment only
+after Cinemarr's preceding documentation and exact-commit CI gates are complete.
+The statements below remain scoped to the recorded Jammarr revision; they do
+not certify the current Cinemarr commit or establish support for new targets.
+
 This assessment compares Cinemarr with Jammarr commit
-`6d4429bcb972a832198ac78b0e1a0b9030c22e3f` and its 1.1.0 target manifest.
+`f680a0ee29192879459d83a80f2f016263378d39` and its 1.1.0 target manifest.
 That manifest contains 78 implemented artifacts across 29 Minecraft versions
 and six loader IDs, mapped to 99 dedicated-server runtime profiles. Twenty-two
 of those artifacts are still marked preview, and three LiteLoader artifacts
 are client companions rather than standalone server/client loader targets.
 Those distinctions must not be lost when using Jammarr as design input.
 
-Cinemarr 1.0 remains fixed at 16 artifacts and 21 certified runtimes. Target
+Cinemarr 1.0 remains fixed at 16 artifacts and 21 maintained runtime profiles. Target
 expansion is post-1.0 work and must not delay or weaken the current release
 gates.
 
@@ -87,6 +93,21 @@ A long matrix should be resumable only from sanitized evidence bound to the
 exact release version, artifact filename, SHA-256, fresh startup markers, and
 clean teardown. Resume must repeat live remote preflight; it must never turn a
 stale prior pass into current release evidence.
+
+Jammarr also tests its application hello as a real cold-client lifecycle: a
+59-second hello is accepted and a 60-second hello expires. Cinemarr still
+requires every client, but its earlier five-second deadline was too short for
+a cold Quilt reconnect and ejected a valid client before its application hello.
+The shared Cinemarr deadline is now 30 seconds across legacy Forge, Fabric,
+Quilt reuse, Forge, and NeoForge, with real-Plex reconnect evidence. Any future
+loader family must measure its cold initialization path and use the shared
+negotiation contract rather than introducing another adapter-local timeout.
+
+Finally, Jammarr's current JarJar work reinforces that Gradle's ordinary
+reproducible-archive flags do not cover every nested metadata producer.
+Cinemarr's canonical release archive remains the last packaging boundary, and
+new ports must prove a source-identical forced rebuild before their runtime
+evidence can be accepted.
 
 ## Loader boundary that does not transfer
 

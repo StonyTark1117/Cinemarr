@@ -2,7 +2,13 @@
 
 Cinemarr's Windows x86-64 and Linux ARM64 decoder gates use dedicated, headless QEMU guests on the Proxmox test host. Their installed disks are retained so repeated release checks do not reinstall an operating system. A test run creates a uniquely tagged transient systemd unit, and every success or failure path stops that unit. The guests must be powered off between runs.
 
-These scripts do not attach to the user's desktop or open a graphical window. Windows uses QEMU `-display none`; ARM64 uses `-nographic`. Minecraft client gates continue to use private `xvfb-run -a` displays.
+These are host-managed QEMU guests, not registered Proxmox `qm` VM entries.
+Their absence from the Proxmox VM list does not mean their installed disks were
+deleted. Use the retained-state audit below to verify readiness and power state.
+This gate tests the native decoder payload; it does not certify a complete
+Minecraft client on Windows or ARM.
+
+These scripts do not attach to the user's desktop or open a graphical window. Windows uses QEMU `-display none`; ARM64 uses `-nographic`. Minecraft client gates use `scripts/run-private-xvfb.sh`: each client gets a separately bound X server in the 90–190 display range, with TCP disabled and owned-process cleanup. The launcher does not inherit or connect to the user's desktop. Allocation and signal-cleanup regressions run through `scripts/test-private-xvfb.py`.
 
 ## Persistent state
 
@@ -19,10 +25,13 @@ The Windows guest installs an at-startup `CinemarrNativeSmoke` scheduled task du
 
 ## First provisioning and later reuse
 
-Prepare the current decoder bundle first:
+Prepare the current decoder bundle first, using JDK 21 for the root Gradle
+wrapper. Do not overlap this Gradle invocation with release builds or physical
+audio acceptance runs:
 
 ```bash
-./gradlew --no-daemon prepareDecoderBenchmarkBundle
+JAVA_HOME='/path/to/jdk-21' \
+./gradlew --no-daemon --no-configuration-cache prepareDecoderBenchmarkBundle
 ```
 
 Pass the Proxmox credential file as a file path. Do not copy its contents into the repository or persist them in an environment profile.
@@ -53,6 +62,36 @@ CINEMARR_HWTEST_PASSWORD_FILE='/path/to/proxmox-password-file' \
 ```
 
 Success requires both ready identity markers, both prepared disks, and no QEMU process using either disk. A native gate is incomplete if its benchmark passes but this stopped-state assertion fails.
+
+The September 7 candidate reuse completed without reinstalling either guest:
+Windows run `20260907T182033Z` and ARM run `20260907T182433Z` passed all three
+decoder resolutions. `build/native-smoke/retained-vm-audit-20260907-packaged.json`
+records both installed disks ready and off afterward. Exact native-payload
+parity with all sixteen candidate JARs is recorded separately in
+`build/native-smoke/20260907-packaged-native-parity.json`. This receipt is
+historical evidence for those candidate bytes; run a fresh stopped-state audit
+before reuse. ARM is QEMU-emulated functional/ABI coverage, not a physical-ARM
+performance measurement or full Minecraft-client acceptance.
+
+A fresh read-only preflight on September 7, after the decoder-budget changes,
+again verified both exact ready markers and installed disks with neither
+guest running (`build/native-smoke/retained-vm-audit-20260907-r3-preflight.json`).
+The supplied Proxmox password file authenticated successfully. This preflight
+did not boot, reinstall or modify either guest and is not new decoder
+acceptance; both must still test the final candidate and pass a post-run
+stopped-state audit.
+
+The r3 candidate reuse on September 8 UTC also passed without provisioning:
+Windows `20260908T035508Z` and ARM `20260908T035922Z` each passed all three
+decoder resolutions. `build/native-smoke/retained-vm-audit-20260907-release-audit-r3.json`
+records both retained guests installed, ready and off after the runs.
+`build/native-smoke/20260907-release-audit-r3-native-parity.json` matches the
+tested Windows/ARM native entries and shared decoder/core class payloads
+across all sixteen r3 candidate JARs. This remains scoped to those exact
+payloads, not an untested later artifact or a complete Minecraft client.
+The Windows installer was checksum-checked locally but was not uploaded or
+booted; ARM startup SSH retries completed within the original run, which was
+not restarted to obtain success.
 
 ## Failure and reprovisioning
 

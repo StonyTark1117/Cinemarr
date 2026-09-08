@@ -8,6 +8,10 @@ Cinemarr is a required client-and-server Minecraft mod for server-authoritative 
 
 This checkout targets **Cinemarr 1.0.0**, protocol **10**, and screen-data schema **3**. It is a prerelease development build, not a release candidate. A green compile or fake-Plex run is regression evidence only; release readiness requires the complete 16-artifact / 21-runtime matrix plus a credentialed, two-client controller/UI playback run against real Plex and clean teardown.
 
+Certification checkpoint (2026-09-08 UTC): the `release-audit-r3` candidate passed two byte-identical full builds, all ten required GameTests in each, all 37 main/supplementary development cases, four packaged real-Plex cases, recovery/lifecycle checks and retained Windows/ARM native tests with verified teardown. After the build/manifest-validation fixes, both `r4` forced builds passed and the complete bundle still matches r3 byte-for-byte. The deep configured-secret scan passed. The complete local gate on the final commit, followed by exact-SHA green GitHub CI and local/downloaded artifact parity, remain required. See [release acceptance](docs/RELEASE_ACCEPTANCE.md) for the exact scope and historical failures; these results are not a release-ready claim.
+
+Earlier candidates were rejected for connection/reset defects despite successful build and partial runtime gates. The current worktree applies connection-owned reset across all modern adapters and distinguishes JOIN acknowledgements from generic logout resets. Controller feedback, live time/seek, paused-frame retention, stale-generation handling and edit retention are also covered by the ongoing hardening. Historical passes do not certify the current bytes; see [release acceptance](docs/RELEASE_ACCEPTANCE.md) for the evidence and remaining gates.
+
 The old global Plex-music queue, stations, MP3 transport, music UI, and their bundled JLayer/Jump3r libraries have been removed. Cinemarr 1.0 is a television/video mod; it does not require Jammarr.
 
 Implemented release foundations include:
@@ -64,7 +68,7 @@ Build and inspect the canonical release set only when preparing a release candid
 ```bash
 JAVA_HOME=/usr/lib/jvm/java-21-openjdk \
 PATH=/usr/lib/jvm/java-21-openjdk/bin:$PATH \
-./gradlew verifyRelease --no-daemon --max-workers=1 --no-configuration-cache
+./gradlew inspectReleaseArtifacts --no-daemon --max-workers=1 --no-configuration-cache
 ```
 
 The deterministic fake-Plex gate is useful for regressions, but is not release proof:
@@ -74,7 +78,9 @@ CINEMARR_VIDEO_CLIENT_GATE=true \
 ./scripts/run-dedicated-server-gate.sh 1.21.1-neoforge
 ```
 
-Protocol-10 code commit `1cbd341` passed the original full matrix and hosted bundle gates. A later hosted run correctly found a 330 ms 1.21.1 Fabric audio offset; `21431bf` fixes the non-monotonic OpenAL source-start cursor, passes the private-Xvfb gate locally at 80 ms, and is covered by a complete local `verifyAllTargets` pass. GitHub Actions run `33401793006` is fully green through documentation SHA `4f6541f`: all 16 artifact/runtime jobs and the aggregate gate passed, and the downloaded 16-JAR bundle passed checksums, deep inspection, and local hosted-input index parity. Later hardening makes DiscPanel deployment fail closed, fixes legacy disconnect cleanup on Minecraft's render thread, gives every maintained client run an explicit small-window acceptance path, and retains reusable stopped Windows/ARM test guests. The rebuilt working-tree bytes passed exact real-Plex, recovery, lifecycle, configured-secret, packaged-native, and fresh 21-runtime recertification. Release-candidate promotion additionally requires green exact-pushed-SHA CI and byte-identical hosted-bundle parity. See [the 1.0 hardening plan](docs/1.0_RELEASE_HARDENING_PLAN.md) and [the post-1.0 Jammarr target-feasibility assessment](docs/JAMMARR_TARGET_FEASIBILITY.md).
+Earlier green automation missed real audio, concurrency, camera and controller defects. Subsequent live pressure, reload and lifecycle checks prompted further fixes. Their source-bound acceptance and earlier complete builds are regression evidence, not certification of the current uncommitted code or final release bytes.
+
+The full local entry point is `./gradlew releaseMatrixGate --no-configuration-cache --max-workers=1` under Java 21, from a clean candidate checkout with fresh evidence directories. It requires all 16 artifacts, ten GameTests, all 21 runtimes and the required supplements. Direct image review, reproducibility, exact-artifact real-Plex/recovery/lifecycle and Windows/ARM checks, security/documentation review, scoped commits/push and exact-SHA green hosted CI with matching artifact hashes remain separate completion requirements. Installed Windows/ARM test guests are retained powered off between tests; see the [guest runbook](docs/NATIVE_TEST_GUESTS.md). See [the 1.0 hardening plan](docs/1.0_RELEASE_HARDENING_PLAN.md) for current evidence. The [earlier Jammarr target-feasibility assessment](docs/JAMMARR_TARGET_FEASIBILITY.md) concerns later expansion, does not change the 1.0 matrix, and will be refreshed only after the preceding hardening and CI gates finish.
 
 The credentialed release gate uses the in-game controller with a real allowed Plex library, two independent clients, identifiable video, synchronized audible output, and a residue-free teardown. For the managed DiscPanel environment, run the exact-artifact wrapper on each representative boundary:
 
