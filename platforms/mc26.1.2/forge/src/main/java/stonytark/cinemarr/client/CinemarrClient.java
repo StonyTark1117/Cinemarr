@@ -34,6 +34,9 @@ public final class CinemarrClient {
     private static final CinemarrVideoAudioManager VIDEO_AUDIO = new CinemarrVideoAudioManager();
     private int acceptanceVideoReadyTicks;
     private boolean acceptanceVideoScreenshotSaved;
+    private final stonytark.cinemarr.core.client.ClientConnectionLifecycle connections =
+            new stonytark.cinemarr.core.client.ClientConnectionLifecycle(
+                    task -> Minecraft.getInstance().execute(task), this::resetConnection);
 
     public static void register() {
         RegisterKeyMappingsEvent.BUS.addListener(INSTANCE::keys);
@@ -79,16 +82,35 @@ public final class CinemarrClient {
                 });
     }
 
-    public void login(ClientPlayerNetworkEvent.LoggingIn event) { CinemarrClientState.INSTANCE.hello(); }
+    public void login(ClientPlayerNetworkEvent.LoggingIn event) {
+        connections.joined(event.getConnection(), this::helloAfterReset);
+    }
     public void logout(ClientPlayerNetworkEvent.LoggingOut event) {
+        net.minecraft.network.Connection connection = event.getConnection();
+        if (connection == null) return;
+        connections.disconnected(connection);
+    }
+
+    private void helloAfterReset() {
+        if (ProtocolLimits.videoProbeEnabled())
+            stonytark.cinemarr.Cinemarr.LOGGER.info("Acceptance client JOIN reset complete");
+        CinemarrClientState.INSTANCE.hello();
+    }
+
+    private void resetConnection() {
+        com.mojang.blaze3d.systems.RenderSystem.assertOnRenderThread();
         VIDEO_AUDIO.reset();
         VIDEO.reset();
         CinemarrClientState.INSTANCE.stop();
         acceptanceVideoReadyTicks = 0;
         acceptanceVideoScreenshotSaved = false;
+        if (ProtocolLimits.videoProbeEnabled())
+            stonytark.cinemarr.Cinemarr.LOGGER.info("Acceptance client media reset complete");
     }
 
     private void captureAcceptanceVideo(Minecraft minecraft) {
+        if (!ProtocolLimits.videoProbeViewReady(minecraft.player != null && minecraft.player.isAlive(),
+                minecraft.screen != null)) { acceptanceVideoReadyTicks = 0; return; }
         if (!ProtocolLimits.videoProbeEnabled() || acceptanceVideoScreenshotSaved
                 || !VIDEO.hasPresentedFrame() || !VIDEO.presentedFrameCaughtUp() || !VIDEO_AUDIO.anyReady()) {
             acceptanceVideoReadyTicks = 0;

@@ -12,7 +12,13 @@ public final class CinemarrVideoPlaybackManager implements AutoCloseable {
         long now=System.currentTimeMillis();
         java.util.Set<CinemarrVideoClientState.StreamKey> current=new java.util.LinkedHashSet<>();
         for(CinemarrVideoClientState.StreamState stream:state.streamStates()){
-            stream.tick(now);current.add(stream.key());pipelines.computeIfAbsent(stream.key(),ignored->new CinemarrVideoPlayback()).tick(stream);
+            stream.tick(now);current.add(stream.key());
+            CinemarrVideoPlayback pipeline=pipelines.computeIfAbsent(stream.key(),ignored->new CinemarrVideoPlayback());
+            if(stream.session()!=null&&stream.session().paused()&&!pipeline.texture().ready()){
+                for(var previous:pipelines.entrySet())if(state.stream(previous.getKey())==null
+                        &&pipeline.retainPausedFrameFrom(previous.getValue(),stream.session()))break;
+            }
+            pipeline.tick(stream);
         }
         for(CinemarrVideoClientState.StreamKey key:new ArrayList<>(pipelines.keySet()))if(!current.contains(key)){pipelines.remove(key).close();}
     }

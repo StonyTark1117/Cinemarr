@@ -19,7 +19,8 @@ import stonytark.cinemarr.mixin.client.ChannelAccessor;
 import stonytark.cinemarr.mixin.client.SoundEngineAccessor;
 import stonytark.cinemarr.mixin.client.SoundManagerAccessor;
 
-import java.util.ArrayDeque;
+import java.util.Comparator;
+import java.util.PriorityQueue;
 import java.util.Queue;
 import java.util.UUID;
 
@@ -28,22 +29,26 @@ public final class CinemarrVideoAudio {
     private static final long START_BUFFER_US = 3_000_000;
     private static final long SCHEDULE_LEAD_US = 1_500_000;
     private static final long SCHEDULE_QUANTUM_US = 250_000;
-    private static final long SOURCE_PREROLL_US = 1_000_000;
-    private static final int SOURCE_PREROLL_BUFFERS = 2;
+    private static final long MIN_SOURCE_START_LEAD_US = 1_000_000;
     private static final int STREAM_BUFFER_MS = 250;
     private static final int INITIAL_STREAM_BUFFERS = 12;
+    private static final int SOURCE_PREROLL_BUFFERS = 4;
+    private static final long SOURCE_PREROLL_US = SOURCE_PREROLL_BUFFERS * STREAM_BUFFER_MS * 1_000L;
     private static final int MAX_PENDING_FRAMES = 256;
-    private static final long REBUFFER_DRIFT_US = 150_000;
+    // The acceptance contract permits 150 ms between two listeners. Keep each
+    // endpoint to one third of that budget so opposite-signed clock error and
+    // capture/output jitter cannot consume the complete pairwise allowance.
+    private static final long REBUFFER_DRIFT_US = 50_000;
     private static final int REBUFFER_DRIFT_TICKS = 5;
     private static final int READY_STABLE_TICKS = 10;
-    private static final long SOURCE_START_TIMEOUT_NANOS = 5_000_000_000L;
-    private final Queue<DecodedAudioFrame> pending = new ArrayDeque<>();
+    private final Queue<DecodedAudioFrame> pending =
+            new PriorityQueue<>(Comparator.comparingLong(DecodedAudioFrame::presentationTimeUs));
     private UUID sessionId;
     private long generation = -1;
     private VideoPcmAudioStream stream;
     private ChannelAccess.ChannelHandle channel;
     private boolean channelPending;
-    private long channelAttempt;
+    private volatile long channelAttempt;
     private int underruns;
     private int observedStarvations;
     private int caughtUpTicks;
@@ -51,14 +56,12 @@ public final class CinemarrVideoAudio {
     private int stableTicks;
     private volatile long audioTimelineUs;
     private volatile long audioTimelineNanos = Long.MIN_VALUE;
-    private volatile boolean sourceStartPending;
-    private volatile boolean sourceStartProbeQueued;
-    private volatile long sourceStartScheduledUs;
-    private volatile long sourceStartServerBoundaryEpochMs;
-    private volatile long sourceStartSilenceUs;
-    private volatile int sourceStartSampleRate;
-    private volatile long sourceStartRequestedNanos;
+    private volatile long audioMediaStartUs;
+    private volatile long physicalAudioTimelineUs;
+    private volatile long physicalAudioTimelineNanos = Long.MIN_VALUE;
+    private volatile boolean physicalTimelineProbeQueued;
     private long lastAcceptanceLogMs;
+    private boolean acceptanceSetupStallInjected;
 
     public void tick(CinemarrVideoPlayback playback, VideoPackets.SessionState session) {
         if (session == null || session.item() == null || session.status() == VideoPackets.SessionStatus.IDLE) { reset(); return; }
@@ -89,21 +92,18 @@ public final class CinemarrVideoAudio {
         }
         if (channel != null) {
             long nowNanos = System.nanoTime();
-            if (sourceStartPending) {
-                if (nowNanos - sourceStartRequestedNanos >= SOURCE_START_TIMEOUT_NANOS) {
-                    if (ProtocolLimits.videoProbeEnabled()) Cinemarr.LOGGER.info(
-                            "Acceptance video audio rebuffer: reason=source-start-timeout");
-                    resetChannel();
-                    caughtUpTicks = 0;
-                } else {
-                    probeSourceStart(session);
-                }
-            }
             if (audioTimelineNanos != Long.MIN_VALUE && nowNanos >= audioTimelineNanos) {
-                if (!session.paused()) audioTimelineUs += (nowNanos - audioTimelineNanos) / 1_000L;
+                probePhysicalTimeline();
+                if (physicalAudioTimelineNanos == Long.MIN_VALUE) {
+                    audioTimelineUs = advanceTimelineUs(
+                            audioTimelineUs, audioTimelineNanos, nowNanos, session.paused());
+                } else {
+                    audioTimelineUs = advancePhysicalTimelineUs(audioTimelineUs,
+                            physicalAudioTimelineUs, physicalAudioTimelineNanos, nowNanos, session.paused());
+                }
                 audioTimelineNanos = nowNanos;
                 long driftUs = audioTimelineUs - targetUs;
-                if (!session.paused() && Math.abs(driftUs) > REBUFFER_DRIFT_US) {
+                if (!session.paused() && driftRequiresRebuffer(driftUs)) {
                     stableTicks = 0;
                     if (++driftTicks >= REBUFFER_DRIFT_TICKS) {
                         if (ProtocolLimits.videoProbeEnabled()) Cinemarr.LOGGER.info(
@@ -122,8 +122,11 @@ public final class CinemarrVideoAudio {
             int starvations = stream == null ? 0 : stream.starvations();
             boolean stopped = channel.isStopped() && !session.paused();
             boolean terminal = playback.audioInputExhausted() && pending.isEmpty();
-            underruns += AudioUnderrunPolicy.additionalUnderruns(observedStarvations, starvations,
+            int additional = AudioUnderrunPolicy.additionalUnderruns(observedStarvations, starvations,
                     stopped, session.paused(), terminal);
+            underruns += additional;
+            if (additional > 0 && ProtocolLimits.videoProbeEnabled()) Cinemarr.LOGGER.info(
+                    "Acceptance video audio active underrun: underruns={}", underruns);
             observedStarvations = Math.max(observedStarvations, starvations);
             Vec3 origin = nearestScreenPoint(session, Minecraft.getInstance().gameRenderer.getMainCamera().getPosition());
             float volume = CinemarrSettings.enabled() ? (float) (CinemarrSettings.volume()
@@ -142,10 +145,15 @@ public final class CinemarrVideoAudio {
         if (ProtocolLimits.videoProbeEnabled() && System.currentTimeMillis() - lastAcceptanceLogMs >= 1_000) {
             lastAcceptanceLogMs = System.currentTimeMillis();
             long acceptanceAudioUs = audioTimelineNanos == Long.MIN_VALUE ? 0L : audioTimelineUs;
-            Cinemarr.LOGGER.info("Acceptance video audio timeline: targetMs={} videoMs={} audioMs={} driftMs={} javaBufferMs={} pendingFrames={} pendingFirstMs={} decodedFrames={} starvations={} underruns={}",
+            Cinemarr.LOGGER.info("Acceptance video audio timeline: wallEpochMs={} targetMs={} videoMs={} audioMs={} physicalAudioMs={} driftMs={} javaBufferMs={} timelineGapMs={} timelineTrimmedMs={} pendingFrames={} pendingFirstMs={} decodedFrames={} starvations={} underruns={}",
+                    lastAcceptanceLogMs,
                     targetUs / 1_000L, playback.lastPresentedUs() / 1_000L,
-                    acceptanceAudioUs / 1_000L, (acceptanceAudioUs - targetUs) / 1_000L,
-                    stream == null ? 0 : stream.bufferedMs(), pending.size(),
+                    acceptanceAudioUs / 1_000L,
+                    physicalAudioTimelineNanos == Long.MIN_VALUE ? 0L : physicalAudioTimelineUs / 1_000L,
+                    (acceptanceAudioUs - targetUs) / 1_000L,
+                    stream == null ? 0 : stream.bufferedMs(),
+                    stream == null ? 0 : stream.timelineGapMs(),
+                    stream == null ? 0 : stream.timelineTrimmedMs(), pending.size(),
                     pending.isEmpty() ? -1 : pending.peek().presentationTimeUs() / 1_000L,
                     playback.queuedAudioFrames(), stream == null ? 0 : stream.starvations(), underruns);
         }
@@ -174,7 +182,7 @@ public final class CinemarrVideoAudio {
         }
         long targetUs = CinemarrVideoPlayback.authoritativePositionMsLocal(session) * 1_000L;
         StartWindow window = startWindow(scheduledStartUs);
-        if (scheduledStartUs - targetUs < SOURCE_PREROLL_US || window == null
+        if (scheduledStartUs - targetUs < MIN_SOURCE_START_LEAD_US || window == null
                 || !hasStartRunway(scheduledStartUs, window.first.presentationTimeUs(),
                 endUs(window.first), endUs(window.last))) {
             handle.execute(com.mojang.blaze3d.audio.Channel::stop); return;
@@ -182,7 +190,6 @@ public final class CinemarrVideoAudio {
         while (!pending.isEmpty() && endUs(pending.peek()) <= scheduledStartUs) pending.poll();
         DecodedAudioFrame first = pending.peek();
         VideoPcmAudioStream startingStream = new VideoPcmAudioStream(first.sampleRate(), first.channels());
-        startingStream.scheduleSilenceFor(SOURCE_PREROLL_US);
         boolean firstFrame = true;
         while (!pending.isEmpty() && startingStream.offer(pending.peek(), firstFrame ? scheduledStartUs : pending.peek().presentationTimeUs())) {
             pending.poll();
@@ -191,12 +198,16 @@ public final class CinemarrVideoAudio {
         stream = startingStream; channel = handle; observedStarvations = startingStream.starvations(); underruns += observedStarvations;
         audioTimelineUs = 0;
         audioTimelineNanos = Long.MIN_VALUE;
+        audioMediaStartUs = scheduledStartUs;
+        physicalAudioTimelineUs = scheduledStartUs;
+        physicalAudioTimelineNanos = Long.MIN_VALUE;
+        physicalTimelineProbeQueued = false;
         driftTicks = 0;
         stableTicks = 0;
         if (ProtocolLimits.videoProbeEnabled()) {
-            Cinemarr.LOGGER.info("Acceptance video audio scheduled: targetMs={} mediaStartMs={} silenceMs={} bufferedMs={}",
+            Cinemarr.LOGGER.info("Acceptance video audio scheduled: targetMs={} mediaStartMs={} silenceMs={} bufferedMs={} timelineGapMs={} timelineTrimmedMs={}",
                     targetUs / 1_000L, scheduledStartUs / 1_000L, (scheduledStartUs - targetUs) / 1_000L,
-                    startingStream.bufferedMs());
+                    startingStream.bufferedMs(), startingStream.timelineGapMs(), startingStream.timelineTrimmedMs());
         }
         Vec3 origin = nearestScreenPoint(session, Minecraft.getInstance().gameRenderer.getMainCamera().getPosition());
         handle.execute(value -> {
@@ -205,119 +216,67 @@ public final class CinemarrVideoAudio {
             ChannelAccessor accessor = (ChannelAccessor) value;
             accessor.cinemarr$stream(startingStream);
             accessor.cinemarr$streamingBufferSize(streamBufferBytes(startingStream));
-            int initialBuffers = startingStream.initialBufferCount(STREAM_BUFFER_MS, SOURCE_PREROLL_BUFFERS);
-            if (initialBuffers < SOURCE_PREROLL_BUFFERS) {
+            long untilMediaStartUs;
+            long localBoundaryEpochMs;
+            if (session.paused()) {
+                long currentTargetUs = CinemarrVideoPlayback.authoritativePositionMsLocal(session) * 1_000L;
+                untilMediaStartUs = Math.max(0L, scheduledStartUs - currentTargetUs);
+                localBoundaryEpochMs = System.currentTimeMillis() + untilMediaStartUs / 1_000L;
+            } else {
+                long serverBoundaryEpochMs = session.serverEpochMs() + scheduledStartUs / 1_000L - session.positionMs();
+                localBoundaryEpochMs = CinemarrClientState.INSTANCE.serverToLocalEpoch(serverBoundaryEpochMs);
+                untilMediaStartUs = Math.max(0L, localBoundaryEpochMs - System.currentTimeMillis()) * 1_000L;
+            }
+            long mediaBoundaryNanos = System.nanoTime() + untilMediaStartUs * 1_000L;
+            if (!startingStream.prependSilenceFor(SOURCE_PREROLL_US)) {
                 value.stop();
                 Minecraft.getInstance().execute(() -> { if (expectedAttempt == channelAttempt) { resetChannel(); caughtUpTicks = 0; } });
                 return;
             }
             accessor.cinemarr$pumpBuffers(SOURCE_PREROLL_BUFFERS);
             value.play();
-            // Begin with a bounded silent preroll. Once the source cursor and
-            // physical output latency are measurable, prepend the remaining
-            // compensated silence before pumping the program-audio runway.
-            sourceStartScheduledUs = scheduledStartUs;
-            sourceStartServerBoundaryEpochMs = session.paused() ? 0L
-                    : session.serverEpochMs() + scheduledStartUs / 1_000L - session.positionMs();
-            sourceStartSilenceUs = startingStream.scheduledSilenceUs();
-            sourceStartSampleRate = (int) startingStream.getFormat().getSampleRate();
-            sourceStartRequestedNanos = System.nanoTime();
-            sourceStartPending = true;
-        });
-    }
-
-    private void probeSourceStart(VideoPackets.SessionState session) {
-        if (!sourceStartPending || sourceStartProbeQueued || channel == null) return;
-        ChannelAccess.ChannelHandle expectedChannel = channel;
-        VideoPcmAudioStream expectedStream = stream;
-        long expectedAttempt = channelAttempt;
-        sourceStartProbeQueued = true;
-        expectedChannel.execute(value -> {
-            if (expectedAttempt != channelAttempt || expectedChannel != channel || expectedStream != stream
-                    || !sourceStartPending) {
-                sourceStartProbeQueued = false;
+            if (!injectAcceptanceSetupStall() || !sourcePlaying(accessor.cinemarr$source())) {
+                value.stop();
+                Minecraft.getInstance().execute(() -> { if (expectedAttempt == channelAttempt) { resetChannel(); caughtUpTicks = 0; } });
                 return;
             }
-            int source = ((ChannelAccessor) value).cinemarr$source();
-            long backendOffsetUs;
-            long outputLatencyUs = 0L;
-            boolean measuredOutputLatency = AL.getCapabilities().AL_SOFT_source_latency;
-            if (measuredOutputLatency) {
-                double[] timing = new double[2];
-                SOFTSourceLatency.alGetSourcedvSOFT(source, SOFTSourceLatency.AL_SEC_OFFSET_LATENCY_SOFT, timing);
-                backendOffsetUs = secondsToMicros(timing[0]);
-                outputLatencyUs = secondsToMicros(timing[1]);
-                if (backendOffsetUs < 0L || outputLatencyUs < 0L || outputLatencyUs > SOURCE_START_TIMEOUT_NANOS / 1_000L) {
-                    measuredOutputLatency = false;
-                }
-            } else {
-                backendOffsetUs = 0L;
+            SourceTiming timing = sourceTimingUs(accessor.cinemarr$source(), SOURCE_PREROLL_US);
+            long remainingPrerollUs = Math.max(0L, SOURCE_PREROLL_US - timing.offsetUs());
+            long remainingUntilBoundaryUs = Math.max(0L, mediaBoundaryNanos - System.nanoTime()) / 1_000L;
+            if (!sourcePlaying(accessor.cinemarr$source())
+                    || remainingPrerollUs + timing.outputLatencyUs() > remainingUntilBoundaryUs + 50_000L) {
+                value.stop();
+                Minecraft.getInstance().execute(() -> { if (expectedAttempt == channelAttempt) { resetChannel(); caughtUpTicks = 0; } });
+                return;
             }
-            if (!measuredOutputLatency) {
-                int sampleOffset = AL10.alGetSourcei(source, AL11.AL_SAMPLE_OFFSET);
-                backendOffsetUs = sampleOffset * 1_000_000L / Math.max(1, sourceStartSampleRate);
-                outputLatencyUs = 0L;
+            long silenceUs = additionalSilenceUs(remainingUntilBoundaryUs, remainingPrerollUs, timing.outputLatencyUs());
+            if (!startingStream.prependSilenceFor(silenceUs)) {
+                value.stop();
+                Minecraft.getInstance().execute(() -> { if (expectedAttempt == channelAttempt) { resetChannel(); caughtUpTicks = 0; } });
+                return;
             }
-            long sourceElapsedUs = Math.max(0L, System.nanoTime() - sourceStartRequestedNanos) / 1_000L;
-            // OpenAL's streaming-source offset is relative to the buffers still
-            // queued and can move backward when the engine unqueues processed
-            // buffers. Wall time since alSourcePlay is monotonic across that.
-            long playedUs = totalSourcePlayedUs(sourceElapsedUs, backendOffsetUs);
-            if (playedUs > 0) {
-                long remainingPrerollUs = Math.max(0L, sourceStartSilenceUs - playedUs);
-                // Map the server-owned media boundary directly to local wall
-                // time here so executor delay and join time cannot skew it.
-                long untilMediaStartUs;
-                if (sourceStartServerBoundaryEpochMs > 0L) {
-                    long localBoundaryEpochMs = CinemarrClientState.INSTANCE.serverToLocalEpoch(
-                            sourceStartServerBoundaryEpochMs);
-                    untilMediaStartUs = Math.max(0L, localBoundaryEpochMs - System.currentTimeMillis()) * 1_000L;
-                } else {
-                    long targetUs = CinemarrVideoPlayback.authoritativePositionMsLocal(session) * 1_000L;
-                    untilMediaStartUs = Math.max(0L, sourceStartScheduledUs - targetUs);
-                }
-                if (remainingPrerollUs + outputLatencyUs > untilMediaStartUs + 50_000L) {
-                    sourceStartPending = false;
-                    sourceStartProbeQueued = false;
-                    if (ProtocolLimits.videoProbeEnabled()) Cinemarr.LOGGER.info(
-                            "Acceptance video audio rebuffer: reason=source-start-missed-boundary remainingPrerollMs={} outputLatencyMs={} untilStartMs={}",
-                            remainingPrerollUs / 1_000L, outputLatencyUs / 1_000L, untilMediaStartUs / 1_000L);
-                    Minecraft.getInstance().execute(() -> {
-                        if (expectedAttempt == channelAttempt && expectedChannel == channel) {
-                            resetChannel();
-                            caughtUpTicks = 0;
-                        }
-                    });
-                    return;
-                }
-                long additionalSilenceUs = VideoPcmAudioStream.compensatingSilenceUs(
-                        untilMediaStartUs, remainingPrerollUs, outputLatencyUs);
-                if (!expectedStream.prependSilenceFor(additionalSilenceUs)) {
-                    sourceStartPending = false;
-                    sourceStartProbeQueued = false;
-                    Minecraft.getInstance().execute(() -> {
-                        if (expectedAttempt == channelAttempt && expectedChannel == channel) {
-                            resetChannel();
-                            caughtUpTicks = 0;
-                        }
-                    });
-                    return;
-                }
-                int runwayBuffers = expectedStream.initialBufferCount(STREAM_BUFFER_MS,
-                        INITIAL_STREAM_BUFFERS - SOURCE_PREROLL_BUFFERS);
-                if (runwayBuffers > 0) ((ChannelAccessor) value).cinemarr$pumpBuffers(runwayBuffers);
-                audioTimelineUs = sourceStartScheduledUs;
-                audioTimelineNanos = System.nanoTime()
-                        + VideoPcmAudioStream.physicalBoundaryDelayUs(
-                                sourceStartSilenceUs + additionalSilenceUs, playedUs, outputLatencyUs) * 1_000L;
-                sourceStartPending = false;
-                if (ProtocolLimits.videoProbeEnabled()) Cinemarr.LOGGER.info(
-                        "Acceptance video audio source started: playedMs={} backendOffsetMs={} sourceElapsedMs={} outputLatencyMs={} prerollMs={} additionalSilenceMs={} runwayBuffers={} latencyMeasured={}",
-                        playedUs / 1_000L, backendOffsetUs / 1_000L, sourceElapsedUs / 1_000L,
-                        outputLatencyUs / 1_000L, sourceStartSilenceUs / 1_000L,
-                        additionalSilenceUs / 1_000L, runwayBuffers, measuredOutputLatency);
+            int additionalBuffers = startingStream.initialBufferCount(
+                    STREAM_BUFFER_MS, INITIAL_STREAM_BUFFERS - SOURCE_PREROLL_BUFFERS);
+            if (additionalBuffers < 1) {
+                value.stop();
+                Minecraft.getInstance().execute(() -> { if (expectedAttempt == channelAttempt) { resetChannel(); caughtUpTicks = 0; } });
+                return;
             }
-            sourceStartProbeQueued = false;
+            accessor.cinemarr$pumpBuffers(additionalBuffers);
+            if (!sourcePlaying(accessor.cinemarr$source())) {
+                value.stop();
+                Minecraft.getInstance().execute(() -> { if (expectedAttempt == channelAttempt) { resetChannel(); caughtUpTicks = 0; } });
+                return;
+            }
+            audioTimelineUs = scheduledStartUs;
+            audioTimelineNanos = mediaBoundaryNanos;
+            if (ProtocolLimits.videoProbeEnabled()) Cinemarr.LOGGER.info(
+                    "Acceptance video audio source started: boundaryEpochMs={} sourceOffsetMs={} outputLatencyMs={} prerollRemainingMs={} boundaryLeadMs={} silenceMs={} runwayBuffers={} latencyMeasured={}",
+                    localBoundaryEpochMs,
+                    timing.offsetUs() / 1_000L, timing.outputLatencyUs() / 1_000L,
+                    remainingPrerollUs / 1_000L, remainingUntilBoundaryUs / 1_000L,
+                    silenceUs / 1_000L, SOURCE_PREROLL_BUFFERS + additionalBuffers,
+                    AL.getCapabilities().AL_SOFT_source_latency);
         });
     }
 
@@ -331,8 +290,101 @@ public final class CinemarrVideoAudio {
         return Math.round(seconds * 1_000_000.0);
     }
 
-    static long totalSourcePlayedUs(long sourceElapsedUs, long backendOffsetUs) {
-        return Math.max(Math.max(0L, sourceElapsedUs), Math.max(0L, backendOffsetUs));
+    private static SourceTiming sourceTimingUs(int source, long maximumOffsetUs) {
+        long offsetUs;
+        long latencyUs = 0L;
+        if (AL.getCapabilities().AL_SOFT_source_latency) {
+            double[] timing = new double[2];
+            SOFTSourceLatency.alGetSourcedvSOFT(source, SOFTSourceLatency.AL_SEC_OFFSET_LATENCY_SOFT, timing);
+            offsetUs = secondsToMicros(timing[0]);
+            latencyUs = secondsToMicros(timing[1]);
+        } else {
+            // OpenAL 1.1 still supplies the streaming cursor when device
+            // output latency cannot be measured through the optional extension.
+            offsetUs = secondsToMicros(AL10.alGetSourcef(source, AL11.AL_SEC_OFFSET));
+        }
+        if (offsetUs < 0L || offsetUs > maximumOffsetUs) offsetUs = 0L;
+        if (latencyUs < 0L || latencyUs > 5_000_000L) latencyUs = 0L;
+        return new SourceTiming(offsetUs, latencyUs);
+    }
+
+    private static boolean sourcePlaying(int source) {
+        return source != 0 && AL10.alGetSourcei(source, AL10.AL_SOURCE_STATE) == AL10.AL_PLAYING;
+    }
+
+    private void probePhysicalTimeline() {
+        if (physicalTimelineProbeQueued || channel == null || stream == null) return;
+        ChannelAccess.ChannelHandle expectedChannel = channel;
+        VideoPcmAudioStream expectedStream = stream;
+        long expectedAttempt = channelAttempt;
+        physicalTimelineProbeQueued = true;
+        expectedChannel.execute(value -> {
+            try {
+                if (expectedAttempt != channelAttempt || expectedChannel != channel || expectedStream != stream) return;
+                int source = ((ChannelAccessor) value).cinemarr$source();
+                int queuedBuffers = Math.max(0, AL10.alGetSourcei(source, AL10.AL_BUFFERS_QUEUED));
+                long bufferUs = STREAM_BUFFER_MS * 1_000L;
+                SourceTiming timing = sourceTimingUs(source, Math.max(bufferUs, queuedBuffers * bufferUs));
+                long estimate = physicalTimelineUs(audioMediaStartUs, expectedStream.totalReadUs(),
+                        expectedStream.prependedSilenceUs(), queuedBuffers, bufferUs,
+                        timing.offsetUs(), timing.outputLatencyUs());
+                physicalAudioTimelineUs = Math.max(physicalAudioTimelineUs, estimate);
+                physicalAudioTimelineNanos = System.nanoTime();
+            } finally {
+                physicalTimelineProbeQueued = false;
+            }
+        });
+    }
+
+    static long additionalSilenceUs(long untilMediaStartUs, long remainingPrerollUs, long outputLatencyUs) {
+        return VideoPcmAudioStream.compensatingSilenceUs(
+                untilMediaStartUs, remainingPrerollUs, outputLatencyUs);
+    }
+
+    static boolean driftRequiresRebuffer(long driftUs) {
+        return Math.abs(driftUs) > REBUFFER_DRIFT_US;
+    }
+
+    static long advanceTimelineUs(long timelineUs, long previousNanos, long nowNanos, boolean paused) {
+        if (paused || previousNanos == Long.MIN_VALUE || nowNanos <= previousNanos) return timelineUs;
+        // Bridge the scheduled boundary to the first backend observation.
+        // Subsequent observations account for unqueued buffers and constrain
+        // wall-time interpolation through advancePhysicalTimelineUs.
+        return timelineUs + (nowNanos - previousNanos) / 1_000L;
+    }
+
+    static long physicalTimelineUs(long mediaStartUs, long totalReadUs, long leadingSilenceUs,
+                                   int queuedBuffers, long bufferUs, long sourceOffsetUs,
+                                   long outputLatencyUs) {
+        long queuedUs = Math.max(0L, queuedBuffers) * Math.max(0L, bufferUs);
+        long unqueuedUs = Math.max(0L, totalReadUs - queuedUs);
+        long offsetUs = Math.max(0L, Math.min(sourceOffsetUs, queuedUs));
+        long heardSourceUs = Math.max(0L, unqueuedUs + offsetUs - Math.max(0L, outputLatencyUs));
+        return mediaStartUs + Math.max(0L, heardSourceUs - Math.max(0L, leadingSilenceUs));
+    }
+
+    static long advancePhysicalTimelineUs(long reportedUs, long physicalUs, long physicalNanos,
+                                          long nowNanos, boolean paused) {
+        if (paused) return reportedUs;
+        if (physicalNanos == Long.MIN_VALUE || nowNanos <= physicalNanos) {
+            return Math.max(reportedUs, physicalUs);
+        }
+        return Math.max(reportedUs, physicalUs + (nowNanos - physicalNanos) / 1_000L);
+    }
+
+    private boolean injectAcceptanceSetupStall() {
+        if (!ProtocolLimits.videoProbeEnabled() || acceptanceSetupStallInjected) return true;
+        int delayMs = Integer.getInteger("cinemarr.acceptance.modernAudioSetupStallMs", 0);
+        if (delayMs <= 0) return true;
+        acceptanceSetupStallInjected = true;
+        Cinemarr.LOGGER.info("Acceptance video audio setup stall injected: delayMs={}", delayMs);
+        try {
+            Thread.sleep(delayMs);
+            return true;
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
     }
 
     private static long roundUp(long value, long quantum) {
@@ -352,8 +404,9 @@ public final class CinemarrVideoAudio {
     private StartWindow startWindow(long scheduledStartUs) {
         DecodedAudioFrame first = null, last = null;
         for (DecodedAudioFrame value : pending) {
-            if (first == null && endUs(value) > scheduledStartUs) first = value;
-            last = value;
+            if (endUs(value) > scheduledStartUs && (first == null
+                    || value.presentationTimeUs() < first.presentationTimeUs())) first = value;
+            if (last == null || endUs(value) > endUs(last)) last = value;
         }
         return first == null ? null : new StartWindow(first, last);
     }
@@ -385,9 +438,9 @@ public final class CinemarrVideoAudio {
         if (channel != null) { channel.execute(com.mojang.blaze3d.audio.Channel::stop); channel=null; }
         if (stream != null) { stream.close(); stream=null; }
         channelPending=false;observedStarvations=0;driftTicks=0;stableTicks=0;audioTimelineUs=0;audioTimelineNanos=Long.MIN_VALUE;
-        sourceStartPending=false;sourceStartProbeQueued=false;sourceStartScheduledUs=0;sourceStartServerBoundaryEpochMs=0;sourceStartSilenceUs=0;
-        sourceStartSampleRate=0;sourceStartRequestedNanos=0;
+        audioMediaStartUs=0;physicalAudioTimelineUs=0;physicalAudioTimelineNanos=Long.MIN_VALUE;physicalTimelineProbeQueued=false;
     }
 
     private record StartWindow(DecodedAudioFrame first, DecodedAudioFrame last) {}
+    private record SourceTiming(long offsetUs, long outputLatencyUs) {}
 }

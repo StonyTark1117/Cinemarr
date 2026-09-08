@@ -3,6 +3,8 @@ package stonytark.cinemarr.client;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.audio.SoundCategory;
 import org.lwjgl.BufferUtils;
+import org.lwjgl.openal.AL;
+import org.lwjgl.openal.ALCcontext;
 import org.lwjgl.openal.AL10;
 import org.lwjgl.openal.AL11;
 import paulscode.sound.SoundSystem;
@@ -40,7 +42,11 @@ final class LegacyVideoAudio {
     // One-second buffers avoid flooding that legacy queue with several commands
     // per render tick while the four-second runway still bounds recovery time.
     private static final int PCM_FEED_BYTES = 192 * 1024;
-    private static final int MAX_PENDING_FRAMES = 256;
+    // AAC commonly yields roughly 47 frames per second at 48 kHz. Retain up
+    // to about sixteen seconds (roughly 3 MiB for stereo s16 PCM) so the
+    // decoder can use the transport's twenty-second lead instead of being
+    // throttled back to the old five-second PCM handoff window.
+    private static final int MAX_PENDING_FRAMES = 768;
     private final Queue<LegacyDecodedAudioFrame> pending = new ArrayDeque<LegacyDecodedAudioFrame>();
     private final Queue<OpenAlBuffer> backendBuffers = new ArrayDeque<OpenAlBuffer>();
     private UUID sessionId;
@@ -48,6 +54,7 @@ final class LegacyVideoAudio {
     private SoundSystem soundSystem;
     private AudioFormat format;
     private int source;
+    private ALCcontext sourceContext;
     private long backendCompletedUs;
     private long queuedUntilLocalUs;
     private long preparedDurationUs;
@@ -83,7 +90,7 @@ final class LegacyVideoAudio {
             if (endUs(frame) >= targetUs - 100_000L) pending.add(frame);
         }
         SoundSystem current = LegacySoundAccess.soundSystem(Minecraft.getMinecraft());
-        if (prepared && current != soundSystem) stopSource();
+        if (prepared && (current != soundSystem || !ownsCurrentContext())) stopSource();
         if (!prepared && !session.paused() && LegacyClientState.INSTANCE.mediaClockReady()) prepare(current, targetUs);
         if (!prepared || soundSystem == null) return;
         float[] origin = nearest(televisions);
@@ -125,6 +132,8 @@ final class LegacyVideoAudio {
                 long nowMs=System.currentTimeMillis();
                 if(!terminal&&!LegacyBackendQueueGuard.shouldRecover(false,false,false,nowMs,activationGraceUntilMs))return;
                 underruns += AudioUnderrunPolicy.additionalUnderruns(0, 0, true, false, terminal);
+                if (!terminal && ProtocolLimits.videoProbeEnabled()) Cinemarr.LOGGER.info(
+                        "Acceptance legacy video audio active underrun: underruns={}", underruns);
                 if (terminal) {
                     if (ProtocolLimits.videoProbeEnabled()) Cinemarr.LOGGER.info(
                             "Acceptance legacy video audio terminal drain: targetMs={}", targetUs / 1_000L);
@@ -153,7 +162,15 @@ final class LegacyVideoAudio {
                     stableTicks++;
                 }
             }
-            if (pending.isEmpty() && nowUs > queuedUntilLocalUs + 250_000L && !backendPlaying()) { underruns++; stopSource(); }
+            if (pending.isEmpty() && nowUs > queuedUntilLocalUs + 250_000L && !backendPlaying()) {
+                // The backend can finish between the earlier playing check
+                // and this one. Apply the same EOS policy at both boundaries.
+                boolean terminal = playback.audioInputExhausted();
+                underruns += AudioUnderrunPolicy.additionalUnderruns(0, 0, true, false, terminal);
+                if (!terminal && ProtocolLimits.videoProbeEnabled()) Cinemarr.LOGGER.info(
+                        "Acceptance legacy video audio active underrun: underruns={}", underruns);
+                stopSource();
+            }
         }
         if (ProtocolLimits.videoProbeEnabled() && System.currentTimeMillis() - lastAcceptanceLogMs >= 1_000L) {
             lastAcceptanceLogMs = System.currentTimeMillis();
@@ -171,12 +188,16 @@ final class LegacyVideoAudio {
     }
 
     private void prepare(SoundSystem system, long targetUs) {
-        if (system == null || pending.isEmpty()) return;
+        // SoundLoadEvent fires before the asynchronous replacement backend is
+        // ready. Never create a source while LWJGL's native stubs/context are
+        // absent, and bind IDs to the exact context that allocated them.
+        if (system == null || pending.isEmpty() || !AL.isCreated() || AL.getContext() == null) return;
         LegacyDecodedAudioFrame first = pending.peek(), last = first; for (LegacyDecodedAudioFrame value : pending) last = value;
         if (endUs(last) - (targetUs + SCHEDULE_LEAD_US) < START_BUFFER_US
                 || first.presentationTimeUs() > targetUs + SCHEDULE_LEAD_US + 100_000L) return;
         format = new AudioFormat(first.sampleRate(), 16, first.channels(), true, false); soundSystem = system;
         float[] origin = new float[] { 0, 0, 0 };
+        sourceContext = AL.getContext();
         source = AL10.alGenSources();
         AL10.alSourcei(source, AL10.AL_LOOPING, AL10.AL_FALSE);
         AL10.alSourcei(source, AL10.AL_SOURCE_RELATIVE, AL10.AL_FALSE);
@@ -384,22 +405,43 @@ final class LegacyVideoAudio {
     }
     int underruns() { return underruns; }
     boolean ready() { return started && soundSystem != null && stableTicks >= 10; }
-    void audioEngineReloaded() { stopSource(); }
+    void audioEngineReloaded() {
+        // Forge 1.7.10 emits this AFTER destroying the previous OpenAL context.
+        // Its sources/buffers have already been released by context destruction.
+        // Calling AL10 here can hit unloaded native stubs, or delete recycled
+        // IDs belonging to the new context. Only discard our old ownership.
+        forgetSource();
+    }
     void reset() { stopSource(); pending.clear(); sessionId = null; generation = -1; underruns = 0;
         driftTicks = stableTicks = 0; lastAcceptanceLogMs = 0L; }
     private void stopSource() {
-        soundSystem = null; format = null; prepared = false; started = false;
-        sourcePaused = false; activationGraceUntilMs=0L;queuedUntilLocalUs = preparedDurationUs = queuedProgramUntilUs = scheduledStartUs = programOffsetUs = mediaBoundaryLocalUs = sourceRequestedAtUs = sourcePausedAtUs = 0L;
-        backendCompletedUs = 0L; driftTicks = stableTicks = 0;
-        if (source != 0) {
-            try {
+        try {
+            if (source != 0 && ownsCurrentContext()) {
                 AL10.alSourceStop(source);
                 AL10.alSourcei(source, AL10.AL_BUFFER, 0);
                 for (OpenAlBuffer buffer : backendBuffers) if (AL10.alIsBuffer(buffer.id)) AL10.alDeleteBuffers(buffer.id);
                 if (AL10.alIsSource(source)) AL10.alDeleteSources(source);
-            } catch (RuntimeException ignored) { }
+            }
+        } catch (RuntimeException ignored) {
+            // Preserve cleanup behavior for an already-stopped native source.
+        } finally {
+            forgetSource();
         }
-        source = 0; backendBuffers.clear();
+    }
+
+    private boolean ownsCurrentContext() {
+        return sourceContext != null && ownsContext(sourceContext, AL.getContext(), AL.isCreated());
+    }
+
+    static boolean ownsContext(Object owned, Object current, boolean created) {
+        return created && owned != null && owned == current;
+    }
+
+    private void forgetSource() {
+        soundSystem = null; format = null; prepared = false; started = false;
+        sourcePaused = false; activationGraceUntilMs=0L;queuedUntilLocalUs = preparedDurationUs = queuedProgramUntilUs = scheduledStartUs = programOffsetUs = mediaBoundaryLocalUs = sourceRequestedAtUs = sourcePausedAtUs = 0L;
+        backendCompletedUs = 0L; driftTicks = stableTicks = 0;
+        source = 0; sourceContext = null; backendBuffers.clear();
     }
 
     private static final class OpenAlBuffer {

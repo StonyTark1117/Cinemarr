@@ -39,6 +39,9 @@ public final class CinemarrClient implements ClientModInitializer {
     private static final CinemarrVideoAudioManager VIDEO_AUDIO=new CinemarrVideoAudioManager();
     private int acceptanceVideoReadyTicks;
     private boolean acceptanceVideoScreenshotSaved;
+    private final stonytark.cinemarr.core.client.ClientConnectionLifecycle connections =
+            new stonytark.cinemarr.core.client.ClientConnectionLifecycle(
+                    task -> Minecraft.getInstance().execute(task), this::resetConnection);
 
     @Override public void onInitializeClient() {
         installClientSettings();
@@ -50,14 +53,12 @@ public final class CinemarrClient implements ClientModInitializer {
             else{CinemarrPayloads.write(payload, buffer);ClientPlayNetworking.send(CinemarrPayloads.idOf(payload), buffer);}
         });
         registerReceivers();
-        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> CinemarrClientState.INSTANCE.hello());
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) ->
+                connections.joined(handler, this::helloAfterReset));
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             net.minecraft.network.chat.Component reason = handler.getConnection().getDisconnectedReason();
             if (reason != null) Cinemarr.LOGGER.info("Client disconnected with reason: {}", reason.getString());
-            CinemarrClientState.INSTANCE.stop();
-            VIDEO_AUDIO.reset();VIDEO.reset();
-            acceptanceVideoReadyTicks = 0;
-            acceptanceVideoScreenshotSaved = false;
+            connections.disconnected(handler);
         });
         ClientTickEvents.END_CLIENT_TICK.register(this::tick);
         WorldRenderEvents.LAST.register(context->{if(context.matrixStack()!=null)VIDEO_RENDERER.render(context.matrixStack(),context.camera().getPosition(),VIDEO,CinemarrVideoClientState.INSTANCE);});
@@ -69,6 +70,23 @@ public final class CinemarrClient implements ClientModInitializer {
                 VIDEO_AUDIO.audioEngineReloaded();
             }
         });
+    }
+
+    private void helloAfterReset() {
+        if (ProtocolLimits.videoProbeEnabled())
+            stonytark.cinemarr.Cinemarr.LOGGER.info("Acceptance client JOIN reset complete");
+        CinemarrClientState.INSTANCE.hello();
+    }
+
+    private void resetConnection() {
+        com.mojang.blaze3d.systems.RenderSystem.assertOnRenderThread();
+        VIDEO_AUDIO.reset();
+        VIDEO.reset();
+        CinemarrClientState.INSTANCE.stop();
+        acceptanceVideoReadyTicks = 0;
+        acceptanceVideoScreenshotSaved = false;
+        if (ProtocolLimits.videoProbeEnabled())
+            Cinemarr.LOGGER.info("Acceptance client media reset complete");
     }
 
     private static void installClientSettings() {
@@ -93,6 +111,8 @@ public final class CinemarrClient implements ClientModInitializer {
     }
 
     private void captureAcceptanceVideo(Minecraft minecraft) {
+        if (!ProtocolLimits.videoProbeViewReady(minecraft.player != null && minecraft.player.isAlive(),
+                minecraft.screen != null)) { acceptanceVideoReadyTicks = 0; return; }
         if (!ProtocolLimits.videoProbeEnabled() || acceptanceVideoScreenshotSaved
                 || !VIDEO.hasPresentedFrame() || !VIDEO.presentedFrameCaughtUp() || !VIDEO_AUDIO.anyReady()) {
             acceptanceVideoReadyTicks = 0;

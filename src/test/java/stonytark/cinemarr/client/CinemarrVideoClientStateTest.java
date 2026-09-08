@@ -18,8 +18,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CinemarrVideoClientStateTest {
     @Test void segmentPrefetchStaysNearPlaybackInsteadOfExhaustingTheServerLeadWindow() {
-        assertTrue(CinemarrVideoClientState.StreamState.withinPrefetchLead(16_000,10_000));
-        assertFalse(CinemarrVideoClientState.StreamState.withinPrefetchLead(16_001,10_000));
+        assertTrue(CinemarrVideoClientState.StreamState.withinPrefetchLead(30_000,10_000),
+                "real Plex HLS transfer and decode jitter needs more than one segment of runway");
+        assertFalse(CinemarrVideoClientState.StreamState.withinPrefetchLead(30_001,10_000));
     }
 
     @Test void multipleTelevisionsShareOneWatchPartyStreamButIndependentSessionsDecodeSeparately() {

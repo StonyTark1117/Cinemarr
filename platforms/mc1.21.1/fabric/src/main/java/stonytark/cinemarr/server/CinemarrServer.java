@@ -36,8 +36,7 @@ import java.util.UUID;
 
 public final class CinemarrServer {
     private static final CinemarrServer INSTANCE = new CinemarrServer();
-    private static final long HELLO_TIMEOUT_TICKS = 100;
-    private final HelloGate<UUID> helloGate = new HelloGate<>(HELLO_TIMEOUT_TICKS);
+    private final HelloGate<UUID> helloGate = new HelloGate<>(ProtocolLimits.CLIENT_HELLO_TIMEOUT_TICKS);
     private PlexVideoService videoService;
     private List<PlexVideoService.ResolvedLibrary> videoLibraries = Collections.emptyList();
     private ServerVideoManager videoManager;
@@ -125,7 +124,7 @@ public final class CinemarrServer {
     private String plexState() { return plexLifecycle == null ? "disabled" : plexLifecycle.state().name().toLowerCase(java.util.Locale.ROOT); }
     private String unavailableStatus() { return "Cinemarr video "+plexState()+"; registeredTvs="+stonytark.cinemarr.core.server.TelevisionLifecycle.count()+"; activeStreams=0/"+CinemarrSettings.maximumConcurrentStreams()+"; attachedSessions=0; dormantSessions=0"; }
     private String unavailableDiagnostics() { return "Plex="+plexState()+"; retryInMs="+(plexLifecycle==null?0:plexLifecycle.retryInMs(System.currentTimeMillis()))+"; lastFailure="+(plexLifecycle==null||plexLifecycle.lastFailure().isEmpty()?"none":plexLifecycle.lastFailure())+"; registeredTvs="+stonytark.cinemarr.core.server.TelevisionLifecycle.count()+"; libraries=0; activeStreams=0/"+CinemarrSettings.maximumConcurrentStreams(); }
-    private void configurePlex(net.minecraft.server.MinecraftServer server,List<LibraryRule> rules){plexLifecycle=new PlexConnectionLifecycle();plexLifecycle.configure(CinemarrSettings.plexUrl(),CinemarrSettings.plexToken(),rules,server::execute,connection->{videoService=connection.service();videoLibraries=connection.libraries();videoManager=new ServerVideoManager(server,videoService,videoLibraries,CinemarrVideoSavedData.get(server));Cinemarr.LOGGER.info("Validated {} allowed Plex video libraries{}",videoLibraries.size(),connection.requested()?" after manual retry":"");},(message,delay)->Cinemarr.LOGGER.warn("Plex unavailable; Cinemarr will retry in {} seconds: {}",delay/1000,message));}
+    private void configurePlex(net.minecraft.server.MinecraftServer server,List<LibraryRule> rules){plexLifecycle=new PlexConnectionLifecycle();plexLifecycle.configure(CinemarrSettings.plexUrl(),CinemarrSettings.plexToken(),rules,server::execute,connection->{videoService=connection.service();videoLibraries=connection.libraries();videoManager=new ServerVideoManager(server,videoService,videoLibraries,CinemarrVideoSavedData.get(server), helloGate::accepted);Cinemarr.LOGGER.info("Validated {} allowed Plex video libraries{}",videoLibraries.size(),connection.requested()?" after manual retry":"");},(message,delay)->Cinemarr.LOGGER.warn("Plex unavailable; Cinemarr will retry in {} seconds: {}",delay/1000,message));}
 
     private void prepareAcceptanceVideo(ServerPlayer player) {
         if (!ProtocolLimits.videoProbeEnabled() || videoManager == null) return;
@@ -153,8 +152,7 @@ public final class CinemarrServer {
             for (int y = 100; y <= 109; y++) level.setBlockAndUpdate(new BlockPos(x, y, z), Blocks.AIR.defaultBlockState());
         }
         level.setDayTime(6000);
-        int playerIndex = Math.max(0, player.server.getPlayerList().getPlayers().indexOf(player));
-        double cameraX = (playerIndex & 1) == 0 ? -1.5 : 1.5;
+        double cameraX = stonytark.cinemarr.core.protocol.ProtocolLimits.videoProbeCameraX(player.getGameProfile().getName());
         player.teleportTo(level, cameraX, 100.0, 7.5, 180.0F, 0.0F);
         player.lookAt(EntityAnchorArgument.Anchor.EYES, Vec3.atCenterOf(new BlockPos(0, 104, 0)));
     }

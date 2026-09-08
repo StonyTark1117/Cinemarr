@@ -74,13 +74,16 @@ public final class LegacyVideoSavedData extends WorldSavedData {
 
     private static Record loadRecord(NBTTagCompound tag) {
         try {
+            // Legacy NBT getString coerces numeric tags to text. A corrupt
+            // identity must not silently become a different persisted session.
+            if (!tag.hasKey("name", 8) || !tag.hasKey("library", 8)) return null;
             String name = tag.getString("name").trim(), library = tag.getString("library").trim(); VideoMediaItem item = loadItem(tag);
             if (name.isEmpty() || name.length()>MAX_NAME || library.isEmpty() || library.length()>MAX_LIBRARY || item == null) return null;
             List<QueuedVideo> queue = new ArrayList<QueuedVideo>(); NBTTagList values = tag.getTagList("queue", 10);
             for (int index = 0; index < values.tagCount() && index < 500; index++) {
                 NBTTagCompound queued = values.getCompoundTagAt(index); VideoMediaItem queuedItem = loadItem(queued);
                 String queuedLibrary = queued.getString("library").trim();
-                if (queuedItem != null && !queuedLibrary.isEmpty()&&queuedLibrary.length()<=MAX_LIBRARY) queue.add(new QueuedVideo(queuedLibrary, queuedItem));
+                if (queuedItem != null && queued.hasKey("library", 8) && !queuedLibrary.isEmpty()&&queuedLibrary.length()<=MAX_LIBRARY) queue.add(new QueuedVideo(queuedLibrary, queuedItem));
             }
             long position=Math.max(0,tag.getLong("positionMs"));if(item.durationMs()>0)position=Math.min(position,item.durationMs());
             return new Record(name, library, item, position, tag.getBoolean("paused"),
@@ -96,10 +99,18 @@ public final class LegacyVideoSavedData extends WorldSavedData {
         tag.setInteger("parentIndex", item.parentIndex());
     }
     private static VideoMediaItem loadItem(NBTTagCompound tag) {
-        try {String key=tag.getString("key"),title=tag.getString("title"),parent=tag.getString("parentTitle"),rating=tag.getString("contentRating"),series=tag.getString("seriesKey");long duration=tag.getLong("durationMs");
+        try {
+            if (!tag.hasKey("kind", 8) || !tag.hasKey("key", 8)
+                    || !optionalString(tag, "title") || !optionalString(tag, "parentTitle")
+                    || !optionalString(tag, "contentRating") || !optionalString(tag, "seriesKey")) return null;
+            String key=tag.getString("key"),title=tag.getString("title"),parent=tag.getString("parentTitle"),rating=tag.getString("contentRating"),series=tag.getString("seriesKey");long duration=tag.getLong("durationMs");
             if(key.isEmpty()||key.length()>MAX_KEY||title.length()>MAX_TITLE||parent.length()>MAX_TITLE||rating.length()>64||series.length()>MAX_KEY||duration<0||duration>MAX_DURATION_MS)return null;
             return new VideoMediaItem(MediaKind.valueOf(tag.getString("kind")),key,title,parent,rating,tag.getInteger("index"),duration,series,tag.getInteger("parentIndex")); }
         catch (IllegalArgumentException invalid) { return null; }
+    }
+
+    private static boolean optionalString(NBTTagCompound tag, String key) {
+        return !tag.hasKey(key) || tag.hasKey(key, 8);
     }
 
     public static final class Record {

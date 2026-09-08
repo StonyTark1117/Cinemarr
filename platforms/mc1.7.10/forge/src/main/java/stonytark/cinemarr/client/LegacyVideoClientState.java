@@ -2,6 +2,7 @@ package stonytark.cinemarr.client;
 
 import stonytark.cinemarr.core.client.VideoSegmentAssembler;
 import stonytark.cinemarr.core.client.TransferWindowFlow;
+import stonytark.cinemarr.core.client.SegmentPrefetchPolicy;
 import stonytark.cinemarr.core.library.QueuedVideo;
 import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.core.protocol.VideoPackets;
@@ -113,7 +114,6 @@ final class LegacyVideoClientState {
     }
 
     static final class StreamState {
-        private static final int MAX_READY_SEGMENTS = 4;
         private final StreamKey key;
         private final VideoSegmentAssembler assembler = new VideoSegmentAssembler();
         private final Queue<VideoSegmentAssembler.CompletedSegment> ready = new ArrayDeque<VideoSegmentAssembler.CompletedSegment>();
@@ -122,6 +122,7 @@ final class LegacyVideoClientState {
         private long requestId;
         private int requestedSegment = -1, lastCompletedSegment = -1, currentWindowStart, totalChunks, requestRetries;
         private long requestSentAt;
+        private long readyBytes;
         private int deferredSegment = -1;
         private boolean finalSegmentReceived;
         StreamState(StreamKey key) { this.key = key; }
@@ -135,9 +136,9 @@ final class LegacyVideoClientState {
             manifest = value;
             if (continuation) {
                 int first = value.segments().get(0).index();
-                if (ready.size() < MAX_READY_SEGMENTS) request(first, 0); else deferredSegment = first;
+                if (canRequestAnother()) request(first, 0); else deferredSegment = first;
             } else {
-                ready.clear(); deferredSegment = -1;
+                clearReady(); deferredSegment = -1;
                 int first = seekSegment(value, session.positionMs()); if (first >= 0) request(first, 0);
             }
         }
@@ -152,7 +153,8 @@ final class LegacyVideoClientState {
             TransferWindowFlow.Decision flow = TransferWindowFlow.afterChunk(
                     value.chunkIndex(), currentWindowStart, 8, totalChunks, completed.isPresent());
             if (completed.isPresent()) {
-                ready.add(completed.get()); lastCompletedSegment = value.segmentIndex(); requestedSegment = -1;
+                VideoSegmentAssembler.CompletedSegment complete = completed.get();
+                ready.add(complete); readyBytes += complete.byteLength(); lastCompletedSegment = value.segmentIndex(); requestedSegment = -1;
                 requestSentAt = 0L; requestRetries = 0;
                 LegacyNetwork.sendToServer(LegacyPacketTypes.VIDEO_SEGMENT_ACKNOWLEDGEMENT,
                         new VideoPackets.SegmentAcknowledgement(value.sessionId(), value.generation(), value.requestId(),
@@ -160,7 +162,7 @@ final class LegacyVideoClientState {
                 int local = descriptorIndex(value.segmentIndex());
                 if (local >= 0 && local + 1 < manifest.segments().size()) {
                     int next = manifest.segments().get(local + 1).index();
-                    if (ready.size() < MAX_READY_SEGMENTS) request(next, 0); else deferredSegment = next;
+                    if (canRequestAnother()) request(next, 0); else deferredSegment = next;
                 }
                 else if (manifest.hasMore()) LegacyNetwork.sendToServer(LegacyPacketTypes.VIDEO_MANIFEST_REQUEST,
                         new VideoPackets.SegmentManifestRequest(key.sessionId, key.generation, value.segmentIndex() + 1));
@@ -220,14 +222,17 @@ final class LegacyVideoClientState {
             return result;
         }
         private long bufferedMs() { long total = 0; for (VideoSegmentAssembler.CompletedSegment segment : ready) { int index = descriptorIndex(segment.segmentIndex()); if (index >= 0) total += manifest.segments().get(index).durationMs(); } return total; }
+        private boolean canRequestAnother() { return SegmentPrefetchPolicy.allowsAnother(ready.size(), readyBytes); }
+        private void clearReady() { ready.clear(); readyBytes = 0L; }
         boolean inputExhausted() { return finalSegmentReceived && ready.isEmpty() && requestedSegment < 0 && deferredSegment < 0; }
-        void reset() { assembler.reset(); ready.clear(); manifest = null; requestedSegment = -1; lastCompletedSegment = -1;
+        void reset() { assembler.reset(); clearReady(); manifest = null; requestedSegment = -1; lastCompletedSegment = -1;
             currentWindowStart = totalChunks = 0; deferredSegment = -1;
             requestSentAt = 0L; requestRetries = 0; finalSegmentReceived = false; }
         VideoSegmentAssembler.CompletedSegment pollSegment() {
-            if (deferredSegment >= 0 && ready.size() < MAX_READY_SEGMENTS) request(deferredSegment, 0);
+            if (deferredSegment >= 0 && canRequestAnother()) request(deferredSegment, 0);
             VideoSegmentAssembler.CompletedSegment value = ready.poll();
-            if (deferredSegment >= 0 && ready.size() < MAX_READY_SEGMENTS) request(deferredSegment, 0);
+            if (value != null) readyBytes -= value.byteLength();
+            if (deferredSegment >= 0 && canRequestAnother()) request(deferredSegment, 0);
             return value;
         }
     }

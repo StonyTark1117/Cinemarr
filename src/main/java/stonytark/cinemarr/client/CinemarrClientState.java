@@ -25,6 +25,7 @@ public final class CinemarrClientState {
 
     private final ClockSynchronizer clock = new ClockSynchronizer();
     private final AcceptanceControlFile acceptanceControl = new AcceptanceControlFile();
+    private final stonytark.cinemarr.core.protocol.AcceptanceSegmentPeer segmentPeer = new stonytark.cinemarr.core.protocol.AcceptanceSegmentPeer();
     private final AtomicLong timeNonce = new AtomicLong();
     private long lastTimeSync;
     private long acceptanceVideoController;
@@ -34,10 +35,21 @@ public final class CinemarrClientState {
     private boolean acceptanceVideoBrowseRequested;
     private boolean acceptanceVideoPlaySent;
     private String acceptanceVideoLibraryId = "";
+    private String acceptanceVideoLastItemKey = "";
     private Boolean acceptanceCommandOperator;
     private boolean acceptanceDiagnosticsSent;
 
     public void accept(CinemarrMessage payload) {
+        if (ProtocolLimits.segmentPressurePeerEnabled()) {
+            if (payload instanceof VideoPayloads.SessionState value) {
+                acceptVideoProbe(payload);
+                VideoPackets.SessionState state = value.value();
+                segmentPeer.session(state.sessionId(), state.generation(), state.canControl(), state.status() == VideoPackets.SessionStatus.PLAYING);
+                return;
+            }
+            if (payload instanceof VideoPayloads.SegmentChunk value) { segmentPeer.chunk(value.value(), this::sendSegmentPeer); return; }
+            if (payload instanceof CinemarrPayloads.ErrorMessage value) { segmentPeer.error(value.message()); return; }
+        }
         Minecraft minecraft = Minecraft.getInstance();
         if (CinemarrVideoClientState.INSTANCE.accept(payload)) {
             acceptVideoProbe(payload);
@@ -61,6 +73,7 @@ public final class CinemarrClientState {
                     clock.sampleCount(), sample.roundTripMs(), sample.rawOffsetMs(), sample.filteredOffsetMs(), clock.bestRoundTripMs());
         } else if (payload instanceof CinemarrPayloads.ErrorMessage value && minecraft.player != null) {
             minecraft.player.sendSystemMessage(net.minecraft.network.chat.Component.literal("Cinemarr: " + value.message()));
+            CinemarrClientUi.showVideoError(value.message());
         }
     }
 
@@ -68,6 +81,11 @@ public final class CinemarrClientState {
         long now = System.currentTimeMillis();
         long interval = mediaClockReady() ? STEADY_CLOCK_SYNC_INTERVAL_MS : STARTUP_CLOCK_SYNC_INTERVAL_MS;
         if (now - lastTimeSync >= interval) requestTimeSync();
+        if (ProtocolLimits.segmentPressurePeerEnabled()) {
+            if ("video:segment-pressure-start".equals(acceptanceControl.poll())) segmentPeer.start(now);
+            segmentPeer.tick(now, this::sendSegmentPeer, value -> Cinemarr.LOGGER.info(value));
+            return;
+        }
         inspectAcceptanceVideoControl();
         inspectAcceptanceCommands();
     }
@@ -83,11 +101,12 @@ public final class CinemarrClientState {
     }
 
     public void stop() {
+        segmentPeer.reset();
         clock.reset(); lastTimeSync = 0; CinemarrVideoClientState.INSTANCE.reset();
         acceptanceVideoController = 0; acceptanceVideoTuneSent = false;
         acceptanceVideoResetSent = false;
         acceptanceVideoLibrariesRequested = false; acceptanceVideoBrowseRequested = false; acceptanceVideoPlaySent = false;
-        acceptanceVideoLibraryId = ""; acceptanceControl.reset();
+        acceptanceVideoLibraryId = ""; acceptanceVideoLastItemKey = ""; acceptanceControl.reset();
         acceptanceCommandOperator = null;
         acceptanceDiagnosticsSent = false;
     }
@@ -99,14 +118,20 @@ public final class CinemarrClientState {
         lastTimeSync = now;
     }
 
+    private void sendSegmentPeer(CinemarrMessage message) {
+        if (message instanceof VideoPackets.SegmentRequest value) CinemarrNetwork.sendToServer(new VideoPayloads.SegmentRequest(value));
+        else if (message instanceof VideoPackets.SegmentAcknowledgement value) CinemarrNetwork.sendToServer(new VideoPayloads.SegmentAcknowledgement(value));
+    }
+
     private void acceptVideoProbe(CinemarrMessage payload) {
         if (!ProtocolLimits.videoProbeEnabled()) return;
         if (payload instanceof VideoPayloads.SessionState value) {
             VideoPackets.SessionState state = value.value();
-            Cinemarr.LOGGER.info("Acceptance video session: controller={} session={} generation={} status={} item={} positionMs={} canControl={} streams={} audio={} subtitle={} message={}",
+            if (state.item() != null) acceptanceVideoLastItemKey = state.item().key();
+            Cinemarr.LOGGER.info("Acceptance video session: controller={} session={} generation={} status={} item={} positionMs={} canControl={} streams={} audio={} subtitle={} durationMs={} message={}",
                     state.controllerPos(), state.sessionId(), state.generation(), state.status(),
                     state.item() == null ? "" : state.item().key(), state.positionMs(), state.canControl(),
-                    state.streams().size(), state.selectedAudioStreamId(), state.selectedSubtitleStreamId(), state.message());
+                    state.streams().size(), state.selectedAudioStreamId(), state.selectedSubtitleStreamId(), state.durationMs(), state.message());
             acceptanceVideoController = state.controllerPos();
             if (!ProtocolLimits.videoProbeLeader() || !state.canControl()) return;
             if (!acceptanceVideoTuneSent) {
@@ -123,6 +148,11 @@ public final class CinemarrClientState {
                 acceptanceVideoResetSent = true;
                 acceptanceVideoLibrariesRequested = true; CinemarrVideoClientState.INSTANCE.requestLibraries();
             }
+        } else if (payload instanceof VideoPayloads.SessionQueue value) {
+            VideoPackets.SessionQueue queue = value.value();
+            Cinemarr.LOGGER.info("Acceptance video queue: session={} generation={} entries={} firstItem={}",
+                    queue.sessionId(), queue.generation(), queue.entries().size(),
+                    queue.entries().isEmpty() ? "" : queue.entries().get(0).item().key());
         } else if (payload instanceof VideoPayloads.LibraryList value) {
             Cinemarr.LOGGER.info("Acceptance video libraries: count={}", value.value().libraries().size());
             if (ProtocolLimits.videoProbeLeader() && acceptanceVideoController != 0
@@ -131,6 +161,7 @@ public final class CinemarrClientState {
                 CinemarrVideoClientState.INSTANCE.browse(value.value().libraries().get(0).id(), "", "", 0);
             }
         } else if (payload instanceof VideoPayloads.BrowseResults value) {
+            if (ProtocolLimits.browsePressureProbeEnabled()) Cinemarr.LOGGER.info("Acceptance browse result: query={}", value.value().query());
             Cinemarr.LOGGER.info("Acceptance video browse: library={} items={}", value.value().libraryId(), value.value().items().size());
             acceptanceVideoLibraryId = value.value().libraryId();
             if (ProtocolLimits.videoProbeLeader() && !acceptanceVideoPlaySent
@@ -154,13 +185,24 @@ public final class CinemarrClientState {
         String operation = acceptanceControl.poll();
         if (operation.isEmpty() || !operation.startsWith("video:")) return;
         VideoPackets.SessionState state = CinemarrVideoClientState.INSTANCE.session(acceptanceVideoController);
+        if (operation.startsWith("video:browse-pressure:") && ProtocolLimits.browsePressureProbeEnabled()) {
+            VideoPackets.LibraryList libraries = CinemarrVideoClientState.INSTANCE.libraries();
+            if (state == null || state.canControl() || libraries.libraries().isEmpty()) return;
+            String query = operation.substring("video:browse-pressure:".length());
+            CinemarrVideoClientState.INSTANCE.browse(libraries.libraries().get(0).id(), "", query, 0);
+            Cinemarr.LOGGER.info("Acceptance browse pressure sent: query={}", query);
+            return;
+        }
         if ("video:open-ui".equals(operation)) {
             if (state == null) { Cinemarr.LOGGER.info("Acceptance video UI request unavailable: no session state"); return; }
+            // Match a real controller open: the follower may not have requested
+            // any libraries during the playback-only part of acceptance.
+            CinemarrVideoClientState.INSTANCE.requestLibraries();
             CinemarrClientUi.openVideoScreen(state.controllerPos());
             Cinemarr.LOGGER.info("Acceptance video UI request: controller={} canControl={}", state.controllerPos(), state.canControl());
             return;
         }
-        if (state == null || state.item() == null) {
+        if (state == null || (state.item() == null && !("video:replay".equals(operation) && !acceptanceVideoLastItemKey.isEmpty()))) {
             Cinemarr.LOGGER.info("Acceptance video action unavailable: operation={} state={}", operation, state == null ? "missing" : state.status());
             return;
         }
@@ -169,14 +211,21 @@ public final class CinemarrClientState {
             return;
         }
         VideoPackets.SessionAction action;
-        long seek = state.positionMs();
+        long seek = CinemarrVideoPlayback.authoritativePositionMsLocal(state);
         int audio = state.selectedAudioStreamId(), subtitle = state.selectedSubtitleStreamId();
         if ("video:pause".equals(operation)) action = VideoPackets.SessionAction.PAUSE;
         else if ("video:resume".equals(operation)) action = VideoPackets.SessionAction.RESUME;
+        else if ("video:queue-current".equals(operation)) action = VideoPackets.SessionAction.QUEUE;
+        else if ("video:stop".equals(operation)) action = VideoPackets.SessionAction.STOP;
+        else if ("video:replay".equals(operation)) { action = VideoPackets.SessionAction.PLAY; seek = 0; }
+        else if ("video:seek-near-end".equals(operation)) {
+            action = VideoPackets.SessionAction.SEEK;
+            seek = Math.max(0, state.durationMs() - 12_000);
+        }
         else if ("video:seek-forward".equals(operation)) {
             action = VideoPackets.SessionAction.SEEK;
             long maximum = state.durationMs() > 5_000 ? state.durationMs() - 5_000 : state.durationMs();
-            seek = Math.max(0, Math.min(maximum, state.positionMs() + 15_000));
+            seek = Math.max(0, Math.min(maximum, seek + 15_000));
         } else if ("video:cycle-stream".equals(operation)) {
             action = VideoPackets.SessionAction.SET_STREAMS;
             boolean changed = false;
@@ -197,7 +246,7 @@ public final class CinemarrClientState {
         Cinemarr.LOGGER.info("Acceptance video action: {} generation={} positionMs={} targetMs={} audio={} subtitle={}",
                 action, state.generation(), state.positionMs(), seek, audio, subtitle);
         CinemarrVideoClientState.INSTANCE.command(new VideoPackets.SessionCommand(action, state.controllerPos(),
-                acceptanceVideoLibraryId, state.item().key(), "", state.presentationMode(), state.generation(), seek, audio, subtitle));
+                acceptanceVideoLibraryId, state.item() == null ? acceptanceVideoLastItemKey : state.item().key(), "", state.presentationMode(), state.generation(), seek, audio, subtitle));
     }
 
     private void inspectAcceptanceCommands() {

@@ -1,5 +1,7 @@
 package stonytark.cinemarr.core.network;
 
+import stonytark.cinemarr.core.protocol.ProtocolLimits;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -8,7 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /** Process-wide required-client hello ownership shared by non-Fabric adapters. */
 public final class RequiredClientGate {
-    private static final long TIMEOUT_MS = 5_000L;
+    private static final long TIMEOUT_MS = ProtocolLimits.CLIENT_HELLO_TIMEOUT_MS;
     private static final Map<UUID,Long> pending = new ConcurrentHashMap<UUID,Long>();
     private static final Map<UUID,Boolean> accepted = new ConcurrentHashMap<UUID,Boolean>();
 

@@ -39,4 +39,18 @@ class HelloGateTest {
         gate.remove("accepted");
         assertFalse(gate.accepted("accepted"));
     }
+
+    @Test void oldConnectionCannotAcceptOrRemoveItsReplacementHandshake() {
+        HelloGate<Object> gate = new HelloGate<>(30_000);
+        Object previous = new Object(), replacement = new Object();
+        gate.require(previous, 1_000); assertTrue(gate.accept(previous));
+        gate.remove(previous); gate.require(replacement, 2_000);
+        assertFalse(gate.accept(previous));
+        assertFalse(gate.accepted(previous));
+        assertTrue(gate.accept(replacement));
+        assertFalse(gate.accept(replacement), "Duplicate hello must not publish another server hello/session");
+        gate.remove(previous);
+        assertTrue(gate.accepted(replacement));
+        assertTrue(gate.expire(100_000).isEmpty());
+    }
 }

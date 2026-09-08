@@ -15,6 +15,10 @@ import stonytark.cinemarr.core.platform.CinemarrSettings;
 import stonytark.cinemarr.core.protocol.VideoPackets;
 import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.core.video.PresentationMode;
+import stonytark.cinemarr.core.client.VideoControllerLayout;
+import stonytark.cinemarr.core.client.VideoControllerLayout.Box;
+import stonytark.cinemarr.core.client.VideoControllerLayout.Slot;
+import stonytark.cinemarr.core.client.VideoControllerFeedback;
 import stonytark.cinemarr.Cinemarr;
 
 import java.util.ArrayDeque;
@@ -25,6 +29,7 @@ import java.util.List;
 /** Controller-specific movie/show browser and synchronized TV controls for Forge 1.7.10. */
 final class LegacyVideoScreen extends GuiScreen {
     private static final int SEARCH = 1, BACK = 2, REFRESH = 3, TOGGLE_QUEUE = 4;
+    private static final int PREVIOUS_PAGE=5, NEXT_PAGE=6, PAGE_LABEL=7, LIBRARY_PREVIOUS=8, LIBRARY_NEXT=9, VOLUME_LABEL=26;
     private static final int PAUSE = 10, SEEK_BACK = 11, SEEK_FORWARD = 12, STOP = 13, SKIP = 14,
             FIT = 15, FILL = 16, STRETCH = 17, SCREEN = 18, VOLUME_DOWN = 19, VOLUME_UP = 20,
             TUNE = 21, AUDIO = 22, SUBTITLES = 23, CONTINUE = 24, CLEAR_QUEUE = 25;
@@ -33,8 +38,11 @@ final class LegacyVideoScreen extends GuiScreen {
     private final LegacyVideoClientState state;
     private final Deque<String> parents = new ArrayDeque<String>();
     private final List<VideoMediaItem> displayed = new ArrayList<VideoMediaItem>();
-    private String libraryId = "", parentKey = "", query = "", notice = "";
-    private int page, rowOffset;
+    private final java.util.Map<GuiButton,String> tooltips=new java.util.IdentityHashMap<GuiButton,String>();
+    private String libraryId = "", parentKey = "", query = "";
+    private final VideoControllerFeedback feedback = new VideoControllerFeedback();
+    private int page, rowOffset, libraryPage;
+    private VideoControllerLayout layout;
     private boolean queueView;
     private GuiTextField search;
     private GuiTextField sessionName;
@@ -43,32 +51,39 @@ final class LegacyVideoScreen extends GuiScreen {
     LegacyVideoScreen(long controllerPos, LegacyVideoClientState state) { this.controllerPos = controllerPos; this.state = state; }
 
     @Override public void initGui() {
+        VideoPackets.SessionState authoritative=state.session(controllerPos);
+        feedback.updateServerMessage(authoritative==null?"":authoritative.message());
         LegacyTextFieldState previousSearch=search==null?null:LegacyTextFieldState.capture(search);
         LegacyTextFieldState previousSession=sessionName==null?null:LegacyTextFieldState.capture(sessionName);
-        Keyboard.enableRepeatEvents(true); buttonList.clear(); displayed.clear();
-        int panel = Math.min(760, width - 16), left = (width - panel) / 2, top = 36;
-        List<VideoPackets.LibrarySummary> libraries = state.libraries().libraries(); int libraryWidth = Math.max(80, panel / Math.max(1, libraries.size()));
-        int x = left;
-        for (int index = 0; index < libraries.size(); index++) {
-            VideoPackets.LibrarySummary library = libraries.get(index); int actual = Math.min(libraryWidth, left + panel - x);
-            GuiButton button = add(LIBRARY_BASE + index, x, top, Math.max(20, actual - 2), 20, library.displayName());
-            button.enabled = !library.id().equals(libraryId); x += actual;
+        Keyboard.enableRepeatEvents(true); buttonList.clear(); displayed.clear();tooltips.clear();
+        layout=new VideoControllerLayout(width,height);
+        int panel=layout.panel(),left=layout.left(),top=layout.contentTop();
+        List<VideoPackets.LibrarySummary> libraries = state.libraries().libraries();
+        libraryPage=Math.max(0,Math.min(libraryPage,layout.libraryPages(libraries.size())-1));
+        control(LIBRARY_PREVIOUS,Slot.LIBRARY_PREVIOUS,"<").enabled=libraryPage>0;
+        control(LIBRARY_NEXT,Slot.LIBRARY_NEXT,">").enabled=libraryPage+1<layout.libraryPages(libraries.size());
+        for (int slot=0;slot<layout.libraryCapacity();slot++) {
+            int index=libraryPage*layout.libraryCapacity()+slot;if(index>=libraries.size())break;
+            VideoPackets.LibrarySummary library=libraries.get(index);Box box=layout.library(slot);
+            GuiButton button=add(LIBRARY_BASE+index,box.x,box.y,box.width,box.height,library.displayName());
+            button.enabled = !library.id().equals(libraryId);
         }
-        top += 26; search = new GuiTextField(fontRendererObj, left, top, panel - 266, 20); search.setMaxStringLength(128);if(previousSearch==null)search.setText(query);else previousSearch.restore(search);
-        add(SEARCH, left + panel - 262, top, 54, 20, "Search"); GuiButton back = add(BACK, left + panel - 204, top, 60, 20, "Back");
+        Box searchBox=layout.slot(Slot.SEARCH);search=new GuiTextField(fontRendererObj,searchBox.x,searchBox.y,searchBox.width,searchBox.height);search.setMaxStringLength(128);if(previousSearch==null)search.setText(query);else previousSearch.restore(search);
+        control(SEARCH,Slot.GO,"Go");GuiButton back=control(BACK,Slot.BACK,"Back");
         back.enabled = !parents.isEmpty() && !queueView;
-        add(queueView ? CLEAR_QUEUE : REFRESH, left + panel - 140, top, 64, 20, queueView ? "Clear" : "Refresh");
-        add(TOGGLE_QUEUE, left + panel - 72, top, 72, 20, queueView ? "Browse" : "Queue");
-        top += 28; if (queueView) addQueueRows(left, top, panel); else addBrowseRows(left, top, panel);
-        addControls(left, panel);
+        control(queueView?CLEAR_QUEUE:REFRESH,Slot.REFRESH,queueView?"Clear":"Refresh");
+        control(TOGGLE_QUEUE,Slot.QUEUE,queueView?"Browse":"Queue");
+        if (queueView) addQueueRows(left, top, panel); else addBrowseRows(left, top, panel);
+        addControls();
         if(previousSession!=null)previousSession.restore(sessionName);
         inspectAcceptanceLayout();
     }
 
     private void addBrowseRows(int left, int top, int panel) {
         VideoPackets.BrowseResults results = state.browse();
-        if (!results.libraryId().equals(libraryId) || !results.parentKey().equals(parentKey)) return;
-        int rows = Math.max(1, (height - top - 86) / 22); rowOffset = Math.max(0, Math.min(rowOffset, Math.max(0, results.items().size() - rows)));
+        if (!results.libraryId().equals(libraryId) || !results.parentKey().equals(parentKey)
+                || !results.query().equals(query) || results.page()!=page) return;
+        int rows = layout.rows(false); rowOffset = Math.max(0, Math.min(rowOffset, Math.max(0, results.items().size() - rows)));
         for (int row = 0; row < rows && row + rowOffset < results.items().size(); row++) {
             VideoMediaItem item = results.items().get(row + rowOffset); displayed.add(item); int y = top + row * 22;
             boolean playable = item.kind() == MediaKind.MOVIE || item.kind() == MediaKind.EPISODE;
@@ -78,10 +93,14 @@ final class LegacyVideoScreen extends GuiScreen {
             if (playable) { add(PLAY_BASE + row, left + panel - actions, y, 50, 20, "Play"); add(QUEUE_BASE + row, left + panel - 50, y, 50, 20, "+ Queue"); }
             else add(OPEN_BASE + row, left + panel - actions, y, actions, 20, "Browse");
         }
+        int pagerY=layout.pagerY();
+        add(PREVIOUS_PAGE,left,pagerY,60,20,"< Prev").enabled=page>0;
+        add(PAGE_LABEL,left+64,pagerY,72,20,"Page "+(page+1)).enabled=false;
+        add(NEXT_PAGE,left+140,pagerY,60,20,"Next >").enabled=results.hasMore();
     }
 
     private void addQueueRows(int left, int top, int panel) {
-        List<QueuedVideo> queue = state.queue(controllerPos); int rows = Math.max(1, (height - top - 86) / 22);
+        List<QueuedVideo> queue = state.queue(controllerPos); int rows = layout.rows(true);
         rowOffset = Math.max(0, Math.min(rowOffset, Math.max(0, queue.size() - rows)));
         for (int row = 0; row < rows && row + rowOffset < queue.size(); row++) {
             int index = row + rowOffset, y = top + row * 22; QueuedVideo entry = queue.get(index);
@@ -90,26 +109,29 @@ final class LegacyVideoScreen extends GuiScreen {
         }
     }
 
-    private void addControls(int left, int panel) {
-        VideoPackets.SessionState playback = state.session(controllerPos); long generation = playback == null ? 0 : playback.generation();
-        int y = height - 50; boolean paused = playback != null && playback.paused();
-        add(PAUSE, left, y, 66, 20, paused ? "Resume" : "Pause"); add(SEEK_BACK, left + 70, y, 48, 20, "-30s");
-        add(SEEK_FORWARD, left + 122, y, 48, 20, "+30s"); add(STOP, left + 174, y, 48, 20, "Stop"); add(SKIP, left + 226, y, 44, 20, "Skip");
-        PresentationMode mode = mode(); add(FIT, left + 274, y, 44, 20, "Fit").enabled = mode != PresentationMode.FIT;
-        add(FILL, left + 322, y, 44, 20, "Fill").enabled = mode != PresentationMode.FILL;
-        add(STRETCH, left + 370, y, 58, 20, "Stretch").enabled = mode != PresentationMode.STRETCH;
-        add(SCREEN, left + panel - 84, y, 84, 20, CinemarrSettings.enabled() ? "Screen on" : "Screen off");
-        if (playback != null && playback.item() != null) {
-            int streamY = y - 24; add(AUDIO, left, streamY, 170, 20, "Audio: " + streamLabel(playback, VideoStreamOption.Kind.AUDIO, playback.selectedAudioStreamId(), "default"));
-            add(SUBTITLES, left + 174, streamY, 170, 20, "Subs: " + streamLabel(playback, VideoStreamOption.Kind.SUBTITLE, playback.selectedSubtitleStreamId(), "off"));
-            if (playback.item().kind() == MediaKind.EPISODE) add(CONTINUE, left + 348, streamY, 70, 20, "Next Ep");
+    private void addControls() {
+        VideoPackets.SessionState playback=state.session(controllerPos);
+        boolean paused=playback!=null&&playback.paused();
+        control(PAUSE,Slot.PAUSE,paused?"Resume":"Pause");control(SEEK_BACK,Slot.SEEK_BACK,"-30s");
+        control(SEEK_FORWARD,Slot.SEEK_FORWARD,"+30s");control(STOP,Slot.STOP,"Stop");control(SKIP,Slot.SKIP,"Skip");
+        PresentationMode mode=mode();control(FIT,Slot.FIT,"Fit").enabled=mode!=PresentationMode.FIT;
+        control(FILL,Slot.FILL,"Fill").enabled=mode!=PresentationMode.FILL;
+        control(STRETCH,Slot.STRETCH,"Stretch").enabled=mode!=PresentationMode.STRETCH;
+        control(SCREEN,Slot.SCREEN,CinemarrSettings.enabled()?"Screen on":"Screen off");
+        if(playback!=null&&playback.item()!=null){
+            control(AUDIO,Slot.AUDIO,"Audio: "+streamLabel(playback,VideoStreamOption.Kind.AUDIO,playback.selectedAudioStreamId(),"default"));
+            control(SUBTITLES,Slot.SUBTITLES,"Subs: "+streamLabel(playback,VideoStreamOption.Kind.SUBTITLE,playback.selectedSubtitleStreamId(),"off"));
+            if(playback.item().kind()==MediaKind.EPISODE)control(CONTINUE,Slot.CONTINUE,"Next Ep");
         }
-        int bottom = height - 26; sessionName = new GuiTextField(fontRendererObj, left, bottom, 180, 20); sessionName.setMaxStringLength(64);
-        add(TUNE, left + 184, bottom, 48, 20, "Tune"); add(VOLUME_DOWN, left + 240, bottom, 48, 20, "Vol -");
-        add(VOLUME_UP, left + 292, bottom, 70, 20, "Vol + " + (int) Math.round(CinemarrSettings.volume() * 100) + "%");
+        Box box=layout.slot(Slot.SESSION);sessionName=new GuiTextField(fontRendererObj,box.x,box.y,box.width,box.height);sessionName.setMaxStringLength(64);
+        control(TUNE,Slot.TUNE,"Tune");control(VOLUME_DOWN,Slot.VOLUME_DOWN,"Vol -");
+        control(VOLUME_LABEL,Slot.VOLUME,(int)Math.round(CinemarrSettings.volume()*100)+"%").enabled=false;
+        control(VOLUME_UP,Slot.VOLUME_UP,"Vol +");
     }
 
-    private GuiButton add(int id, int x, int y, int width, int height, String label) { GuiButton button = new GuiButton(id, x, y, width, height, label); buttonList.add(button); return button; }
+    private GuiButton control(int id,Slot slot,String label){Box box=layout.slot(slot);return add(id,box.x,box.y,box.width,box.height,label);}
+
+    private GuiButton add(int id, int x, int y, int width, int height, String label) { String display=trim(label,width-8);GuiButton button = new LegacyVideoButton(id, x, y, width, height, display); buttonList.add(button);if(!display.equals(label))tooltips.put(button,label);return button; }
 
     @Override protected void actionPerformed(GuiButton button) {
         if (!button.enabled) return;
@@ -118,7 +140,11 @@ final class LegacyVideoScreen extends GuiScreen {
         if (button.id >= PLAY_BASE && button.id < QUEUE_BASE) { int row = button.id - PLAY_BASE; if (row < displayed.size()) play(displayed.get(row)); return; }
         if (button.id >= QUEUE_BASE && button.id < REMOVE_BASE) { int row = button.id - QUEUE_BASE; if (row < displayed.size()) queue(displayed.get(row)); return; }
         if (button.id >= REMOVE_BASE) { removeQueue(rowOffset + button.id - REMOVE_BASE); return; }
-        if (button.id == SEARCH) { query = search.getText().trim(); page = rowOffset = 0; request(); }
+        if(button.id==LIBRARY_PREVIOUS){libraryPage--;initGui();}
+        else if(button.id==LIBRARY_NEXT){libraryPage++;initGui();}
+        else if(button.id==PREVIOUS_PAGE){page=Math.max(0,page-1);rowOffset=0;request();}
+        else if(button.id==NEXT_PAGE){if(state.browse().page()==page&&state.browse().hasMore()){page++;rowOffset=0;request();}}
+        else if (button.id == SEARCH) { queueView=false;query = search.getText().trim(); page = rowOffset = 0; request(); }
         else if (button.id == BACK) { if (!parents.isEmpty()) { parentKey = parents.pop(); query = "";if(search!=null)search.setText(query); page = rowOffset = 0; request(); } }
         else if (button.id == REFRESH) request();
         else if (button.id == TOGGLE_QUEUE) { queueView = !queueView; rowOffset = 0; initGui(); }
@@ -137,8 +163,8 @@ final class LegacyVideoScreen extends GuiScreen {
     }
 
     private void activate(VideoMediaItem item) { if (item.kind() == MediaKind.SHOW || item.kind() == MediaKind.SEASON) { parents.push(parentKey); parentKey = item.key(); query = "";if(search!=null)search.setText(query); page = rowOffset = 0; request(); } else play(item); }
-    private void play(VideoMediaItem item) { command(VideoPackets.SessionAction.PLAY, item.key(), 0, mode(), generation(), "", -1, -1); notice = "Starting " + item.title(); }
-    private void queue(VideoMediaItem item) { command(VideoPackets.SessionAction.QUEUE, item.key(), 0, mode(), generation(), "", -1, -1); notice = "Queued " + item.title(); }
+    private void play(VideoMediaItem item) { command(VideoPackets.SessionAction.PLAY, item.key(), 0, mode(), generation(), "", -1, -1, "Play requested: " + item.title()); }
+    private void queue(VideoMediaItem item) { command(VideoPackets.SessionAction.QUEUE, item.key(), 0, mode(), generation(), "", -1, -1, "Queue requested: " + item.title()); }
     private void removeQueue(int index) { command(VideoPackets.SessionAction.REMOVE_QUEUE, "", index, mode(), generation(), "", -1, -1); }
     private void seek(long delta) { command(VideoPackets.SessionAction.SEEK, "", Math.max(0, position() + delta), mode(), generation(), "", -1, -1); }
     private void cycleStream(VideoStreamOption.Kind kind) {
@@ -148,16 +174,24 @@ final class LegacyVideoScreen extends GuiScreen {
         if (kind == VideoStreamOption.Kind.SUBTITLE && current < 0) next = options.get(0).id();
         else { int index = -1; for (int value = 0; value < options.size(); value++) if (options.get(value).id() == current) { index = value; break; }
             next = index + 1 < options.size() ? options.get(index + 1).id() : kind == VideoStreamOption.Kind.SUBTITLE ? -1 : options.get(0).id(); }
-        command(VideoPackets.SessionAction.SET_STREAMS, playback.item().key(), playback.positionMs(), playback.presentationMode(), playback.generation(), "",
+        command(VideoPackets.SessionAction.SET_STREAMS, playback.item().key(), position(), playback.presentationMode(), playback.generation(), "",
                 kind == VideoStreamOption.Kind.AUDIO ? next : playback.selectedAudioStreamId(), kind == VideoStreamOption.Kind.SUBTITLE ? next : playback.selectedSubtitleStreamId());
     }
     private void command(VideoPackets.SessionAction action, String item, long seek, PresentationMode mode, long generation, String session, int audio, int subtitle) {
-        state.command(new VideoPackets.SessionCommand(action, controllerPos, libraryId, item, session, mode, generation, seek, audio, subtitle));
+        command(action,item,seek,mode,generation,session,audio,subtitle,"");
     }
+    private void command(VideoPackets.SessionAction action, String item, long seek, PresentationMode mode, long generation, String session, int audio, int subtitle, String pending) {
+        VideoPackets.SessionState current=state.session(controllerPos);boolean canControl=current==null||current.canControl();
+        boolean dispatched=feedback.request(canControl,action==VideoPackets.SessionAction.TUNE,pending,
+                ()->state.command(new VideoPackets.SessionCommand(action,controllerPos,libraryId,item,session,mode,generation,seek,audio,subtitle)));
+        if(ProtocolLimits.videoProbeEnabled())Cinemarr.LOGGER.info("Acceptance video widget command: action={} dispatched={} canControl={}",action,dispatched,canControl);
+        initGui();
+    }
+    void showError(String message){feedback.error(message);if(mc!=null)initGui();if(ProtocolLimits.videoProbeEnabled())Cinemarr.LOGGER.info("Acceptance video controller error displayed");}
     private void selectLibrary(String id) { libraryId = id; parents.clear(); parentKey = query = "";if(search!=null)search.setText(query); page = rowOffset = 0; request(); }
-    private void request() { if (!libraryId.isEmpty()) state.browse(libraryId, parentKey, query, page); }
+    private void request() { if (!libraryId.isEmpty()) {state.browse(libraryId, parentKey, query, page);initGui();} }
     private boolean paused() { VideoPackets.SessionState value = state.session(controllerPos); return value != null && value.paused(); }
-    private long position() { VideoPackets.SessionState value = state.session(controllerPos); return value == null ? 0 : value.positionMs(); }
+    private long position() { VideoPackets.SessionState value = state.session(controllerPos); return value == null ? 0 : LegacyVideoPlayback.authoritativePositionMs(value,LegacyClientState.INSTANCE.serverEpoch(System.currentTimeMillis())); }
     private long generation() { VideoPackets.SessionState value = state.session(controllerPos); return value == null ? 0 : value.generation(); }
     private PresentationMode mode() { VideoPackets.SessionState value = state.session(controllerPos); return value == null ? PresentationMode.FIT : value.presentationMode(); }
     private static String streamLabel(VideoPackets.SessionState playback, VideoStreamOption.Kind kind, int id, String fallback) { for (VideoStreamOption option : playback.streams()) if (option.kind() == kind && option.id() == id) return option.label(); return fallback; }
@@ -172,29 +206,33 @@ final class LegacyVideoScreen extends GuiScreen {
     @Override protected void mouseClicked(int mouseX, int mouseY, int button) { super.mouseClicked(mouseX, mouseY, button); if (search != null) search.mouseClicked(mouseX, mouseY, button); if (sessionName != null) sessionName.mouseClicked(mouseX, mouseY, button); }
     @Override public void handleMouseInput() { super.handleMouseInput(); int wheel = Mouse.getEventDWheel(); if (wheel != 0) { rowOffset = Math.max(0, rowOffset + (wheel < 0 ? 1 : -1)); initGui(); } }
     @Override public void drawScreen(int mouseX, int mouseY, float partialTicks) {
-        drawDefaultBackground(); drawCenteredString(fontRendererObj, "Cinemarr - Plex Video", width / 2, 10, 0xffffff);
+        drawDefaultBackground(); drawCenteredString(fontRendererObj, "Cinemarr - Plex Video", width / 2, 6, 0xffffffff);
         VideoPackets.SessionState playback = state.session(controllerPos); String now = playback == null ? "No TV state" : playback.status().name().toLowerCase(java.util.Locale.ROOT)
-                + (playback.item() == null ? "" : ": " + playback.item().title() + " " + time(playback.positionMs()) + "/" + time(playback.durationMs()));
-        drawCenteredString(fontRendererObj, trim(now, width - 20), width / 2, 23, 0xa0d8ff);
+                + (playback.item() == null ? "" : ": " + playback.item().title() + " " + time(position()) + "/" + time(playback.durationMs()));
+        drawCenteredString(fontRendererObj, trim(now, width - 20), width / 2, 18, 0xffa0d8ff);
         super.drawScreen(mouseX, mouseY, partialTicks); if (search != null) search.drawTextBox(); if (sessionName != null) sessionName.drawTextBox();
-        if (!notice.isEmpty()) drawCenteredString(fontRendererObj, trim(notice, width - 20), width / 2, height - 64, 0xffb36b);
+        String notice=feedback.message();if (!notice.isEmpty()) drawCenteredString(fontRendererObj, trim(notice, width - 20), width / 2, layout.noticeY(), 0xffffb36b);
+        for(java.util.Map.Entry<GuiButton,String> entry:tooltips.entrySet()){
+            GuiButton button=entry.getKey();
+            if(mouseX>=button.xPosition&&mouseX<button.xPosition+button.width&&mouseY>=button.yPosition&&mouseY<button.yPosition+button.height)
+                drawHoveringText(fontRendererObj.listFormattedStringToWidth(entry.getValue(),Math.max(100,width-40)),mouseX,mouseY,fontRendererObj);
+        }
         saveAcceptanceScreenshot();
     }
     private void inspectAcceptanceLayout() {
-        if (!ProtocolLimits.videoProbeEnabled()) return;
-        int widgets = 0, clipped = 0;
-        for (Object value : buttonList) if (value instanceof GuiButton) {
-            GuiButton button = (GuiButton) value; widgets++;
-            if (button.xPosition < 0 || button.yPosition < 0 || button.xPosition + button.width > width
-                    || button.yPosition + button.height > height) clipped++;
+        if(!ProtocolLimits.videoProbeEnabled())return;
+        List<Box> boxes=new ArrayList<Box>();
+        for(Object value:buttonList)if(value instanceof GuiButton){GuiButton button=(GuiButton)value;boxes.add(new Box(button.xPosition,button.yPosition,button.width,button.height));}
+        if(search!=null)boxes.add(layout.slot(Slot.SEARCH));
+        if(sessionName!=null)boxes.add(layout.slot(Slot.SESSION));
+        int clipped=0,overlaps=0;
+        for(int i=0;i<boxes.size();i++){
+            if(!boxes.get(i).fits(width,height))clipped++;
+            for(int j=0;j<i;j++)if(boxes.get(i).overlaps(boxes.get(j)))overlaps++;
         }
-        if (search != null) widgets++;
-        if (sessionName != null) widgets++;
-        VideoPackets.SessionState playback = state.session(controllerPos);
-        boolean control = playback != null && playback.canControl();
-        Cinemarr.LOGGER.info("Acceptance video UI: width={} height={} widgets={} clipped={} canControl={}",
-                width, height, widgets, clipped, control);
-        acceptanceScreenshotPending = true;
+        VideoPackets.SessionState playback=state.session(controllerPos);boolean control=playback!=null&&playback.canControl();
+        Cinemarr.LOGGER.info("Acceptance video UI: width={} height={} widgets={} clipped={} canControl={} overlaps={}",width,height,boxes.size(),clipped,control,overlaps);
+        acceptanceScreenshotPending=true;
     }
     private void saveAcceptanceScreenshot() {
         if (!acceptanceScreenshotPending || mc == null) return;

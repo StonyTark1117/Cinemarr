@@ -69,9 +69,18 @@ class LegacyVideoTimelineTest {
     }
 
     @Test
-    void legacyTransportDefersSegmentsOutsideTheClientPrefetchWindow() {
-        assertTrue(LegacyVideoClientState.StreamState.withinPrefetchLead(16_000L, 10_000L));
-        assertFalse(LegacyVideoClientState.StreamState.withinPrefetchLead(16_001L, 10_000L));
+    void legacyTransportKeepsMultipleRealPlexSegmentsAheadOfDecodeJitter() {
+        assertTrue(LegacyVideoClientState.StreamState.withinPrefetchLead(30_000L, 10_000L),
+                "an eight-second HLS segment plus a slow decode must not exhaust the audio runway");
+        assertFalse(LegacyVideoClientState.StreamState.withinPrefetchLead(30_001L, 10_000L));
+    }
+
+    @Test
+    void legacyDecodeQueueRetainsTenSecondJitterRunwayWithoutRemovingTheByteCeiling() {
+        assertTrue(LegacyVideoPlayback.allowsDecodedVideoBatch(15, 191L * 1024L * 1024L));
+        assertFalse(LegacyVideoPlayback.allowsDecodedVideoBatch(16, 0L));
+        assertFalse(LegacyVideoPlayback.allowsDecodedVideoBatch(0, 192L * 1024L * 1024L));
+        assertFalse(LegacyVideoPlayback.allowsDecodedVideoBatch(-1, 0L));
     }
 
     private static VideoPackets.SessionState state(boolean paused, long position, long epoch) {

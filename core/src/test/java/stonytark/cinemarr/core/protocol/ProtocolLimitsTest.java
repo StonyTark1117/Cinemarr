@@ -6,7 +6,59 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class ProtocolLimitsTest {
+    @Test void browsePressureRequiresAllOptInsAndNeverRunsOnLeader() {
+        System.setProperty("cinemarr.acceptance.browsePressureProbe", "true");
+        assertEquals(false, ProtocolLimits.browsePressureProbeEnabled());
+        System.setProperty(ProtocolLimits.ACCEPTANCE_ENABLED_PROPERTY, "true");
+        assertEquals(false, ProtocolLimits.browsePressureProbeEnabled());
+        System.setProperty(ProtocolLimits.ACCEPTANCE_VIDEO_PROBE_PROPERTY, "true");
+        assertEquals(true, ProtocolLimits.browsePressureProbeEnabled());
+        System.setProperty(ProtocolLimits.ACCEPTANCE_VIDEO_LEADER_PROPERTY, "true");
+        assertEquals(false, ProtocolLimits.browsePressureProbeEnabled());
+    }
+    @Test void worldChangeCommandRequiresExplicitVideoModeOperatorAndExactTestTarget() {
+        System.setProperty("cinemarr.acceptance.worldChangeProbe", "true");
+        assertEquals(false, ProtocolLimits.worldChangeProbeAllows("CinemarrVideoB", -1, true));
+        System.setProperty(ProtocolLimits.ACCEPTANCE_ENABLED_PROPERTY, "true");
+        assertEquals(false, ProtocolLimits.worldChangeProbeAllows("CinemarrVideoB", -1, true));
+        System.setProperty(ProtocolLimits.ACCEPTANCE_VIDEO_PROBE_PROPERTY, "true");
+        assertEquals(true, ProtocolLimits.worldChangeProbeAllows("CinemarrVideoB", -1, true));
+        assertEquals(true, ProtocolLimits.worldChangeProbeAllows("CinemarrVideoB", 0, true));
+        assertEquals(false, ProtocolLimits.worldChangeProbeAllows("CinemarrVideoB", 1, true));
+        assertEquals(false, ProtocolLimits.worldChangeProbeAllows("CinemarrVideoA", -1, true));
+        assertEquals(false, ProtocolLimits.worldChangeProbeAllows("ordinaryPlayer", -1, true));
+        assertEquals(false, ProtocolLimits.worldChangeProbeAllows("CinemarrVideoB", -1, false));
+    }
+    @Test void videoProbeRejectsDeadPlayersAndObscuringScreens() {
+        assertEquals(true, ProtocolLimits.videoProbeViewReady(true, false));
+        assertEquals(false, ProtocolLimits.videoProbeViewReady(false, false));
+        assertEquals(false, ProtocolLimits.videoProbeViewReady(true, true));
+        assertEquals(false, ProtocolLimits.videoProbeViewReady(false, true));
+    }
+
+    @Test void videoProbeCamerasStayDistinctWhenFirstArrivalReconnects() {
+        // B arrives first, A second, then B disconnects and rejoins. The old
+        // player-list-index camera put both participants at +1.5 after rejoin.
+        double firstB = ProtocolLimits.videoProbeCameraX("CinemarrVideoB");
+        double nextA = ProtocolLimits.videoProbeCameraX("CinemarrVideoA");
+        double rejoinedB = ProtocolLimits.videoProbeCameraX("CinemarrVideoB");
+        assertEquals(1.5D, firstB);
+        assertEquals(-1.5D, nextA);
+        assertEquals(firstB, rejoinedB);
+        assertEquals(3.0D, rejoinedB - nextA);
+    }
+
+    @Test void videoProbeCamerasDoNotDependOnWhichParticipantArrivesFirst() {
+        assertEquals(-1.5D, ProtocolLimits.videoProbeCameraX("CinemarrVideoA"));
+        assertEquals(1.5D, ProtocolLimits.videoProbeCameraX("CinemarrVideoB"));
+        assertEquals(-1.5D, ProtocolLimits.videoProbeCameraX("CinemarrVideoA"));
+    }
+
     @AfterEach void clearAcceptanceProperties() {
+        System.clearProperty("cinemarr.acceptance.browsePressureProbe");
+        System.clearProperty(ProtocolLimits.ACCEPTANCE_VIDEO_LEADER_PROPERTY);
+        System.clearProperty("cinemarr.acceptance.worldChangeProbe");
+        System.clearProperty(ProtocolLimits.ACCEPTANCE_VIDEO_PROBE_PROPERTY);
         System.clearProperty(ProtocolLimits.ACCEPTANCE_ENABLED_PROPERTY);
         System.clearProperty(ProtocolLimits.ACCEPTANCE_CLIENT_PROTOCOL_PROPERTY);
         System.clearProperty(ProtocolLimits.ACCEPTANCE_SUPPRESS_HELLO_PROPERTY);

@@ -6,6 +6,7 @@ import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicLong;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -105,11 +106,57 @@ final class VideoPcmAudioStreamTest {
         assertTrue(stream.prependSilenceFor(1_000));
 
         ByteBuffer value = stream.read(6);
+        assertEquals(1_000, stream.prependedSilenceUs());
+        assertEquals(3_000, stream.totalReadUs());
         assertEquals(0, value.get());
         assertEquals(0, value.get());
         assertEquals(1, value.get());
         assertEquals(2, value.get());
         assertEquals(3, value.get());
         assertEquals(4, value.get());
+    }
+
+    @Test
+    void timestampGapBecomesSilenceInsteadOfAdvancingProgramPhase() {
+        VideoPcmAudioStream stream = new VideoPcmAudioStream(1_000, 1);
+        assertTrue(stream.offer(new DecodedAudioFrame(0, 1_000, 1, new byte[]{1, 2, 3, 4})));
+        assertTrue(stream.offer(new DecodedAudioFrame(5_000, 1_000, 1, new byte[]{5, 6, 7, 8})));
+
+        ByteBuffer value = stream.read(14);
+        byte[] actual = new byte[value.remaining()];
+        value.get(actual);
+        assertArrayEquals(new byte[]{1, 2, 3, 4, 0, 0, 0, 0, 0, 0, 5, 6, 7, 8}, actual);
+        assertEquals(3, stream.timelineGapMs());
+    }
+
+    @Test
+    void timestampOverlapIsTrimmedInsteadOfRepeatingProgramAudio() {
+        VideoPcmAudioStream stream = new VideoPcmAudioStream(1_000, 1);
+        assertTrue(stream.offer(new DecodedAudioFrame(0, 1_000, 1,
+                new byte[]{1, 2, 3, 4, 5, 6, 7, 8})));
+        assertTrue(stream.offer(new DecodedAudioFrame(2_000, 1_000, 1,
+                new byte[]{9, 10, 11, 12, 13, 14, 15, 16})));
+
+        ByteBuffer value = stream.read(12);
+        byte[] actual = new byte[value.remaining()];
+        value.get(actual);
+        assertArrayEquals(new byte[]{1, 2, 3, 4, 5, 6, 7, 8, 13, 14, 15, 16}, actual);
+        assertEquals(2, stream.timelineTrimmedMs());
+    }
+
+    @Test
+    void lateOutOfOrderFrameCannotRewindProgramPhase() {
+        VideoPcmAudioStream stream = new VideoPcmAudioStream(1_000, 1);
+        assertTrue(stream.offer(new DecodedAudioFrame(0, 1_000, 1,
+                new byte[]{1, 2, 3, 4, 5, 6, 7, 8})));
+        assertTrue(stream.offer(new DecodedAudioFrame(1_000, 1_000, 1,
+                new byte[]{9, 10, 11, 12})));
+        assertTrue(stream.offer(new DecodedAudioFrame(4_000, 1_000, 1,
+                new byte[]{13, 14, 15, 16})));
+
+        ByteBuffer value = stream.read(12);
+        byte[] actual = new byte[value.remaining()];
+        value.get(actual);
+        assertArrayEquals(new byte[]{1, 2, 3, 4, 5, 6, 7, 8, 13, 14, 15, 16}, actual);
     }
 }

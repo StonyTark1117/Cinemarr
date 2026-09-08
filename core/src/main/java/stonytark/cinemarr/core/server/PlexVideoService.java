@@ -78,7 +78,8 @@ public final class PlexVideoService {
                        int playerPermissionLevel) throws IOException {
         if (library == null) throw new IllegalArgumentException("library");
         int boundedSize = Math.max(1, Math.min(100, pageSize));
-        int start = Math.max(0, page) * boundedSize;
+        long start = (long) Math.max(0, page) * boundedSize;
+        if (start > Integer.MAX_VALUE) throw new IOException("Video browse page is out of range");
         String path;
         String query = "X-Plex-Container-Start=" + start + "&X-Plex-Container-Size=" + (boundedSize + 1);
         if (parentKey != null && !parentKey.trim().isEmpty()) path = "/library/metadata/" + encodePath(parentKey) + "/children";

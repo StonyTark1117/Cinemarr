@@ -35,7 +35,38 @@ public final class LegacyVideoCommands extends CommandBase {
         if("diagnostics".equals(action)){requireOperator(sender);reply(sender,Cinemarr.videoDiagnostics());return;}
         if("retry".equals(action)){requireOperator(sender);boolean started=Cinemarr.retryPlex();reply(sender,started?"Plex retry started":"Plex retry is not available");return;}
         if("tv".equals(action)){television(sender,arguments);return;}
+        if("acceptance-dimension".equals(action)){acceptanceDimension(sender,arguments);return;}
         throw new CommandException(getCommandUsage(sender));
+    }
+
+    private void acceptanceDimension(ICommandSender sender, String[] arguments) throws CommandException {
+        requireOperator(sender);
+        if (arguments.length != 2) throw new CommandException("Acceptance dimension requires -1 or 0");
+        int dimension;
+        try { dimension = Integer.parseInt(arguments[1]); }
+        catch (NumberFormatException failure) { throw new CommandException("Invalid acceptance dimension"); }
+        if (!stonytark.cinemarr.core.protocol.ProtocolLimits.worldChangeProbeAllows("CinemarrVideoB", dimension, isOperator(sender)))
+            throw new CommandException("World-change acceptance is not enabled for this operation");
+        EntityPlayerMP player = online("CinemarrVideoB");
+        if (player == null || player.dimension == dimension) throw new CommandException("Acceptance follower is absent or already in that dimension");
+        final net.minecraft.world.WorldServer destination = server.worldServerForDimension(dimension);
+        if (destination == null) throw new CommandException("Acceptance destination is unavailable");
+        // Only this explicit private test mode creates the small destination
+        // landing area; ordinary operator commands cannot enable it.
+        if (dimension == -1) for (int x=-3; x<=5; x++) for (int z=3; z<=11; z++) {
+            destination.setBlock(x,99,z,net.minecraft.init.Blocks.stone,0,3);
+            for (int y=100;y<=104;y++) destination.setBlockToAir(x,y,z);
+        }
+        final double cameraX = stonytark.cinemarr.core.protocol.ProtocolLimits.videoProbeCameraX("CinemarrVideoB");
+        int previous = player.dimension;
+        server.getConfigurationManager().transferPlayerToDimension(player,dimension,new net.minecraft.world.Teleporter(destination) {
+            @Override public void placeInPortal(net.minecraft.entity.Entity entity,double x,double y,double z,float yaw) {
+                entity.setLocationAndAngles(cameraX,100.0D,7.5D,180.0F,0.0F);
+                entity.motionX=entity.motionY=entity.motionZ=0;
+            }
+        });
+        player.playerNetServerHandler.setPlayerLocation(cameraX,100.0D,7.5D,180.0F,0.0F);
+        reply(sender,"Acceptance dimension transition: player=CinemarrVideoB from="+previous+" to="+dimension);
     }
 
     private void television(ICommandSender sender,String[] arguments)throws CommandException{

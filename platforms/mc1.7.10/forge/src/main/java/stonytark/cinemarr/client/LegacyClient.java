@@ -83,6 +83,8 @@ public final class LegacyClient {
         // Video reset owns OpenGL textures, so it must run on Minecraft's
         // client/render thread rather than Netty's disconnect callback.
         LegacyClientState.INSTANCE.stop();
+        if (ProtocolLimits.videoProbeEnabled())
+            Cinemarr.LOGGER.info("Acceptance client media reset complete");
     }
 
     @SubscribeEvent public void chat(ClientChatReceivedEvent event) {
@@ -96,6 +98,16 @@ public final class LegacyClient {
 
     @SubscribeEvent public void soundLoaded(SoundLoadEvent event) {
         LegacyVideoRuntime.INSTANCE.audioEngineReloaded();
+    }
+
+    @SubscribeEvent public void worldUnloaded(net.minecraftforge.event.world.WorldEvent.Unload event) {
+        Minecraft minecraft = Minecraft.getMinecraft();
+        // Minecraft.loadWorld posts this on the client thread before replacing
+        // the current WorldClient. Ignore integrated-server and stale worlds.
+        if (!event.world.isRemote || minecraft.theWorld != event.world) return;
+        LegacyClientState.INSTANCE.worldUnloaded();
+        if (ProtocolLimits.worldChangeProbeEnabled()) Cinemarr.LOGGER.info(
+                "Acceptance legacy world unloaded: dimension={}", event.world.provider.dimensionId);
     }
 
     @SubscribeEvent public void renderWorld(RenderWorldLastEvent event) {

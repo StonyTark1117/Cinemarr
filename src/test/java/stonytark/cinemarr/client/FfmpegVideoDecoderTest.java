@@ -13,6 +13,16 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.bytedeco.ffmpeg.global.avcodec.avcodec_license;
 
 final class FfmpegVideoDecoderTest {
+    @Test void cancelledDecodeDoesNotStartNativeWorkOrClearInterrupt() {
+        FfmpegVideoDecoder decoder = new FfmpegVideoDecoder();
+        byte[] fixture = DecoderProbeFixture.bytes();
+        Thread.currentThread().interrupt();
+        try {
+            assertThrows(java.util.concurrent.CancellationException.class, () -> decoder.decode(fixture));
+            assertTrue(Thread.currentThread().isInterrupted());
+        } finally { Thread.interrupted(); }
+    }
+
     @Test
     void decodesSyntheticH264AacTransportStreamWithDeterministicFirstFrame() throws Exception {
         String nativeLicense = avcodec_license().getString().toLowerCase(java.util.Locale.ROOT);

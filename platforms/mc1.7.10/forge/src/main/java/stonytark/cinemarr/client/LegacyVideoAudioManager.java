@@ -26,6 +26,7 @@ final class LegacyVideoAudioManager {
         for (LegacyVideoClientState.StreamKey key : new ArrayList<LegacyVideoClientState.StreamKey>(players.keySet())) if (!current.contains(key)) { players.remove(key).reset(); acceptanceReady.remove(key); }
     }
     boolean anyReady() { for (LegacyVideoAudio value : players.values()) if (value.ready()) return true; return false; }
+    int sourceCount() { return players.size(); }
     void audioEngineReloaded() { for (LegacyVideoAudio audio : players.values()) audio.audioEngineReloaded(); }
     void reset() { for (LegacyVideoAudio audio : players.values()) audio.reset(); players.clear(); acceptanceReady.clear(); }
 }

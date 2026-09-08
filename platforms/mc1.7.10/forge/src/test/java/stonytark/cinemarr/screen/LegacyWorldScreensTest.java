@@ -13,6 +13,47 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LegacyWorldScreensTest {
+    @Test void dimensionsHaveIndependentIndexesAtIdenticalCoordinates() {
+        net.minecraft.world.storage.MapStorage overworld = new net.minecraft.world.storage.MapStorage(null);
+        net.minecraft.world.storage.MapStorage nether = new net.minecraft.world.storage.MapStorage(null);
+        LegacyWorldScreens first = LegacyWorldScreens.loadDimension(overworld);
+        LegacyWorldScreens second = LegacyWorldScreens.loadDimension(nether);
+        org.junit.jupiter.api.Assertions.assertNotSame(first,second);
+        org.junit.jupiter.api.Assertions.assertSame(first,LegacyWorldScreens.loadDimension(overworld));
+        first.putPixel(0,0,0,ScreenFacing.NORTH);
+        NBTTagCompound firstTag=new NBTTagCompound(), secondTag=new NBTTagCompound();
+        first.writeToNBT(firstTag); second.writeToNBT(secondTag);
+        assertEquals(1,firstTag.getTagList("pixels",10).tagCount());
+        assertEquals(0,secondTag.getTagList("pixels",10).tagCount());
+        second.putPixel(0,0,0,ScreenFacing.SOUTH); second.writeToNBT(secondTag);
+        assertEquals("SOUTH",secondTag.getTagList("pixels",10).getCompoundTagAt(0).getString("facing"));
+        assertEquals("NORTH",firstTag.getTagList("pixels",10).getCompoundTagAt(0).getString("facing"));
+    }
+
+    @Test void oldOverworldEntriesAndOriginalRecoveryBytesArePreserved(@org.junit.jupiter.api.io.TempDir java.nio.file.Path directory) throws Exception {
+        LegacyWorldScreens old = new LegacyWorldScreens(); old.putPixel(2,3,4,ScreenFacing.WEST);
+        NBTTagCompound tag=new NBTTagCompound(); old.writeToNBT(tag); tag.removeTag("dimensionLocalStorage");
+        java.nio.file.Path source=directory.resolve("cinemarr_screens.dat");
+        try (java.io.OutputStream stream=java.nio.file.Files.newOutputStream(source)) {
+            net.minecraft.nbt.CompressedStreamTools.writeCompressed(tag,stream);
+        }
+        byte[] original=java.nio.file.Files.readAllBytes(source);
+        LegacyWorldScreens.preserveLegacySharedFile(source);
+        java.nio.file.Path backup=source.resolveSibling("cinemarr_screens.dat.before-dimension-isolation.bak");
+        assertArrayEquals(original,java.nio.file.Files.readAllBytes(source));
+        assertArrayEquals(original,java.nio.file.Files.readAllBytes(backup));
+        LegacyWorldScreens restored=new LegacyWorldScreens(); restored.readFromNBT(tag);
+        net.minecraft.world.storage.MapStorage storage=new net.minecraft.world.storage.MapStorage(null);
+        storage.setData(LegacyWorldScreens.DATA_NAME,restored);
+        org.junit.jupiter.api.Assertions.assertSame(restored,LegacyWorldScreens.loadDimension(storage));
+        NBTTagCompound saved=new NBTTagCompound(); restored.writeToNBT(saved);
+        assertEquals(1,saved.getTagList("pixels",10).tagCount());
+        assertEquals("WEST",saved.getTagList("pixels",10).getCompoundTagAt(0).getString("facing"));
+        java.nio.file.Files.write(source,new byte[]{1,2,3});
+        LegacyWorldScreens.preserveLegacySharedFile(source);
+        assertArrayEquals(original,java.nio.file.Files.readAllBytes(backup));
+    }
+
     @Test
     void activatesPersistsAndInvalidatesAnArbitraryScreen() {
         LegacyWorldScreens screens = new LegacyWorldScreens();

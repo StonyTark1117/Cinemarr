@@ -54,6 +54,7 @@ public class LegacyEnvelope implements IMessage {
     }
 
     public int messageId() { return messageId; }
+    public int payloadLength() { return payload.length; }
     public byte[] payload() { return payload.clone(); }
 
     @Override

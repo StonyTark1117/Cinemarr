@@ -12,6 +12,14 @@ public final class ProtocolLimits {
     public static final String ACCEPTANCE_VIDEO_PROBE_PROPERTY = "cinemarr.acceptance.videoProbe";
     public static final String ACCEPTANCE_VIDEO_LEADER_PROPERTY = "cinemarr.acceptance.videoLeader";
     public static final String ACCEPTANCE_LIFECYCLE_PROBE_PROPERTY = "cinemarr.acceptance.lifecycleProbe";
+    /**
+     * Keep the required-client handshake bounded without ejecting a valid
+     * client whose main thread is briefly occupied by a cold loader/audio
+     * startup. Five seconds proved too short for a real Quilt reconnect while
+     * an active video session was being synchronized.
+     */
+    public static final long CLIENT_HELLO_TIMEOUT_MS = 30_000L;
+    public static final long CLIENT_HELLO_TIMEOUT_TICKS = CLIENT_HELLO_TIMEOUT_MS / 50L;
     public static final int MAX_BROWSE_RESULTS = 50;
     public static final int MAX_STATION_SEEDS = 5;
     public static final int MAX_PLAYBACK_ENTRIES = 504;
@@ -25,7 +33,14 @@ public final class ProtocolLimits {
     public static final int MAX_SCREEN_MASK_BYTES = 8_192;
     public static final int MAX_VIDEO_CHUNK_BYTES = 16_384;
     public static final long MAX_VIDEO_SEGMENT_LEAD_MS = 30_000L;
-    public static final long CLIENT_VIDEO_PREFETCH_LEAD_MS = 6_000L;
+    /**
+     * Keep multiple real-Plex HLS segments in flight ahead of playback. Plex
+     * commonly emits roughly eight-second segments, and a cold legacy FFmpeg
+     * decode can occasionally take longer than the old six-second window. A
+     * twenty-second lead leaves room for transfer plus decode jitter while
+     * remaining below the server's thirty-second anti-abuse bound.
+     */
+    public static final long CLIENT_VIDEO_PREFETCH_LEAD_MS = 20_000L;
 
     /**
      * Returns the protocol advertised by a real client during release acceptance.
@@ -81,6 +96,41 @@ public final class ProtocolLimits {
 
     public static boolean videoProbeLeader() {
         return videoProbeEnabled() && Boolean.getBoolean(ACCEPTANCE_VIDEO_LEADER_PROPERTY);
+    }
+
+    public static boolean worldChangeProbeEnabled() {
+        return videoProbeEnabled() && Boolean.getBoolean("cinemarr.acceptance.worldChangeProbe");
+    }
+
+    public static boolean browsePressureProbeEnabled() {
+        return videoProbeEnabled() && !videoProbeLeader()
+                && Boolean.getBoolean("cinemarr.acceptance.browsePressureProbe");
+    }
+
+    public static boolean segmentPressurePeerEnabled() {
+        return videoProbeEnabled() && !videoProbeLeader()
+                && Boolean.getBoolean("cinemarr.acceptance.segmentPressurePeer");
+    }
+
+    public static boolean worldChangeProbeAllows(String playerName, int dimension, boolean operator) {
+        return worldChangeProbeEnabled() && operator && "CinemarrVideoB".equals(playerName)
+                && (dimension == -1 || dimension == 0);
+    }
+
+    /**
+     * Give the two named acceptance viewers fixed, distinct camera positions.
+     * A player-list index changes when the first arrival reconnects and can
+     * put both cameras inside the same avatar, obscuring otherwise drawn video.
+     * Only the opt-in acceptance world setup calls this helper.
+     */
+    public static double videoProbeCameraX(String playerName) {
+        if ("CinemarrVideoC".equals(playerName)) return 8.5D;
+        return "CinemarrVideoB".equals(playerName) ? 1.5D : -1.5D;
+    }
+
+    /** Decoded video behind a death screen or another GUI is not visual acceptance. */
+    public static boolean videoProbeViewReady(boolean playerAlive, boolean screenOpen) {
+        return playerAlive && !screenOpen;
     }
 
     /** Enables deterministic interruption and recovery of a production Quick TV build. */

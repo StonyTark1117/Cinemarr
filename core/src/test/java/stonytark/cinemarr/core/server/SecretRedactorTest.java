@@ -3,9 +3,17 @@ package stonytark.cinemarr.core.server;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SecretRedactorTest {
+    @Test void typedOverloadAndShutdownKeepActionableMessagesThroughNestedCauses() {
+        Throwable details = new java.util.concurrent.RejectedExecutionException("executor implementation details");
+        assertEquals("Cinemarr background work queue is full; retry shortly", SecretRedactor.message(
+                new java.util.concurrent.CompletionException(new BoundedWorkExecutor.WorkQueueFullException("full", details))));
+        assertEquals("Cinemarr is stopping; reconnect after the server is ready", SecretRedactor.message(
+                new RuntimeException(new BoundedWorkExecutor.WorkExecutorClosedException("closed", details))));
+    }
     @Test void redactsPlainAndEncodedTokens() {
         String secret = "a+b/c=";
         String redacted = SecretRedactor.redact("url?X-Plex-Token=a%2Bb%2Fc%3D and " + secret, secret);

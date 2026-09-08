@@ -70,6 +70,6 @@ public final class VideoSegmentAssembler {
         private final long presentationTimeMs; private final boolean keyframe; private final byte[] data; private final String sha256;
         CompletedSegment(UUID sessionId,long generation,int segmentIndex,long presentationTimeMs,boolean keyframe,byte[] data,String sha256){this.sessionId=sessionId;this.generation=generation;this.segmentIndex=segmentIndex;this.presentationTimeMs=presentationTimeMs;this.keyframe=keyframe;this.data=data;this.sha256=sha256;}
         public UUID sessionId(){return sessionId;} public long generation(){return generation;} public int segmentIndex(){return segmentIndex;}
-        public long presentationTimeMs(){return presentationTimeMs;} public boolean keyframe(){return keyframe;} public byte[] data(){return Arrays.copyOf(data,data.length);} public String sha256(){return sha256;}
+        public long presentationTimeMs(){return presentationTimeMs;} public boolean keyframe(){return keyframe;} public int byteLength(){return data.length;} public byte[] data(){return Arrays.copyOf(data,data.length);} public String sha256(){return sha256;}
     }
 }

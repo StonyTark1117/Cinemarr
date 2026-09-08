@@ -23,6 +23,11 @@ final class VideoPcmAudioStream implements AudioStream {
     private long silenceDeadlineNanos = Long.MIN_VALUE;
     private long scheduledSilenceUs;
     private long scheduledSkipBytes;
+    private long nextPresentationTimeUs = Long.MIN_VALUE;
+    private long totalReadBytes;
+    private long prependedSilenceBytes;
+    private long timelineGapBytes;
+    private long timelineTrimmedBytes;
 
     VideoPcmAudioStream(int sampleRate, int channels) {
         this(sampleRate, channels, System::nanoTime);
@@ -41,16 +46,33 @@ final class VideoPcmAudioStream implements AudioStream {
         if (closed || frame.sampleRate() != (int) format.getSampleRate() || frame.channels() != format.getChannels()
                 || bufferedMs() >= MAX_BUFFERED_MS) return false;
         int frameSize = format.getFrameSize();
-        long skippedSamples = Math.max(0L, minimumPresentationTimeUs - frame.presentationTimeUs())
+        long timelineUs = nextPresentationTimeUs == Long.MIN_VALUE
+                ? minimumPresentationTimeUs : nextPresentationTimeUs;
+        long gapUs = Math.max(0L, frame.presentationTimeUs() - timelineUs);
+        long skippedSamples = Math.max(0L, timelineUs - frame.presentationTimeUs())
                 * frame.sampleRate() / 1_000_000L;
         int offset = (int) Math.min(frame.byteLength(), skippedSamples * frameSize);
         offset -= offset % frameSize;
+        long overlapBytes = offset;
+        long catchUp = 0L;
         if (scheduledSkipBytes > 0) {
-            long catchUp = Math.min(frame.byteLength() - offset, scheduledSkipBytes);
+            catchUp = Math.min(frame.byteLength() - offset, scheduledSkipBytes);
             catchUp -= catchUp % frameSize;
             offset += (int) catchUp;
-            scheduledSkipBytes -= catchUp;
         }
+        long gapBytes = bytesForDurationUs(gapUs);
+        long payloadBytes = frame.byteLength() - offset;
+        long maximumBytes = MAX_BUFFERED_MS * (long) format.getSampleRate() * format.getFrameSize() / 1_000L;
+        if (bufferedBytes + gapBytes + payloadBytes > maximumBytes) return false;
+        scheduledSkipBytes -= catchUp;
+        timelineGapBytes += gapBytes;
+        timelineTrimmedBytes += overlapBytes;
+        if (gapBytes > 0) {
+            queue.add(new byte[(int) gapBytes]);
+            bufferedBytes += gapBytes;
+        }
+        long frameEndUs = frame.presentationTimeUs() + durationUsForBytes(frame.byteLength());
+        nextPresentationTimeUs = Math.max(timelineUs, frameEndUs);
         if (offset >= frame.byteLength()) return true;
         byte[] source = frame.pcmView();
         byte[] pcm = new byte[source.length - offset];
@@ -76,6 +98,7 @@ final class VideoPcmAudioStream implements AudioStream {
         if (bytes > 0) {
             queue.addFirst(new byte[(int) bytes]);
             bufferedBytes += bytes;
+            prependedSilenceBytes += bytes;
         }
         starving = false;
         return true;
@@ -133,12 +156,22 @@ final class VideoPcmAudioStream implements AudioStream {
             output.put(current, offset, count); offset += count; bufferedBytes -= count;
             if (offset == current.length) { current = null; offset = 0; }
         }
-        output.flip(); return output.hasRemaining() ? output : null;
+        output.flip();
+        totalReadBytes += output.remaining();
+        return output.hasRemaining() ? output : null;
     }
 
     synchronized int starvations() { return starvations; }
 
     synchronized long scheduledSilenceUs() { return scheduledSilenceUs; }
+
+    synchronized long totalReadUs() { return durationUsForBytes(totalReadBytes); }
+
+    synchronized long prependedSilenceUs() { return durationUsForBytes(prependedSilenceBytes); }
+
+    synchronized long timelineGapMs() { return durationUsForBytes(timelineGapBytes) / 1_000L; }
+
+    synchronized long timelineTrimmedMs() { return durationUsForBytes(timelineTrimmedBytes) / 1_000L; }
 
     static long physicalBoundaryDelayUs(long scheduledSilenceUs, long playedUs, long outputLatencyUs) {
         return Math.max(0L, scheduledSilenceUs - Math.max(0L, playedUs)) + Math.max(0L, outputLatencyUs);
@@ -177,5 +210,6 @@ final class VideoPcmAudioStream implements AudioStream {
 
     @Override public synchronized void close() {
         closed = true; queue.clear(); current = null; bufferedBytes = 0; scheduledSkipBytes = 0;
+        nextPresentationTimeUs = Long.MIN_VALUE;
     }
 }

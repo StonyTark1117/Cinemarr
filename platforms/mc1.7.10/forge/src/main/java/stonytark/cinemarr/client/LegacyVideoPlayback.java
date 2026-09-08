@@ -26,7 +26,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /** Bounded Java-8 FFmpeg pipeline with generation-safe client-thread delivery. */
 final class LegacyVideoPlayback implements AutoCloseable {
     private static final int MAX_DECODE_JOBS = 2;
-    private static final int MAX_DECODED_VIDEO_BATCHES = 8;
+    // One-second HLS segments need enough completed decode batches to ride out
+    // the same ten-second decoder jitter covered by the transport's prefetch
+    // window. The byte ceiling below remains the controlling bound for larger
+    // resolutions and longer real-Plex segments.
+    private static final int MAX_DECODED_VIDEO_BATCHES = 16;
     private static final long MAX_QUEUED_VIDEO_BYTES = 192L * 1024L * 1024L;
     private static final int MAX_AUDIO_FRAMES = 128;
     private final BoundedWorkExecutor executor =
@@ -43,8 +47,10 @@ final class LegacyVideoPlayback implements AutoCloseable {
     private final AtomicInteger pending = new AtomicInteger();
     private final AtomicBoolean decoderSelectionLogged = new AtomicBoolean();
     private final AtomicBoolean decoderFallbackLogged = new AtomicBoolean();
-    private final LegacyVideoTexture texture = new LegacyVideoTexture();
+    private final AtomicBoolean acceptanceDecodeStallInjected = new AtomicBoolean();
+    private LegacyVideoTexture texture = new LegacyVideoTexture();
     private UUID sessionId;
+    private String itemKey = "";
     private long generation = -1;
     private int decoderRecoveries;
     private int videoDrops;
@@ -58,6 +64,7 @@ final class LegacyVideoPlayback implements AutoCloseable {
     void tick(LegacyVideoClientState.StreamState stream) {
         VideoPackets.SessionState session = stream.session();
         if (session == null || session.status() == VideoPackets.SessionStatus.IDLE || session.status() == VideoPackets.SessionStatus.ERROR) { reset(); return; }
+        itemKey = session.item() == null ? "" : session.item().key();
         if (!session.sessionId().equals(sessionId) || session.generation() != generation) {
             resetQueues(); sessionId = session.sessionId(); generation = session.generation();
         }
@@ -93,10 +100,28 @@ final class LegacyVideoPlayback implements AutoCloseable {
         audioInputExhausted = stream.inputExhausted() && pending.get() == 0 && decoded.isEmpty() && audio.isEmpty();
     }
 
+    boolean retainPausedFrameFrom(LegacyVideoPlayback previous, VideoPackets.SessionState next) {
+        if (texture.ready() || !previous.texture.ready()
+                || !stonytark.cinemarr.core.client.PausedFrameRetention.permits(
+                        previous.sessionId, previous.generation, previous.itemKey, next)) return false;
+        // Move only the GPU texture. The old pipeline still owns its jobs and
+        // audio queues and is closed normally when its last stream disappears.
+        texture.close();
+        texture = previous.texture;
+        previous.texture = new LegacyVideoTexture();
+        lastPresentedUs = previous.lastPresentedUs;
+        lastFrameSha256 = previous.lastFrameSha256;
+        if (ProtocolLimits.videoProbeEnabled()) Cinemarr.LOGGER.info(
+                "Acceptance paused frame retained: generation={} frameSha256={} ptsUs={}",
+                next.generation(), lastFrameSha256, lastPresentedUs);
+        return true;
+    }
+
     private void submit(final VideoSegmentAssembler.CompletedSegment segment) {
         pending.incrementAndGet();
         executor.run(() -> {
             try {
+                injectAcceptanceDecodeStall();
                 LegacyDecodedMediaSegment result = decoder.decode(segment.data()); long first = earliestTimestamp(result);
                 logDecoderSelection();
                 long offset = segment.presentationTimeMs() * 1_000L - first;
@@ -111,6 +136,21 @@ final class LegacyVideoPlayback implements AutoCloseable {
                 decoderRecoveries++; Cinemarr.LOGGER.warn("Cinemarr rejected legacy video segment {}: {}", segment.segmentIndex(), failure.toString());
             }
         }).whenComplete((unused, failure) -> pending.decrementAndGet());
+    }
+
+    private void injectAcceptanceDecodeStall() throws InterruptedException {
+        // Wait until the transport has had enough time to fill the expanded
+        // lead window. Injecting during initial startup tests the small PCM
+        // runway instead of whether completed compressed segments cover a
+        // later decoder stall.
+        if (!ProtocolLimits.videoProbeEnabled() || decoder.decodedSegments() < 30L
+                || acceptanceDecodeStallInjected.get()) return;
+        int requestedMs = Integer.getInteger("cinemarr.acceptance.legacyDecodeStallMs", 0);
+        int delayMs = Math.max(0, Math.min(15_000, requestedMs));
+        if (delayMs == 0 || !acceptanceDecodeStallInjected.compareAndSet(false, true)) return;
+        Cinemarr.LOGGER.info("Acceptance legacy decoder stall injected: afterSegments={} delayMs={}",
+                decoder.decodedSegments(), delayMs);
+        Thread.sleep(delayMs);
     }
 
     private void logDecoderSelection() {
@@ -145,8 +185,13 @@ final class LegacyVideoPlayback implements AutoCloseable {
     boolean audioInputExhausted() { return audioInputExhausted; }
 
     private boolean canBufferAnotherVideoBatch() {
-        return decoded.size() + videoBatches.size() < MAX_DECODED_VIDEO_BATCHES
-                && queuedVideoBytes < MAX_QUEUED_VIDEO_BYTES;
+        return allowsDecodedVideoBatch(decoded.size() + videoBatches.size(), queuedVideoBytes);
+    }
+
+    static boolean allowsDecodedVideoBatch(int retainedBatches, long retainedBytes) {
+        return retainedBatches >= 0 && retainedBytes >= 0L
+                && retainedBatches < MAX_DECODED_VIDEO_BATCHES
+                && retainedBytes < MAX_QUEUED_VIDEO_BYTES;
     }
 
     private static long videoBytes(List<LegacyDecodedVideoFrame> frames) {
@@ -183,7 +228,7 @@ final class LegacyVideoPlayback implements AutoCloseable {
         if (lastPresentedUs == 0L) return 0L;
         return Math.max(-30_000L, Math.min(30_000L, (lastPresentedUs - targetUs) / 1_000L));
     }
-    void reset() { sessionId = null; generation = -1; lastPresentedUs = lastHealthMs = 0; lastFrameSha256 = ""; caughtUp = false; audioInputExhausted = false; resetQueues(); texture.close(); }
+    void reset() { sessionId = null; itemKey = ""; generation = -1; lastPresentedUs = lastHealthMs = 0; lastFrameSha256 = ""; caughtUp = false; audioInputExhausted = false; resetQueues(); texture.close(); }
     private void resetQueues() { decoded.clear(); videoBatches.clear(); video.clear(); audio.clear(); queuedVideoBytes = 0L; }
     @Override public void close() { reset(); executor.close(); }
 

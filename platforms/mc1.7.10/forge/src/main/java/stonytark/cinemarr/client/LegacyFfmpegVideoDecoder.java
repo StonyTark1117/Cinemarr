@@ -4,6 +4,7 @@ import org.bytedeco.javacv.FFmpegFrameGrabber;
 import org.bytedeco.javacv.Frame;
 import org.bytedeco.javacv.FrameGrabber;
 import stonytark.cinemarr.core.platform.DecoderProbeFixture;
+import stonytark.cinemarr.core.client.DecodedBufferBudget;
 import stonytark.cinemarr.core.platform.VideoDecoderBackend;
 import stonytark.cinemarr.core.server.BoundedWorkExecutor;
 
@@ -82,6 +83,7 @@ public final class LegacyFfmpegVideoDecoder implements LegacyMediaSegmentDecoder
                         decoded.peakRetainedBytes);
                 return result;
             } catch (FfmpegHardwareVideoDecoder.HardwareDecoderException | RuntimeException | LinkageError failure) {
+                DecodedBufferBudget.checkCancelled();
                 effectiveBackend = VideoDecoderBackend.SOFTWARE;
                 fallbackReason = sanitize(failure.getMessage());
                 fallbackCount++;
@@ -95,6 +97,7 @@ public final class LegacyFfmpegVideoDecoder implements LegacyMediaSegmentDecoder
     private LegacyDecodedMediaSegment decodeSoftware(byte[] mpegTs) throws FrameGrabber.Exception {
         BoundedVideoFrames video = new BoundedVideoFrames(MAX_RETAINED_VIDEO_BYTES);
         List<LegacyDecodedAudioFrame> audio = new ArrayList<LegacyDecodedAudioFrame>();
+        DecodedBufferBudget audioBudget = new DecodedBufferBudget();
         FFmpegFrameGrabber grabber = new FFmpegFrameGrabber(new ByteArrayInputStream(mpegTs), 0);
         try {
             grabber.setFormat("mpegts");
@@ -102,30 +105,33 @@ public final class LegacyFfmpegVideoDecoder implements LegacyMediaSegmentDecoder
             grabber.setSampleFormat(AV_SAMPLE_FMT_S16);
             grabber.start();
             Frame frame;
-            while ((frame = grabber.grab()) != null) {
+            while (nextFrameAllowed() && (frame = grabber.grab()) != null) {
                 long timestamp = Math.max(0L, frame.timestamp);
                 if (frame.image != null && frame.image.length != 0) video.add(videoFrame(frame, timestamp));
                 if (frame.samples != null && frame.samples.length != 0) {
-                    audio.add(audioFrame(frame, timestamp, grabber.getSampleRate(), grabber.getAudioChannels()));
+                    audio.add(audioFrame(frame, timestamp, grabber.getSampleRate(), grabber.getAudioChannels(), audioBudget));
                 }
             }
         } finally {
             try { grabber.close(); } catch (FrameGrabber.Exception ignored) { }
         }
+        DecodedBufferBudget.checkCancelled();
         peakRetainedBytes = Math.max(peakRetainedBytes, video.peakBytes);
         return new LegacyDecodedMediaSegment(video.frames, audio);
     }
 
     private List<LegacyDecodedAudioFrame> decodeAudio(byte[] mpegTs) throws FrameGrabber.Exception {
         List<LegacyDecodedAudioFrame> audio = new ArrayList<LegacyDecodedAudioFrame>();
+        DecodedBufferBudget audioBudget = new DecodedBufferBudget();
         FFmpegFrameGrabber grabber = new FFmpegFrameGrabber(new ByteArrayInputStream(mpegTs), 0);
         try {
             grabber.setFormat("mpegts"); grabber.setSampleFormat(AV_SAMPLE_FMT_S16); grabber.start();
             Frame frame;
-            while ((frame = grabber.grabSamples()) != null) if (frame.samples != null && frame.samples.length != 0) {
-                audio.add(audioFrame(frame, Math.max(0L, frame.timestamp), grabber.getSampleRate(), grabber.getAudioChannels()));
+            while (nextFrameAllowed() && (frame = grabber.grabSamples()) != null) if (frame.samples != null && frame.samples.length != 0) {
+                audio.add(audioFrame(frame, Math.max(0L, frame.timestamp), grabber.getSampleRate(), grabber.getAudioChannels(), audioBudget));
             }
         } finally { try { grabber.close(); } catch (FrameGrabber.Exception ignored) { } }
+        DecodedBufferBudget.checkCancelled();
         return audio;
     }
 
@@ -134,11 +140,17 @@ public final class LegacyFfmpegVideoDecoder implements LegacyMediaSegmentDecoder
         FfmpegHardwareVideoDecoder.HardwareDecoderException last = null;
         for (VideoDecoderBackend backend : candidates()) {
             try {
-                String probeFailure = probe(backend).join();
+                DecodedBufferBudget.checkCancelled();
+                String probeFailure = probe(backend).get();
                 if (!probeFailure.isEmpty()) throw new FfmpegHardwareVideoDecoder.HardwareDecoderException(probeFailure);
                 FfmpegHardwareVideoDecoder.Result result = FfmpegHardwareVideoDecoder.decode(mpegTs, backend, requestedDevice);
                 effectiveBackend = backend;
                 return result;
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new java.util.concurrent.CancellationException("Video decode cancelled during hardware probe");
+            } catch (java.util.concurrent.ExecutionException failure) {
+                throw new FfmpegHardwareVideoDecoder.HardwareDecoderException("Hardware probe failed");
             } catch (FfmpegHardwareVideoDecoder.HardwareDecoderException failure) {
                 last = failure;
                 if (requestedBackend != VideoDecoderBackend.AUTO) break;
@@ -266,7 +278,13 @@ public final class LegacyFfmpegVideoDecoder implements LegacyMediaSegmentDecoder
         return bean.isCurrentThreadCpuTimeSupported() ? bean.getCurrentThreadCpuTime() : -1L;
     }
 
+    private static boolean nextFrameAllowed() {
+        DecodedBufferBudget.checkCancelled();
+        return true;
+    }
+
     private static void validate(byte[] mpegTs) {
+        DecodedBufferBudget.checkCancelled();
         if (mpegTs == null || mpegTs.length == 0 || mpegTs.length > MAX_SEGMENT_BYTES) {
             throw new IllegalArgumentException("Invalid MPEG-TS segment size");
         }
@@ -280,7 +298,7 @@ public final class LegacyFfmpegVideoDecoder implements LegacyMediaSegmentDecoder
         int width = frame.imageWidth;
         int height = frame.imageHeight;
         int stride = frame.imageStride;
-        byte[] rgba = new byte[Math.multiplyExact(Math.multiplyExact(width, height), 4)];
+        byte[] rgba = new byte[DecodedBufferBudget.rgbaBytes(width, height)];
         for (int y = 0; y < height; y++) {
             int row = y * stride;
             for (int x = 0; x < width; x++) {
@@ -292,16 +310,16 @@ public final class LegacyFfmpegVideoDecoder implements LegacyMediaSegmentDecoder
         return new LegacyDecodedVideoFrame(timestamp, width, height, rgba);
     }
 
-    private static LegacyDecodedAudioFrame audioFrame(Frame frame, long timestamp, int sampleRate, int channels) {
+    private static LegacyDecodedAudioFrame audioFrame(Frame frame, long timestamp, int sampleRate, int channels, DecodedBufferBudget budget) {
         if (channels < 1 || channels > 2) {
             throw new IllegalStateException("Unsupported FFmpeg audio channel count " + channels);
         }
-        int totalSamples = 0;
+        long totalSamples = 0;
         for (Buffer value : frame.samples) {
             if (!(value instanceof ShortBuffer)) throw new IllegalStateException("FFmpeg did not honor signed 16-bit output");
             totalSamples += value.remaining();
         }
-        ByteBuffer pcm = ByteBuffer.allocate(totalSamples * 2).order(ByteOrder.LITTLE_ENDIAN);
+        ByteBuffer pcm = ByteBuffer.allocate(budget.reservePcm16(totalSamples)).order(ByteOrder.LITTLE_ENDIAN);
         if (frame.samples.length == 1) {
             ShortBuffer source = ((ShortBuffer) frame.samples[0]).duplicate();
             while (source.hasRemaining()) pcm.putShort(source.get());

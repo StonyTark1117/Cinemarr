@@ -6,6 +6,22 @@ import org.junit.jupiter.api.Test;
 import stonytark.cinemarr.core.protocol.VideoPackets;
 
 final class TransferGrantRegistryTest {
+    @Test void disconnectedOwnershipIsVisibleEvenWhileOtherClientsKeepStreaming() {
+        TransferGrantRegistry registry = new TransferGrantRegistry(1_000);
+        UUID active = UUID.randomUUID(), departed = UUID.randomUUID();
+        VideoPackets.SegmentRequest request = request(UUID.randomUUID(), 1, 1, 0);
+        registry.tryAcquire(active, request, 0);
+        registry.tryAcquire(departed, request, 0);
+        assertEquals(1, registry.countOutside(java.util.Collections.singleton(active)));
+        registry.remove(departed);
+        assertEquals(0, registry.countOutside(java.util.Collections.singleton(active)));
+        assertEquals(1, registry.size(), "connected client's grant need not be idle");
+        registry.tryAcquire(departed, request, 1);
+        assertEquals(1, registry.countOutside(java.util.Collections.singleton(active)), "late resurrection is observable");
+        registry.clear();
+        assertEquals(0, registry.countOutside(java.util.Collections.<UUID>emptySet()));
+    }
+
     @Test void oneWindowPerClientAndInvalidAcknowledgementCannotStealIt() {
         TransferGrantRegistry registry = new TransferGrantRegistry(1_000);
         UUID client = UUID.randomUUID(), session = UUID.randomUUID();

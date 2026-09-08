@@ -12,5 +12,9 @@ final class CinemarrClientUi {
         if (Minecraft.getInstance().gui.screen() instanceof CinemarrVideoScreen screen) screen.stateChanged();
     }
 
+    static void showVideoError(String message) {
+        if (Minecraft.getInstance().gui.screen() instanceof CinemarrVideoScreen screen) screen.showError(message);
+    }
+
     private CinemarrClientUi() {}
 }

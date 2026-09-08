@@ -12,17 +12,16 @@ import cpw.mods.fml.common.network.simpleimpl.MessageContext;
 import cpw.mods.fml.common.network.simpleimpl.SimpleNetworkWrapper;
 import cpw.mods.fml.relauncher.Side;
 import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.network.NetworkManager;
+import net.minecraft.util.ChatComponentText;
+import stonytark.cinemarr.core.network.BoundedPacketInbox;
+import stonytark.cinemarr.core.network.HelloGate;
 import stonytark.cinemarr.Cinemarr;
 import stonytark.cinemarr.core.protocol.ProtocolException;
 import stonytark.cinemarr.core.protocol.ProtocolLimits;
 
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Queue;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentLinkedQueue;
 
 /** Forge 1.7.10 SimpleNetworkWrapper adapter for the television-only protocol 10. */
 public final class LegacyNetwork {
@@ -34,14 +33,18 @@ public final class LegacyNetwork {
         void accept(LegacyPacketTypes.Type<?> type, Object message);
     }
 
-    private static final long HELLO_TIMEOUT_MS = 5_000L;
+    private static final long HELLO_TIMEOUT_MS = ProtocolLimits.CLIENT_HELLO_TIMEOUT_MS;
     private static final SimpleNetworkWrapper CHANNEL = NetworkRegistry.INSTANCE.newSimpleChannel(Cinemarr.MOD_ID);
     private static final LegacyNetwork INSTANCE = new LegacyNetwork();
-    private static final Queue<ServerIncoming> SERVER_INBOX = new ConcurrentLinkedQueue<ServerIncoming>();
-    private static final Queue<ClientIncoming> CLIENT_INBOX = new ConcurrentLinkedQueue<ClientIncoming>();
+    private static final BoundedPacketInbox<NetworkManager, ServerIncoming> SERVER_INBOX =
+            new BoundedPacketInbox<>(512, 8L * 1024 * 1024, 64, 256L * 1024);
+    private static final BoundedPacketInbox<NetworkManager, ClientIncoming> CLIENT_INBOX =
+            new BoundedPacketInbox<>(1024, 16L * 1024 * 1024, 1024, 16L * 1024 * 1024);
+    private static final int MAX_INCOMING_PER_TICK = 128;
 
-    private final Map<UUID, LoginDeadline> deadlines = new HashMap<UUID, LoginDeadline>();
-    private final Set<UUID> confirmed = new HashSet<UUID>();
+    private final HelloGate<NetworkManager> helloGate = new HelloGate<>(HELLO_TIMEOUT_MS);
+    private final Map<NetworkManager, EntityPlayerMP> pendingPlayers = new HashMap<>();
+    private volatile NetworkManager clientConnection;
     private volatile ServerListener serverListener;
     private volatile ClientListener clientListener;
     private boolean registered;
@@ -71,14 +74,15 @@ public final class LegacyNetwork {
 
     /** Prevents tracking payloads from overtaking the protocol hello on login. */
     public static boolean serverHandshakeComplete(EntityPlayerMP player) {
-        return player != null && INSTANCE.confirmed.contains(player.getUniqueID());
+        return player != null && INSTANCE.helloGate.accepted(player.playerNetServerHandler.netManager);
     }
 
     public static synchronized void shutdown() {
         SERVER_INBOX.clear();
         CLIENT_INBOX.clear();
-        INSTANCE.deadlines.clear();
-        INSTANCE.confirmed.clear();
+        INSTANCE.helloGate.clear();
+        INSTANCE.pendingPlayers.clear();
+        INSTANCE.clientConnection = null;
         INSTANCE.serverListener = null;
         INSTANCE.clientListener = null;
     }
@@ -87,39 +91,42 @@ public final class LegacyNetwork {
     public void playerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
         if (!(event.player instanceof EntityPlayerMP)) return;
         EntityPlayerMP player = (EntityPlayerMP) event.player;
-        deadlines.put(player.getUniqueID(), new LoginDeadline(player, System.currentTimeMillis() + HELLO_TIMEOUT_MS));
+        NetworkManager connection = player.playerNetServerHandler.netManager;
+        helloGate.require(connection, System.currentTimeMillis());
+        pendingPlayers.put(connection, player);
     }
 
     @SubscribeEvent
     public void playerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
-        UUID playerId = event.player.getUniqueID();
-        deadlines.remove(playerId);
-        confirmed.remove(playerId);
+        if (!(event.player instanceof EntityPlayerMP)) return;
+        NetworkManager connection = ((EntityPlayerMP) event.player).playerNetServerHandler.netManager;
+        helloGate.remove(connection);
+        pendingPlayers.remove(connection);
+        SERVER_INBOX.remove(connection);
     }
 
     @SubscribeEvent
     public void clientConnected(FMLNetworkEvent.ClientConnectedToServerEvent event) {
         CLIENT_INBOX.clear();
+        clientConnection = event.manager;
     }
 
     @SubscribeEvent
     public void clientDisconnected(FMLNetworkEvent.ClientDisconnectionFromServerEvent event) {
-        CLIENT_INBOX.clear();
+        if (clientConnection == event.manager) clientConnection = null;
+        CLIENT_INBOX.remove(event.manager);
     }
 
     @SubscribeEvent
     public void serverTick(TickEvent.ServerTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
-        ServerIncoming incoming;
-        while ((incoming = SERVER_INBOX.poll()) != null) handleServer(incoming);
+        SERVER_INBOX.drain(MAX_INCOMING_PER_TICK, this::handleServer);
         long now = System.currentTimeMillis();
-        java.util.Iterator<Map.Entry<UUID, LoginDeadline>> iterator = deadlines.entrySet().iterator();
-        while (iterator.hasNext()) {
-            Map.Entry<UUID, LoginDeadline> entry = iterator.next();
-            if (entry.getValue().deadlineMs <= now) {
-                entry.getValue().player.playerNetServerHandler.kickPlayerFromServer(
+        for (NetworkManager connection : helloGate.expire(now)) {
+            EntityPlayerMP player = pendingPlayers.remove(connection);
+            if (player != null && connection.isChannelOpen()) {
+                player.playerNetServerHandler.kickPlayerFromServer(
                         "Cinemarr protocol handshake timed out; install the matching Forge 1.7.10 Cinemarr client");
-                iterator.remove();
             }
         }
     }
@@ -127,33 +134,35 @@ public final class LegacyNetwork {
     @SubscribeEvent
     public void clientTick(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
-        ClientIncoming incoming;
         ClientListener listener = clientListener;
-        while ((incoming = CLIENT_INBOX.poll()) != null) {
-            if (listener != null) listener.accept(incoming.type, incoming.message);
-        }
+        CLIENT_INBOX.drain(MAX_INCOMING_PER_TICK, incoming -> {
+            if (listener != null && incoming.connection == clientConnection && incoming.connection.isChannelOpen())
+                listener.accept(incoming.type, incoming.message);
+        });
     }
 
     private void handleServer(ServerIncoming incoming) {
         EntityPlayerMP player = incoming.player;
+        NetworkManager connection = player.playerNetServerHandler.netManager;
+        if (!connection.isChannelOpen()) return;
         if (incoming.type == LegacyPacketTypes.CLIENT_HELLO) {
             LegacyPacketTypes.ClientHello hello = (LegacyPacketTypes.ClientHello) incoming.message;
             if (!hello.valid()) {
                 player.playerNetServerHandler.kickPlayerFromServer(
                         "Cinemarr protocol mismatch: server requires protocol " + Cinemarr.PROTOCOL);
-                deadlines.remove(player.getUniqueID());
-                confirmed.remove(player.getUniqueID());
+                pendingPlayers.remove(connection);
+                helloGate.remove(connection);
                 return;
             }
-            deadlines.remove(player.getUniqueID());
-            confirmed.add(player.getUniqueID());
+            if (!helloGate.accept(connection)) return;
+            pendingPlayers.remove(connection);
             sendToPlayer(player, LegacyPacketTypes.SERVER_HELLO,
                     new LegacyPacketTypes.ServerHello(Cinemarr.PROTOCOL, System.currentTimeMillis()));
             ServerListener listener = serverListener;
             if (listener != null) listener.accept(player, incoming.type, incoming.message);
             return;
         }
-        if (!confirmed.contains(player.getUniqueID())) {
+        if (!helloGate.accepted(connection)) {
             player.playerNetServerHandler.kickPlayerFromServer("Cinemarr protocol hello is required before play packets");
             return;
         }
@@ -171,11 +180,16 @@ public final class LegacyNetwork {
         @Override
         public IMessage onMessage(LegacyServerboundEnvelope envelope, MessageContext context) {
             EntityPlayerMP player = context.getServerHandler().playerEntity;
+            NetworkManager connection = context.getServerHandler().netManager;
+            if (!connection.isChannelOpen()) return null;
             try {
-                SERVER_INBOX.add(new ServerIncoming(player, envelope.type(),
-                        envelope.decode(LegacyPacketTypes.Direction.SERVERBOUND)));
+                if (!SERVER_INBOX.offer(connection, new ServerIncoming(player, envelope.type(),
+                        envelope.decode(LegacyPacketTypes.Direction.SERVERBOUND)), envelope.payloadLength())) {
+                    SERVER_INBOX.remove(connection);
+                    connection.closeChannel(new ChatComponentText("Cinemarr incoming packet queue is full; reconnect after reducing request rate"));
+                }
             } catch (ProtocolException malformed) {
-                player.playerNetServerHandler.kickPlayerFromServer("Malformed Cinemarr packet: " + malformed.getMessage());
+                connection.closeChannel(new ChatComponentText("Malformed Cinemarr packet"));
             }
             return null;
         }
@@ -184,8 +198,17 @@ public final class LegacyNetwork {
     public static final class ClientboundHandler implements IMessageHandler<LegacyClientboundEnvelope, IMessage> {
         @Override
         public IMessage onMessage(LegacyClientboundEnvelope envelope, MessageContext context) {
-            CLIENT_INBOX.add(new ClientIncoming(envelope.type(),
-                    envelope.decode(LegacyPacketTypes.Direction.CLIENTBOUND)));
+            NetworkManager connection = context.getClientHandler().getNetworkManager();
+            if (connection != INSTANCE.clientConnection || !connection.isChannelOpen()) return null;
+            try {
+                if (!CLIENT_INBOX.offer(connection, new ClientIncoming(connection, envelope.type(),
+                        envelope.decode(LegacyPacketTypes.Direction.CLIENTBOUND)), envelope.payloadLength())) {
+                    CLIENT_INBOX.remove(connection);
+                    connection.closeChannel(new ChatComponentText("Cinemarr incoming media queue is full; reconnect to resume"));
+                }
+            } catch (ProtocolException malformed) {
+                connection.closeChannel(new ChatComponentText("Malformed Cinemarr packet"));
+            }
             return null;
         }
     }
@@ -202,21 +225,19 @@ public final class LegacyNetwork {
     }
 
     private static final class ClientIncoming {
+        private final NetworkManager connection;
         private final LegacyPacketTypes.Type<?> type;
         private final Object message;
-        private ClientIncoming(LegacyPacketTypes.Type<?> type, Object message) {
+        private ClientIncoming(NetworkManager connection, LegacyPacketTypes.Type<?> type, Object message) {
+            this.connection = connection;
             this.type = type;
             this.message = message;
         }
     }
 
-    private static final class LoginDeadline {
-        private final EntityPlayerMP player;
-        private final long deadlineMs;
-        private LoginDeadline(EntityPlayerMP player, long deadlineMs) {
-            this.player = player;
-            this.deadlineMs = deadlineMs;
-        }
+    public static String incomingDiagnostics() {
+        return "; inboxItems=" + SERVER_INBOX.size() + "; inboxBytes=" + SERVER_INBOX.retainedBytes()
+                + "; inboxPeers=" + SERVER_INBOX.owners() + "; inboxRejected=" + SERVER_INBOX.rejectedPackets();
     }
 
     private LegacyNetwork() {}

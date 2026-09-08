@@ -7,7 +7,17 @@ import java.net.URLEncoder;
 public final class SecretRedactor {
     public static String message(Throwable error, String... secrets) {
         Throwable value = error;
-        while (value.getCause() != null) value = value.getCause();
+        while (true) {
+            // These typed failures already describe the actionable boundary.
+            // Their executor causes contain implementation details, not a
+            // better user-facing diagnosis.
+            if (value instanceof BoundedWorkExecutor.WorkQueueFullException)
+                return "Cinemarr background work queue is full; retry shortly";
+            if (value instanceof BoundedWorkExecutor.WorkExecutorClosedException)
+                return "Cinemarr is stopping; reconnect after the server is ready";
+            if (value.getCause() == null) break;
+            value = value.getCause();
+        }
         String message = value.getMessage();
         if (blank(message)) message = value.getClass().getSimpleName();
         return redact(message, secrets);

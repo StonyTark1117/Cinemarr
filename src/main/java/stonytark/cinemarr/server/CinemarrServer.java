@@ -96,6 +96,7 @@ public final class CinemarrServer {
         CinemarrNetwork.sendToPlayer(sender, new CinemarrPayloads.ServerHello(
                 ProtocolLimits.VERSION, System.currentTimeMillis()));
         prepareAcceptanceVideo(sender);
+        if (videoManager != null) videoManager.synchronizeTrackingRadius(sender);
     }
     public PlexVideoService videoService() { return videoService; }
     public List<PlexVideoService.ResolvedLibrary> videoLibraries() { return videoLibraries; }
@@ -114,7 +115,7 @@ public final class CinemarrServer {
     public String videoDiagnostics(){return videoManager==null?"Plex="+plexState()+"; retryInMs="+(plexLifecycle==null?0:plexLifecycle.retryInMs(System.currentTimeMillis()))+"; lastFailure="+(plexLifecycle==null||plexLifecycle.lastFailure().isBlank()?"none":plexLifecycle.lastFailure())+"; registeredTvs="+TelevisionLifecycle.count()+"; libraries=0; activeStreams=0/"+CinemarrSettings.maximumConcurrentStreams():videoManager.diagnostics();}
     public boolean retryPlex(){return plexLifecycle!=null&&plexLifecycle.retry();}
     private String plexState(){return plexLifecycle==null?"disabled":plexLifecycle.state().name().toLowerCase(java.util.Locale.ROOT);}
-    private void installPlex(PlexConnectionLifecycle.Connection connection){videoService=connection.service();videoLibraries=connection.libraries();videoManager=new ServerVideoManager(server,videoService,videoLibraries,CinemarrVideoSavedData.get(server));Cinemarr.LOGGER.info("Validated {} allowed Plex video libraries{}",videoLibraries.size(),connection.requested()?" after manual retry":"");}
+    private void installPlex(PlexConnectionLifecycle.Connection connection){videoService=connection.service();videoLibraries=connection.libraries();videoManager=new ServerVideoManager(server,videoService,videoLibraries,CinemarrVideoSavedData.get(server), stonytark.cinemarr.core.network.RequiredClientGate::accepted);Cinemarr.LOGGER.info("Validated {} allowed Plex video libraries{}",videoLibraries.size(),connection.requested()?" after manual retry":"");}
 
     private void prepareAcceptanceVideo(ServerPlayer player) {
         if (!ProtocolLimits.videoProbeEnabled() || videoManager == null) return;
@@ -160,14 +161,10 @@ public final class CinemarrServer {
             for (int y = 100; y <= 109; y++) level.setBlockAndUpdate(new BlockPos(x, y, z), Blocks.AIR.defaultBlockState());
         }
         level.setDayTime(6000);
-        int playerIndex = Math.max(0, eventPlayerIndex(player));
-        double cameraX = (playerIndex & 1) == 0 ? -1.5 : 1.5;
+        double cameraX = stonytark.cinemarr.core.protocol.ProtocolLimits.videoProbeCameraX(player.getGameProfile().getName());
         player.teleportTo(level, cameraX, 100.0, 7.5, 180.0F, 0.0F);
         player.lookAt(EntityAnchorArgument.Anchor.EYES, Vec3.atCenterOf(new BlockPos(0, 104, 0)));
         videoManager.synchronizeTrackingRadius(player);
     }
 
-    private static int eventPlayerIndex(ServerPlayer player) {
-        return player.server.getPlayerList().getPlayers().indexOf(player);
-    }
 }

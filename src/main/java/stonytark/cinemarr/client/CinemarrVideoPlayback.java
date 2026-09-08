@@ -41,13 +41,15 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
     private final Queue<PendingVideoSegment> compressedVideo = new ArrayDeque<>();
     private final Queue<List<DecodedVideoFrame>> videoBatches = new ArrayDeque<>();
     private final PriorityQueue<DecodedVideoFrame> video = new PriorityQueue<>(Comparator.comparingLong(DecodedVideoFrame::presentationTimeUs));
-    private final Queue<DecodedAudioFrame> audio = new ArrayDeque<>();
+    private final Queue<DecodedAudioFrame> audio =
+            new PriorityQueue<>(Comparator.comparingLong(DecodedAudioFrame::presentationTimeUs));
     private final AtomicInteger pendingAudio = new AtomicInteger();
     private final AtomicInteger pendingVideo = new AtomicInteger();
     private final AtomicBoolean decoderSelectionLogged = new AtomicBoolean();
     private final AtomicBoolean decoderFallbackLogged = new AtomicBoolean();
-    private final CinemarrVideoTexture texture = new CinemarrVideoTexture();
+    private CinemarrVideoTexture texture = new CinemarrVideoTexture();
     private UUID sessionId;
+    private String itemKey = "";
     private long generation = -1;
     private final AtomicInteger decoderRecoveries = new AtomicInteger();
     private int videoDrops;
@@ -65,6 +67,7 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
             reset();
             return;
         }
+        itemKey = session.item() == null ? "" : session.item().key();
         if (!session.sessionId().equals(sessionId) || session.generation() != generation) {
             resetQueues();
             sessionId = session.sessionId();
@@ -111,6 +114,23 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
         caughtUp = lastPresentedUs > 0 && Math.abs(lastPresentedUs - targetUs) <= 250_000L;
         audioInputExhausted = state.inputExhausted() && pendingAudio.get() == 0
                 && decodedAudio.isEmpty() && audio.isEmpty();
+    }
+
+    boolean retainPausedFrameFrom(CinemarrVideoPlayback previous, VideoPackets.SessionState next) {
+        if (texture.ready() || !previous.texture.ready()
+                || !stonytark.cinemarr.core.client.PausedFrameRetention.permits(
+                        previous.sessionId, previous.generation, previous.itemKey, next)) return false;
+        // Move only the GPU texture. The old pipeline still owns its jobs and
+        // audio queues and is closed normally when its last stream disappears.
+        texture.close();
+        texture = previous.texture;
+        previous.texture = new CinemarrVideoTexture();
+        lastPresentedUs = previous.lastPresentedUs;
+        lastFrameSha256 = previous.lastFrameSha256;
+        if (ProtocolLimits.videoProbeEnabled()) Cinemarr.LOGGER.info(
+                "Acceptance paused frame retained: generation={} frameSha256={} ptsUs={}",
+                next.generation(), lastFrameSha256, lastPresentedUs);
+        return true;
     }
 
     private void submitAudio(VideoSegmentAssembler.CompletedSegment segment) {
@@ -229,7 +249,7 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
     }
 
     public void reset() {
-        sessionId = null;
+        sessionId = null; itemKey = "";
         generation = -1;
         lastPresentedUs = 0;
         lastFrameSha256 = "";

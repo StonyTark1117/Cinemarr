@@ -17,6 +17,16 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class LegacyFfmpegVideoDecoderTest {
+    @Test void cancelledDecodeDoesNotStartNativeWorkOrClearInterrupt() {
+        LegacyFfmpegVideoDecoder decoder = new LegacyFfmpegVideoDecoder();
+        byte[] fixture = DecoderProbeFixture.bytes();
+        Thread.currentThread().interrupt();
+        try {
+            org.junit.jupiter.api.Assertions.assertThrows(java.util.concurrent.CancellationException.class, () -> decoder.decode(fixture));
+            assertTrue(Thread.currentThread().isInterrupted());
+        } finally { Thread.interrupted(); }
+    }
+
     @Test
     void javaEightDecoderReadsSyntheticH264AacTransportStream() throws Exception {
         String nativeLicense = avcodec_license().getString().toLowerCase(java.util.Locale.ROOT);

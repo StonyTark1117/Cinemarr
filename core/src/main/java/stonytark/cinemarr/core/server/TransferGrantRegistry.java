@@ -70,6 +70,12 @@ public final class TransferGrantRegistry {
     public void remove(UUID client) { grants.remove(client); }
     public void clear() { grants.clear(); }
     public int size() { return grants.size(); }
+    /** Diagnostic only: never expires or removes evidence of an orphaned grant. */
+    public int countOutside(java.util.Set<UUID> connected) {
+        int count = 0;
+        for (UUID client : grants.keySet()) if (!connected.contains(client)) count++;
+        return count;
+    }
 
     private static final class Grant {
         private final UUID session;

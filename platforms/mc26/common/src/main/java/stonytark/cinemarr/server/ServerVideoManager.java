@@ -1,5 +1,8 @@
 package stonytark.cinemarr.server;
 
+import stonytark.cinemarr.core.server.ActiveVideoMedia;
+import stonytark.cinemarr.core.server.ActiveVideoMedia.SegmentReference;
+import stonytark.cinemarr.core.server.VideoHealthPolicy;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.MinecraftServer;
@@ -10,14 +13,12 @@ import stonytark.cinemarr.Cinemarr;
 import stonytark.cinemarr.core.library.VideoMediaItem;
 import stonytark.cinemarr.core.library.VideoStreamOption;
 import stonytark.cinemarr.core.library.QueuedVideo;
-import stonytark.cinemarr.core.network.Hashing;
 import stonytark.cinemarr.core.platform.CinemarrSettings;
 import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.core.protocol.CinemarrMessage;
 import stonytark.cinemarr.core.protocol.VideoPackets;
 import stonytark.cinemarr.core.server.HlsPlaylist;
-import stonytark.cinemarr.core.server.BoundedWorkExecutor;
-import stonytark.cinemarr.core.server.BoundedByteCache;
+import stonytark.cinemarr.core.server.VideoWorkQueues;
 import stonytark.cinemarr.core.server.FairEgressScheduler;
 import stonytark.cinemarr.core.server.PlexVideoService;
 import stonytark.cinemarr.core.server.RedstoneControlPolicy;
@@ -52,18 +53,20 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class ServerVideoManager implements AutoCloseable {
     private static final int PAGE_SIZE = 20;
     private final MinecraftServer server;
+    private final java.util.function.Predicate<UUID> handshakeComplete;
     private final CinemarrVideoSavedData saved;
     private final PlexVideoService plex;
     private final List<PlexVideoService.ResolvedLibrary> libraries;
-    private final BoundedWorkExecutor workers = new BoundedWorkExecutor(2, 64, "Cinemarr video worker ");
+    private final VideoWorkQueues workers = new VideoWorkQueues("Cinemarr video worker ");
     private final FairEgressScheduler<UUID, ServerPlayer, CinemarrMessage> egress =
-            new FairEgressScheduler<>(64, 256, 1024, 16L * 1024L * 1024L);
+            new FairEgressScheduler<>(64, 2L * 1024L * 1024L, 256, 8L * 1024L * 1024L, 1024, 16L * 1024L * 1024L);
     private final SlidingWindowRateLimiter browseLimiter = new SlidingWindowRateLimiter();
     private final SlidingWindowRateLimiter segmentLimiter = new SlidingWindowRateLimiter();
-    private final Map<String, ActiveMedia> active = new ConcurrentHashMap<>();
+    private final Map<String, ActiveVideoMedia> active = new ConcurrentHashMap<>();
     private final ThreadLocal<StartOptions> startingOptions = new ThreadLocal<>();
     private final Map<UUID, StartOptions> playbackOptions = new ConcurrentHashMap<>();
     private final Map<UUID, String> playbackLibraries = new ConcurrentHashMap<>();
+    private final Map<UUID, Long> playbackMetadataGenerations = new ConcurrentHashMap<>();
     private final TransferGrantRegistry transferGrants = new TransferGrantRegistry(30_000L);
     private final Set<UUID> restartingSessions=ConcurrentHashMap.newKeySet();
     private final Set<UUID> advancingSessions=ConcurrentHashMap.newKeySet();
@@ -79,12 +82,15 @@ public final class ServerVideoManager implements AutoCloseable {
     private volatile boolean closed;
 
     public ServerVideoManager(MinecraftServer server, PlexVideoService plex, List<PlexVideoService.ResolvedLibrary> libraries,
-                              CinemarrVideoSavedData saved) {
+                              CinemarrVideoSavedData saved, java.util.function.Predicate<UUID> handshakeComplete) {
         this.server = server; this.plex = plex; this.libraries = Collections.unmodifiableList(new ArrayList<>(libraries));
         this.saved=saved;
+        this.handshakeComplete=java.util.Objects.requireNonNull(handshakeComplete,"handshakeComplete");
         this.sessions = new VideoSessionCoordinator(CinemarrSettings.maximumConcurrentStreams(),
-                CinemarrSettings.inactiveSessionGraceSeconds() * 1000L, this::startMedia);
+                CinemarrSettings.inactiveSessionGraceSeconds() * 1000L, this::startMedia, true);
         restoreSessions(); initializeReceiverPower(); TelevisionLifecycle.listener(this::televisionRemoved);
+        // Plex can become ready after players have already completed their hello.
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) synchronizeTrackingRadius(player);
     }
 
     private void restoreSessions(){
@@ -93,7 +99,7 @@ public final class ServerVideoManager implements AutoCloseable {
         for(CinemarrVideoSavedData.Record record:saved.records()){
             VideoSessionCoordinator.Snapshot current=sessions.snapshotIfPresent(record.sessionName(),now);PlexVideoService.ResolvedLibrary library=library(record.libraryId());
             if(current==null||library==null||!library.rule().allows(record.item(),4))continue;
-            playbackLibraries.put(current.id(),record.libraryId());playbackOptions.put(current.id(),new StartOptions(renditionForSession(record.sessionName()),new StreamSelection(Collections.emptyList(),record.audioStreamId(),record.subtitleStreamId())));
+            playbackLibraries.put(current.id(),record.libraryId());playbackOptions.put(current.id(),new StartOptions(renditionForSession(record.sessionName()),new StreamSelection(Collections.emptyList(),record.audioStreamId(),record.subtitleStreamId())));playbackMetadataGenerations.put(current.id(), current.generation());
             queues.put(current.id(),new ArrayList<>(record.queue()));
             sessions.restore(record.sessionName(),record.item(),record.positionMs(),record.paused(),now);
         }
@@ -136,6 +142,7 @@ public final class ServerVideoManager implements AutoCloseable {
             if (state != null) sessions.viewerLeft(name, id, now);
         }
         trackedChunks.remove(id); viewingSessions.remove(id); visibleTelevisions.remove(id);clientHealth.remove(id);transferGrants.remove(id);browseGenerations.remove(id);egress.remove(id);
+        browseLimiter.remove(id); segmentLimiter.remove(id);
     }
 
     private void refreshAllTracking() {
@@ -148,6 +155,9 @@ public final class ServerVideoManager implements AutoCloseable {
     }
 
     private void refreshTracking(ServerPlayer player) {
+        // Do not cache visibility or publish media before JOIN reset/hello has completed.
+        // Otherwise the early snapshot can be erased and suppress the first accepted one.
+        if (closed || !handshakeComplete.test(player.getUUID())) return;
         UUID playerId = player.getUUID(); long now = System.currentTimeMillis();
         Map<UUID, CinemarrWorldScreens.Television> televisions = new LinkedHashMap<>();
         for (TrackedChunk tracked : trackedChunks.getOrDefault(playerId, Collections.emptySet())) {
@@ -194,10 +204,10 @@ public final class ServerVideoManager implements AutoCloseable {
         PlexVideoService.ResolvedLibrary library = library(request.libraryId(), player);
         if (library == null) return;
         int playerPermission=permission(player);
-        workers.supply(() -> {
+        workers.browse(() -> {
             try { return plex.browse(library, request.parentKey(), request.query(), Math.max(0, request.page()), PAGE_SIZE, playerPermission); }
             catch (IOException failure) { throw new WrappedFailure(failure); }
-        }).whenComplete((page, failure) -> server.execute(() -> {
+        }).whenComplete((page, failure) -> scheduleMain(() -> {
             if(closed||!Long.valueOf(browseGeneration).equals(browseGenerations.get(playerId)))return;
             if (failure != null) { failure(player, failure); return; }
             CinemarrNetwork.sendToPlayer(player, new VideoPayloads.BrowseResults(new VideoPackets.BrowseResults(
@@ -229,7 +239,7 @@ public final class ServerVideoManager implements AutoCloseable {
                 case RESUME: sessions.resume(tuned.name(), System.currentTimeMillis());VideoSessionCoordinator.Snapshot resumed=sessions.snapshot(tuned.name(),System.currentTimeMillis());persist(resumed);publishSession(resumed,"Resuming",false,player);restartIfNeeded(tuned.name(),resumed);break;
                 case SEEK: asyncSeek(player, television, tuned, command, presentation); break;
                 case PLAY: asyncPlay(player, television, tuned, command, presentation); break;
-                case STOP: VideoSessionCoordinator.Snapshot stopped=sessions.stop(tuned.name(),System.currentTimeMillis());playbackLibraries.remove(tuned.id());playbackOptions.remove(tuned.id());queues.remove(tuned.id());saved.remove(tuned.name());publishSession(stopped,"Stopped",false,player);break;
+                case STOP: VideoSessionCoordinator.Snapshot stopped=sessions.stop(tuned.name(),System.currentTimeMillis());playbackLibraries.remove(tuned.id());playbackOptions.remove(tuned.id());playbackMetadataGenerations.remove(tuned.id());queues.remove(tuned.id());saved.remove(tuned.name());publishSession(stopped,"Stopped",false,player);break;
                 case SET_PRESENTATION: publish(player, television, tuned, presentation, "Presentation updated", false); break;
                 case SET_STREAMS: asyncPlay(player, television, tuned, command, presentation); break;
                 case QUEUE: asyncQueue(player,tuned,command);break;
@@ -256,16 +266,14 @@ public final class ServerVideoManager implements AutoCloseable {
                 if (!library.rule().allows(item, playerPermission)) throw new IOException("Video item is not allowed by this library policy");
                 StartOptions options=new StartOptions(renditionFor(television,metadata),selection(metadata.streams(),command.audioStreamId(),command.subtitleStreamId(),command.action()!=VideoPackets.SessionAction.SET_STREAMS));
                 startingOptions.set(options);VideoSessionCoordinator.Snapshot state;
-                try{state=sessions.play(tuned.name(),item,command.action()==VideoPackets.SessionAction.SET_STREAMS?tuned.positionMs():command.seekPositionMs(),System.currentTimeMillis(),tuned.generation());}
+                try{state=command.action()==VideoPackets.SessionAction.SET_STREAMS?sessions.reconfigure(tuned.name(),System.currentTimeMillis(),tuned.generation()):sessions.play(tuned.name(),item,command.seekPositionMs(),System.currentTimeMillis(),tuned.generation());}
                 finally{startingOptions.remove();}
-                playbackOptions.put(tuned.id(),options);
-                playbackLibraries.put(tuned.id(),library.rule().id());
-                return state;
+                return new PreparedPlayback(state, options, library.rule().id());
             } catch (IOException failure) { throw new WrappedFailure(failure); }
-        }).whenComplete((state, failure) -> server.execute(() -> {
+        }).whenComplete((prepared, failure) -> scheduleMain(() -> {VideoSessionCoordinator.Snapshot state=prepared==null?null:prepared.state;
             if (failure != null) { failure(player, failure); return; }
-            if(!current(state))return;
-            persist(state);publish(player, television, state, presentation, "Buffering", true);
+            if(!recordPlayback(prepared))return;
+            persist(state);publish(player, television, state, presentation, state.paused()?"Paused":"Playing", true);
         }));
     }
 
@@ -273,16 +281,16 @@ public final class ServerVideoManager implements AutoCloseable {
                            VideoSessionCoordinator.Snapshot tuned, VideoPackets.SessionCommand command,
                            PresentationMode presentation) {
         RenditionPolicy.Dimensions rendition=renditionFor(television);
-        workers.run(() -> { try {StartOptions previous=playbackOptions.get(tuned.id());StartOptions options=new StartOptions(rendition,previous==null?new StreamSelection(Collections.emptyList(),-1,-1):previous.streams);startingOptions.set(options);try{sessions.seek(tuned.name(),command.seekPositionMs(),System.currentTimeMillis(),tuned.generation());playbackOptions.put(tuned.id(),options);}finally{startingOptions.remove();} }
-            catch (IOException failure) { throw new WrappedFailure(failure); } }).whenComplete((unused, failure) -> server.execute(() -> {
+        workers.supply(() -> { try {StartOptions previous=playbackOptions.get(tuned.id());StartOptions options=new StartOptions(rendition,previous==null?new StreamSelection(Collections.emptyList(),-1,-1):previous.streams);startingOptions.set(options);try{VideoSessionCoordinator.Snapshot state=sessions.seek(tuned.name(),command.seekPositionMs(),System.currentTimeMillis(),tuned.generation());return new PreparedPlayback(state, options, null);}finally{startingOptions.remove();} }
+            catch (IOException failure) { throw new WrappedFailure(failure); } }).whenComplete((prepared, failure) -> scheduleMain(() -> {VideoSessionCoordinator.Snapshot state=prepared==null?null:prepared.state;
             if (failure != null) { failure(player, failure); return; }
-            VideoSessionCoordinator.Snapshot state=sessions.snapshotIfPresent(tuned.id(),tuned.generation()+1,System.currentTimeMillis());if(!current(state))return;persist(state);publish(player,television,state,presentation,"Buffering",true);
+            if(!recordPlayback(prepared))return;persist(state);publish(player,television,state,presentation,state.paused()?"Paused":"Playing",true);
         }));
     }
 
     private void asyncQueue(ServerPlayer player,VideoSessionCoordinator.Snapshot tuned,VideoPackets.SessionCommand command){
         PlexVideoService.ResolvedLibrary library=library(command.libraryId(),player);if(library==null)return;int playerPermission=permission(player);
-        workers.supply(()->{try{VideoMediaItem item=plex.metadata(command.itemKey());if(!library.rule().allows(item,playerPermission))throw new IOException("Video item is not allowed by this library policy");return new QueuedVideo(library.rule().id(),item);}catch(IOException failure){throw new WrappedFailure(failure);}}).whenComplete((entry,failure)->server.execute(()->{
+        workers.supply(()->{try{VideoMediaItem item=plex.metadata(command.itemKey());if(!library.rule().allows(item,playerPermission))throw new IOException("Video item is not allowed by this library policy");return new QueuedVideo(library.rule().id(),item);}catch(IOException failure){throw new WrappedFailure(failure);}}).whenComplete((entry,failure)->scheduleMain(()->{
             if(failure!=null){failure(player,failure);return;}VideoSessionCoordinator.Snapshot current=sessions.snapshotIfPresent(tuned.id(),tuned.generation(),System.currentTimeMillis());if(current==null){error(player,"TV state changed while queueing");return;}
             List<QueuedVideo> queue=queues.computeIfAbsent(tuned.id(),ignored->new ArrayList<>());if(queue.size()>=CinemarrSettings.queueLimit()){error(player,"Video queue is full");return;}queue.add(entry);if(current.item()==null)advance(current,player);else{persist(current);publishQueue(current,player);}
         }));
@@ -292,58 +300,90 @@ public final class ServerVideoManager implements AutoCloseable {
 
     private void advance(VideoSessionCoordinator.Snapshot expected,ServerPlayer requester){
         if(!advancingSessions.add(expected.id()))return;List<QueuedVideo> queue=queues.get(expected.id());QueuedVideo next=queue==null||queue.isEmpty()?null:queue.get(0);
-        if(next==null){try{VideoSessionCoordinator.Snapshot stopped=sessions.stop(expected.name(),System.currentTimeMillis());playbackLibraries.remove(expected.id());playbackOptions.remove(expected.id());queues.remove(expected.id());saved.remove(expected.name());publishSession(stopped,"Queue finished",false,requester);}catch(IOException failure){if(requester!=null)failure(requester,failure);}finally{advancingSessions.remove(expected.id());}return;}
+        if(next==null){try{VideoSessionCoordinator.Snapshot stopped=sessions.stop(expected.name(),System.currentTimeMillis());playbackLibraries.remove(expected.id());playbackOptions.remove(expected.id());playbackMetadataGenerations.remove(expected.id());queues.remove(expected.id());saved.remove(expected.name());publishSession(stopped,"Queue finished",false,requester);}catch(IOException failure){if(requester!=null)failure(requester,failure);}finally{advancingSessions.remove(expected.id());}return;}
         RenditionPolicy.Dimensions rendition=renditionForSession(expected.name());
-        workers.supply(()->{try{PlexVideoService.ResolvedLibrary library=library(next.libraryId());if(library==null)throw new IOException("Queued video library is no longer configured");PlexVideoService.PlaybackMetadata metadata=plex.metadataDetails(next.item().key());if(!library.rule().allows(metadata.item(),4))throw new IOException("Queued video item is no longer allowed");StreamSelection streams=selection(metadata.streams(),-1,-1,true);StartOptions options=new StartOptions(rendition,streams);startingOptions.set(options);VideoSessionCoordinator.Snapshot state;try{state=sessions.play(expected.name(),metadata.item(),0,System.currentTimeMillis(),expected.generation());}finally{startingOptions.remove();}playbackLibraries.put(expected.id(),next.libraryId());playbackOptions.put(expected.id(),options);return state;}catch(IOException failure){throw new WrappedFailure(failure);}}).whenComplete((state,failure)->server.execute(()->{advancingSessions.remove(expected.id());if(failure!=null){if(requester!=null)failure(requester,failure);else Cinemarr.LOGGER.warn("Unable to advance video queue: {}",SecretRedactor.message(failure,CinemarrSettings.plexToken(),CinemarrSettings.plexUrl()));return;}if(!current(state))return;List<QueuedVideo> current=queues.get(expected.id());if(current!=null){current.remove(next);if(current.isEmpty())queues.remove(expected.id());}persist(state);publishSession(state,"Playing next queued video",true,requester);}));
+        workers.supply(()->{try{PlexVideoService.ResolvedLibrary library=library(next.libraryId());if(library==null)throw new IOException("Queued video library is no longer configured");PlexVideoService.PlaybackMetadata metadata=plex.metadataDetails(next.item().key());if(!library.rule().allows(metadata.item(),4))throw new IOException("Queued video item is no longer allowed");StreamSelection streams=selection(metadata.streams(),-1,-1,true);StartOptions options=new StartOptions(rendition,streams);startingOptions.set(options);VideoSessionCoordinator.Snapshot state;try{state=sessions.play(expected.name(),metadata.item(),0,System.currentTimeMillis(),expected.generation());}finally{startingOptions.remove();}return new PreparedPlayback(state, options, next.libraryId());}catch(IOException failure){throw new WrappedFailure(failure);}}).whenComplete((prepared, failure)->scheduleMain(()->{VideoSessionCoordinator.Snapshot state=prepared==null?null:prepared.state;advancingSessions.remove(expected.id());if(failure!=null){if(requester!=null)failure(requester,failure);else Cinemarr.LOGGER.warn("Unable to advance video queue: {}",SecretRedactor.message(failure,CinemarrSettings.plexToken(),CinemarrSettings.plexUrl()));return;}if(!recordPlayback(prepared))return;List<QueuedVideo> current=queues.get(expected.id());if(current!=null){current.remove(next);if(current.isEmpty())queues.remove(expected.id());}persist(state);publishSession(state,"Playing next queued video",true,requester);}));
     }
 
     private void continueEpisode(ServerPlayer player,VideoSessionCoordinator.Snapshot expected){
         if(expected.item()==null||expected.item().kind()!=stonytark.cinemarr.core.library.MediaKind.EPISODE){error(player,"Continue is available only for episodes");return;}String libraryId=playbackLibraries.get(expected.id());PlexVideoService.ResolvedLibrary library=library(libraryId);if(library==null){error(player,"Playback library is no longer configured");return;}
         RenditionPolicy.Dimensions rendition=renditionForSession(expected.name());
-        workers.supply(()->{try{VideoMediaItem next=plex.nextEpisode(expected.item().key());if(next==null)throw new IOException("This is the final episode");if(!library.rule().allows(next,4))throw new IOException("Next episode is not allowed by this library policy");PlexVideoService.PlaybackMetadata metadata=plex.metadataDetails(next.key());StreamSelection streams=selection(metadata.streams(),-1,-1,true);StartOptions options=new StartOptions(rendition,streams);startingOptions.set(options);VideoSessionCoordinator.Snapshot state;try{state=sessions.play(expected.name(),metadata.item(),0,System.currentTimeMillis(),expected.generation());}finally{startingOptions.remove();}playbackOptions.put(expected.id(),options);return state;}catch(IOException failure){throw new WrappedFailure(failure);}}).whenComplete((state,failure)->server.execute(()->{if(failure!=null){failure(player,failure);return;}if(!current(state))return;persist(state);publishSession(state,"Continuing with next episode",true,player);}));
+        workers.supply(()->{try{VideoMediaItem next=plex.nextEpisode(expected.item().key());if(next==null)throw new IOException("This is the final episode");if(!library.rule().allows(next,4))throw new IOException("Next episode is not allowed by this library policy");PlexVideoService.PlaybackMetadata metadata=plex.metadataDetails(next.key());StreamSelection streams=selection(metadata.streams(),-1,-1,true);StartOptions options=new StartOptions(rendition,streams);startingOptions.set(options);VideoSessionCoordinator.Snapshot state;try{state=sessions.play(expected.name(),metadata.item(),0,System.currentTimeMillis(),expected.generation());}finally{startingOptions.remove();}return new PreparedPlayback(state, options, null);}catch(IOException failure){throw new WrappedFailure(failure);}}).whenComplete((prepared, failure)->scheduleMain(()->{VideoSessionCoordinator.Snapshot state=prepared==null?null:prepared.state;if(failure!=null){failure(player,failure);return;}if(!recordPlayback(prepared))return;persist(state);publishSession(state,"Continuing with next episode",true,player);}));
     }
 
     public void segments(ServerPlayer player, VideoPackets.SegmentRequest request) {
-        if (request.requestId()<1 || request.chunkCount() < 1 || request.chunkCount() > 8 || request.firstChunk() < 0
+        if (request.sessionId() == null || request.generation() < 0 || request.segmentIndex() < 0 || request.requestId()<1 || request.chunkCount() < 1 || request.chunkCount() > 8 || request.firstChunk() < 0
                 || request.firstChunk()>PlexVideoService.MAX_SEGMENT_BYTES/ProtocolLimits.MAX_VIDEO_CHUNK_BYTES
                 || !segmentLimiter.allow(player.getUUID(), 40, System.currentTimeMillis())) { error(player, "Invalid or excessive segment request"); return; }
-        if (!sessions.isViewer(request.sessionId(), request.generation(), player.getUUID())) { error(player,"Video media is available only while tracking its screen"); return; }
-        ActiveMedia media=active.get(key(request.sessionId(),request.generation()));
+        if (!sessions.isViewer(request.sessionId(), request.generation(), player.getUUID())) { transportError(player, request.sessionId(), request.generation(),"Video media is available only while tracking its screen"); return; }
+        ActiveVideoMedia media=active.get(key(request.sessionId(),request.generation()));
         VideoSessionCoordinator.Snapshot timeline=sessions.snapshotIfPresent(request.sessionId(),request.generation(),System.currentTimeMillis());
-        if (media==null || timeline==null || request.segmentIndex()<0 || request.segmentIndex()>=media.segmentCount()) { error(player,"Video segment is no longer available"); return; }
-        if (media.presentationTime(request.segmentIndex())>timeline.positionMs()+ProtocolLimits.MAX_VIDEO_SEGMENT_LEAD_MS) { error(player,"Video segment request exceeds playback lead limit"); return; }
+        if (media==null || timeline==null || request.segmentIndex()<0 || request.segmentIndex()>=media.segmentCount()) { transportError(player, request.sessionId(), request.generation(),"Video segment is no longer available"); return; }
+        if (media.presentationTime(request.segmentIndex())>timeline.positionMs()+ProtocolLimits.MAX_VIDEO_SEGMENT_LEAD_MS) { transportError(player, request.sessionId(), request.generation(),"Video segment request exceeds playback lead limit"); return; }
         long requestedAt=System.currentTimeMillis();
-        if(!transferGrants.tryAcquire(player.getUUID(),request,requestedAt)){error(player,"A video transfer window is already awaiting acknowledgement");return;}
+        if(!transferGrants.tryAcquire(player.getUUID(),request,requestedAt)){transportError(player, request.sessionId(), request.generation(),"A video transfer window is already awaiting acknowledgement");return;}
         workers.supply(() -> { try { return media.segment(request.segmentIndex()); } catch(IOException failure){throw new WrappedFailure(failure);} })
-                .whenComplete((segment,failure)->server.execute(()->{
+                .whenComplete((segment,failure)->scheduleMain(()->{
+                    if (!sessions.isViewer(request.sessionId(), request.generation(), player.getUUID())) { transferGrants.release(player.getUUID(), request); return; }
                     if(failure!=null){transferGrants.release(player.getUUID(),request);failure(player,failure);return;}
                     if(!transferGrants.owns(player.getUUID(),request,System.currentTimeMillis())||!sessions.isViewer(request.sessionId(),request.generation(),player.getUUID()))return;
                     int total=(segment.bytes.length+ProtocolLimits.MAX_VIDEO_CHUNK_BYTES-1)/ProtocolLimits.MAX_VIDEO_CHUNK_BYTES;
-                    if(request.firstChunk()>=total){transferGrants.release(player.getUUID(),request);error(player,"Invalid video chunk window");return;}
+                    if(request.firstChunk()>=total){transferGrants.release(player.getUUID(),request);transportError(player, request.sessionId(), request.generation(),"Invalid video chunk window");return;}
                     int end=Math.min(total,request.firstChunk()+request.chunkCount());
                     List<FairEgressScheduler.Item<CinemarrMessage>> batch=new ArrayList<>();
                     for(int index=request.firstChunk();index<end;index++){int from=index*ProtocolLimits.MAX_VIDEO_CHUNK_BYTES,to=Math.min(segment.bytes.length,from+ProtocolLimits.MAX_VIDEO_CHUNK_BYTES);
                         byte[] bytes=Arrays.copyOfRange(segment.bytes,from,to);CinemarrMessage message=new VideoPayloads.SegmentChunk(new VideoPackets.SegmentChunk(request.sessionId(),request.generation(),request.requestId(),request.segmentIndex(),index,total,segment.reference.pts,true,segment.sha,bytes));
                         batch.add(new FairEgressScheduler.Item<>(message,bytes.length+256));}
-                    if(!egress.enqueueBatch(player.getUUID(),request.sessionId(),player,batch)){transferGrants.release(player.getUUID(),request);error(player,"Video transfer queue is full; retry");}
+                    if(!egress.enqueueBatch(player.getUUID(),request.sessionId(),player,batch)){transferGrants.release(player.getUUID(),request);transportError(player, request.sessionId(), request.generation(),"Video transfer queue is full; retry");}
                 }));
     }
     public void manifest(ServerPlayer player,VideoPackets.SegmentManifestRequest request){
-        if(request.firstSegmentIndex()<0||!sessions.isViewer(request.sessionId(),request.generation(),player.getUUID())){error(player,"Video manifest is available only while tracking its screen");return;}
-        ActiveMedia media=active.get(key(request.sessionId(),request.generation()));if(media==null){error(player,"Video manifest is no longer available");return;}
+        if (request.sessionId() == null || request.generation() < 0 || request.firstSegmentIndex() < 0) {
+            error(player, "Invalid video manifest request"); return;
+        }
+        if (!sessions.isViewer(request.sessionId(), request.generation(), player.getUUID())) {
+            transportError(player, request.sessionId(), request.generation(), "Video manifest is available only while tracking its screen"); return;
+        }
+        ActiveVideoMedia media=active.get(key(request.sessionId(),request.generation()));if(media==null){transportError(player, request.sessionId(), request.generation(),"Video manifest is no longer available");return;}
         VideoSessionCoordinator.Snapshot timeline=sessions.snapshotIfPresent(request.sessionId(),request.generation(),System.currentTimeMillis());
-        if(timeline==null||request.firstSegmentIndex()>=media.segmentCount()||media.presentationTime(request.firstSegmentIndex())>timeline.positionMs()+ProtocolLimits.MAX_VIDEO_SEGMENT_LEAD_MS){error(player,"Video manifest request exceeds playback lead limit");return;}
+        if(timeline==null||request.firstSegmentIndex()>=media.segmentCount()||media.presentationTime(request.firstSegmentIndex())>timeline.positionMs()+ProtocolLimits.MAX_VIDEO_SEGMENT_LEAD_MS){transportError(player, request.sessionId(), request.generation(),"Video manifest request exceeds playback lead limit");return;}
         sendManifest(player,request.sessionId(),request.generation(),media,request.firstSegmentIndex(),media.durationMs);
     }
 
     public void acknowledge(ServerPlayer player, VideoPackets.SegmentAcknowledgement value) {
-        if(value.bufferedMs()<0||value.bufferedMs()>30_000||!transferGrants.acknowledge(player.getUUID(),value,System.currentTimeMillis())) error(player,"Invalid video buffer acknowledgement");
+        if (value.sessionId() == null || value.generation() < 0 || value.requestId() < 1
+                || value.segmentIndex() < 0 || value.receivedThroughChunk() < 0
+                || value.receivedThroughChunk() >= PlexVideoService.MAX_SEGMENT_BYTES / ProtocolLimits.MAX_VIDEO_CHUNK_BYTES
+                || value.bufferedMs() < 0 || value.bufferedMs() > 30_000) {
+            error(player, "Invalid video buffer acknowledgement"); return;
+        }
+        if (sessions.isSupersededViewer(value.sessionId(), value.generation(), player.getUUID())) return;
+        if (!transferGrants.acknowledge(player.getUUID(), value, System.currentTimeMillis()))
+            transportError(player, value.sessionId(), value.generation(), "Invalid video buffer acknowledgement");
+    }
+    private void transportError(ServerPlayer player, UUID session, long generation, String message) {
+        if (!sessions.isSupersededViewer(session, generation, player.getUUID())) error(player, message);
     }
     public void health(ServerPlayer player, VideoPackets.ClientHealth value) {
-        if(Math.abs(value.driftMs())>30_000||value.bufferedMs()<0||value.bufferedMs()>60_000||!sessions.isViewer(value.sessionId(),value.generation(),player.getUUID())){error(player,"Invalid video health report");return;}clientHealth.put(player.getUUID(),new HealthRecord(value,System.currentTimeMillis()));
+        VideoHealthPolicy.Decision decision = VideoHealthPolicy.classify(value,
+                () -> sessions.isViewer(value.sessionId(), value.generation(), player.getUUID()));
+        if (decision == VideoHealthPolicy.Decision.INVALID) {
+            error(player, "Invalid video health report");
+            return;
+        }
+        if (decision == VideoHealthPolicy.Decision.IGNORE_STALE) return;
+        clientHealth.put(player.getUUID(), new HealthRecord(value, System.currentTimeMillis()));
     }
     public String status(){return "Cinemarr video: "+TelevisionLifecycle.count()+" registered TV(s), "+sessions.activeStreamCount()+"/"+CinemarrSettings.maximumConcurrentStreams()+" active stream(s), "+TelevisionLifecycle.attachedSessionCount()+" attached session(s), "+dormantSessions()+" dormant session(s)";}
-    public String diagnostics(){long now=System.currentTimeMillis();int cached=0;long cachedBytes=0,fetchRetries=0,fetchFailures=0;StringBuilder renditions=new StringBuilder();for(ActiveMedia media:active.values()){cached+=media.cachedSegments();cachedBytes+=media.cachedBytes();fetchRetries+=media.fetchRetries;fetchFailures+=media.fetchFailures;if(renditions.length()>0)renditions.append(',');renditions.append(media.dimensions.width()).append('x').append(media.dimensions.height());}int reports=0,recoveries=0,drops=0,underruns=0;long maximumDrift=0;for(HealthRecord record:clientHealth.values())if(now-record.receivedAt<=30_000){reports++;recoveries+=record.value.decoderRecoveries();drops+=record.value.videoDrops();underruns+=record.value.audioUnderruns();maximumDrift=Math.max(maximumDrift,Math.abs(record.value.driftMs()));}int queued=0;for(List<QueuedVideo> queue:queues.values())queued+=queue.size();return "Plex=ready; libraries="+libraries.size()+"; registeredTvs="+TelevisionLifecycle.count()+"; attachedTvs="+TelevisionLifecycle.attachedTelevisionCount()+"; attachedSessions="+TelevisionLifecycle.attachedSessionCount()+"; activeStreams="+sessions.activeStreamCount()+"/"+CinemarrSettings.maximumConcurrentStreams()+"; renditions="+(renditions.length()==0?"none":renditions)+"; cachedSegments="+cached+"; cachedBytes="+cachedBytes+"; fetchRetries="+fetchRetries+"; fetchFailures="+fetchFailures+"; queued="+queued+"; trackingClients="+visibleTelevisions.size()+"; workQueued="+workers.queuedTasks()+"; workActive="+workers.activeTasks()+"; workRejected="+workers.rejectedTasks()+"; egressItems="+egress.backlogItems()+"; egressBytes="+egress.backlogBytes()+"; egressRejected="+egress.rejectedBatches()+"; healthReports="+reports+"; decoderRecoveries="+recoveries+"; videoDrops="+drops+"; audioUnderruns="+underruns+"; maxDriftMs="+maximumDrift;}
+    private String transferOwnershipDiagnostics() {
+        Set<UUID> connected = new HashSet<UUID>();
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) connected.add(player.getUUID());
+        return "; orphanedTransferGrants=" + transferGrants.countOutside(connected)
+                + "; orphanedEgressItems=" + egress.backlogItemsOutside(connected)
+                + "; orphanedEgressBytes=" + egress.backlogBytesOutside(connected);
+    }
+
+    public String diagnostics(){long now=System.currentTimeMillis();int cached=0;long cachedBytes=0,fetchRetries=0,fetchFailures=0;StringBuilder renditions=new StringBuilder();for(ActiveVideoMedia media:active.values()){cached+=media.cachedSegments();cachedBytes+=media.cachedBytes();fetchRetries+=media.fetchRetries();fetchFailures+=media.fetchFailures();if(renditions.length()>0)renditions.append(',');renditions.append(media.dimensions.width()).append('x').append(media.dimensions.height());}int reports=0;long recoveries=0,drops=0,underruns=0;long maximumDrift=0;for(HealthRecord record:clientHealth.values())if(now-record.receivedAt<=30_000){reports++;recoveries+=record.value.decoderRecoveries();drops+=record.value.videoDrops();underruns+=record.value.audioUnderruns();maximumDrift=Math.max(maximumDrift,Math.abs(record.value.driftMs()));}int queued=0;for(List<QueuedVideo> queue:queues.values())queued+=queue.size();return "Plex=ready; libraries="+libraries.size()+"; registeredTvs="+TelevisionLifecycle.count()+"; attachedTvs="+TelevisionLifecycle.attachedTelevisionCount()+"; attachedSessions="+TelevisionLifecycle.attachedSessionCount()+"; activeStreams="+sessions.activeStreamCount()+"/"+CinemarrSettings.maximumConcurrentStreams()+"; renditions="+(renditions.length()==0?"none":renditions)+"; cachedSegments="+cached+"; cachedBytes="+cachedBytes+"; fetchRetries="+fetchRetries+"; fetchFailures="+fetchFailures+"; queued="+queued+"; trackingClients="+visibleTelevisions.size()+"; workQueued="+workers.queuedTasks()+"; workActive="+workers.activeTasks()+"; workRejected="+workers.rejectedTasks() + workers.browseDiagnostics()+"; browseRateClients="+browseLimiter.trackedSubjects()+"; segmentRateClients="+segmentLimiter.trackedSubjects()+"; transferGrants="+transferGrants.size()+"; egressItems="+egress.backlogItems()+"; egressBytes="+egress.backlogBytes()+"; egressRejected="+egress.rejectedBatches()+"; mediaStarts="+sessions.pendingStarts()+"; mediaRetiring="+sessions.retiringMedia()+"; mediaCloseFailures="+sessions.closeFailures()+transferOwnershipDiagnostics()+"; healthReports="+reports+"; decoderRecoveries="+recoveries+"; videoDrops="+drops+"; audioUnderruns="+underruns+"; maxDriftMs="+maximumDrift;}
     public void tick(){long now=System.currentTimeMillis();for(UUID id:transferGrants.expire(now))egress.remove(id);egress.drain(64,1024L*1024L,CinemarrNetwork::sendToPlayer);try{sessions.tick(now);tickRedstoneReceivers(now);Set<String> names=sessions.sessionNames();for(String name:names){VideoSessionCoordinator.Snapshot state=sessions.snapshotIfPresent(name,now);if(state!=null&&state.transcoding()&&!anyTelevisionLoaded(name)){state=sessions.suspend(name,now);persist(state);publishSession(state,"Suspended while TV chunks are unloaded",false,null);}if(state!=null&&state.transcoding()&&!state.paused()&&state.item()!=null&&state.item().durationMs()>0&&state.positionMs()>=state.item().durationMs())advance(state,null);}if(now-lastCheckpointMs>=5_000){lastCheckpointMs=now;for(String name:names){VideoSessionCoordinator.Snapshot state=sessions.snapshotIfPresent(name,now);if(state!=null)persist(state);}}}catch(IOException failure){Cinemarr.LOGGER.warn("Unable to stop inactive Plex video session: {}", SecretRedactor.message(failure,CinemarrSettings.plexToken(),CinemarrSettings.plexUrl()));}}
 
     private int dormantSessions(){int count=0;long now=System.currentTimeMillis();for(CinemarrVideoSavedData.Record record:saved.records())if(sessions.snapshotIfPresent(record.sessionName(),now)==null)count++;return count;}
@@ -362,28 +402,43 @@ public final class ServerVideoManager implements AutoCloseable {
             StreamSelection streams;try{streams=selection(metadata.streams(),record.audioStreamId(),record.subtitleStreamId(),false);}catch(IOException unavailable){streams=selection(metadata.streams(),-1,-1,false);}
             StartOptions options=new StartOptions(rendition,streams);startingOptions.set(options);VideoSessionCoordinator.Snapshot state;
             try{state=sessions.restart(name,System.currentTimeMillis(),expected.generation());}finally{startingOptions.remove();}
-            playbackOptions.put(expected.id(),options);playbackLibraries.put(expected.id(),record.libraryId());return state;
-        }catch(IOException failure){throw new WrappedFailure(failure);}}).whenComplete((state,failure)->server.execute(()->{restartingSessions.remove(expected.id());if(failure!=null){Cinemarr.LOGGER.warn("Unable to resume saved video session {}: {}",name,SecretRedactor.message(failure,CinemarrSettings.plexToken(),CinemarrSettings.plexUrl()));return;}if(!current(state))return;persist(state);publishSession(state,state.paused()?"Paused":"Playing",true,null);}));
+            return new PreparedPlayback(state, options, record.libraryId());
+        }catch(IOException failure){throw new WrappedFailure(failure);}}).whenComplete((prepared, failure)->scheduleMain(()->{VideoSessionCoordinator.Snapshot state=prepared==null?null:prepared.state;restartingSessions.remove(expected.id());if(failure!=null){Cinemarr.LOGGER.warn("Unable to resume saved video session {}: {}",name,SecretRedactor.message(failure,CinemarrSettings.plexToken(),CinemarrSettings.plexUrl()));return;}if(!recordPlayback(prepared))return;persist(state);publishSession(state,state.paused()?"Paused":"Playing",true,null);}));
     }
 
     private void persist(VideoSessionCoordinator.Snapshot state){
-        if(state==null||state.item()==null)return;String library=playbackLibraries.get(state.id());StartOptions options=playbackOptions.get(state.id());if(library==null||options==null)return;
+        if(state==null||state.item()==null||!metadataMatches(state))return;String library=playbackLibraries.get(state.id());StartOptions options=playbackOptions.get(state.id());if(library==null||options==null)return;
         saved.put(new CinemarrVideoSavedData.Record(state.name(),library,state.item(),state.positionMs(),state.paused(),options.streams.audioId,options.streams.subtitleId,queues.getOrDefault(state.id(),Collections.emptyList())));
     }
+    private void scheduleMain(Runnable action) {
+        if (!closed) server.execute(() -> { if (!closed) action.run(); });
+    }
+
+    private boolean recordPlayback(PreparedPlayback prepared) {
+        return !closed && sessions.applyIfCurrent(prepared.state, () -> {
+            playbackOptions.put(prepared.state.id(), prepared.options);
+            if (prepared.libraryId != null) playbackLibraries.put(prepared.state.id(), prepared.libraryId);
+            playbackMetadataGenerations.put(prepared.state.id(), prepared.state.playbackGeneration());
+        });
+    }
+    private boolean metadataMatches(VideoSessionCoordinator.Snapshot state) {
+        return state != null && Long.valueOf(state.playbackGeneration()).equals(playbackMetadataGenerations.get(state.id()));
+    }
+
     private boolean current(VideoSessionCoordinator.Snapshot state){return !closed&&state!=null&&sessions.snapshotIfPresent(state.id(),state.generation(),System.currentTimeMillis())!=null;}
 
     private VideoSessionCoordinator.Snapshot restoreDormant(VideoSessionCoordinator.Snapshot tuned) {
         CinemarrVideoSavedData.Record record=saved.record(tuned.name());PlexVideoService.ResolvedLibrary library=record==null?null:library(record.libraryId());
         if(record==null||library==null||!library.rule().allows(record.item(),4))return tuned;
-        playbackLibraries.put(tuned.id(),record.libraryId());playbackOptions.put(tuned.id(),new StartOptions(renditionForSession(tuned.name()),new StreamSelection(Collections.emptyList(),record.audioStreamId(),record.subtitleStreamId())));queues.put(tuned.id(),new ArrayList<>(record.queue()));
+        playbackLibraries.put(tuned.id(),record.libraryId());playbackOptions.put(tuned.id(),new StartOptions(renditionForSession(tuned.name()),new StreamSelection(Collections.emptyList(),record.audioStreamId(),record.subtitleStreamId())));playbackMetadataGenerations.put(tuned.id(), tuned.generation());queues.put(tuned.id(),new ArrayList<>(record.queue()));
         return sessions.restore(tuned.name(),record.item(),record.positionMs(),true,System.currentTimeMillis());
     }
 
     public void televisionRemoved(UUID televisionId,String sessionName) {
         if(televisionId==null)return;long now=System.currentTimeMillis();VideoSessionCoordinator.Snapshot state=sessionName==null||sessionName.isBlank()?null:sessions.snapshotIfPresent(sessionName,now);
-        if(state!=null&&state.televisions().contains(televisionId)&&state.televisions().size()==1&&state.item()!=null){String library=playbackLibraries.get(state.id());StartOptions options=playbackOptions.get(state.id());if(library!=null&&options!=null)saved.put(new CinemarrVideoSavedData.Record(state.name(),library,state.item(),state.positionMs(),true,options.streams.audioId,options.streams.subtitleId,queues.getOrDefault(state.id(),Collections.emptyList())));}
+        if(state!=null&&state.televisions().contains(televisionId)&&state.televisions().size()==1&&state.item()!=null){String library=playbackLibraries.get(state.id());StartOptions options=playbackOptions.get(state.id());if(library!=null&&options!=null&&metadataMatches(state))saved.put(new CinemarrVideoSavedData.Record(state.name(),library,state.item(),state.positionMs(),true,options.streams.audioId,options.streams.subtitleId,queues.getOrDefault(state.id(),Collections.emptyList())));}
         try{sessions.untune(televisionId);}catch(IOException failure){Cinemarr.LOGGER.warn("Unable to stop removed TV session: {}",SecretRedactor.message(failure,CinemarrSettings.plexToken(),CinemarrSettings.plexUrl()));}
-        if(state!=null&&state.televisions().size()==1){playbackLibraries.remove(state.id());playbackOptions.remove(state.id());queues.remove(state.id());restartingSessions.remove(state.id());advancingSessions.remove(state.id());}refreshAllTracking();
+        if(state!=null&&state.televisions().size()==1){playbackLibraries.remove(state.id());playbackOptions.remove(state.id());playbackMetadataGenerations.remove(state.id());queues.remove(state.id());restartingSessions.remove(state.id());advancingSessions.remove(state.id());}refreshAllTracking();
     }
 
     private static RenditionPolicy.Dimensions renditionFor(CinemarrWorldScreens.Television tv){return renditionFor(tv,null);}
@@ -397,14 +452,16 @@ public final class ServerVideoManager implements AutoCloseable {
         RenditionPolicy.Dimensions dimensions=options.rendition;StreamSelection selection=options.streams;
         PlexVideoService.VideoSession plexSession=plex.start(item,dimensions,offset,selection.audioId<0?null:selection.audioId,selection.subtitleId<0?Integer.valueOf(0):selection.subtitleId);
         try {
+            if (closed || Thread.currentThread().isInterrupted()) throw new IOException("Video server is stopping");
             PlexVideoService.MediaPlaylist playlist=plex.mediaPlaylist(plexSession,offset);
+            if (closed || Thread.currentThread().isInterrupted()) throw new IOException("Video server is stopping");
             List<SegmentReference> references=parsePlaylist(playlist);
-            ActiveMedia media=new ActiveMedia(plex,plexSession,playlist,references,dimensions,item.durationMs(),selection.options,selection.audioId,selection.subtitleId); String key=key(sessionId,generation); active.put(key,media);
+            ActiveVideoMedia media=new ActiveVideoMedia(plex,plexSession,playlist,references,dimensions,item.durationMs(),selection.options,selection.audioId,selection.subtitleId); String key=key(sessionId,generation); active.put(key,media);
             return ()->{active.remove(key);plex.stop(plexSession);};
         } catch(IOException|RuntimeException failure){try{plex.stop(plexSession);}catch(IOException ignored){}throw failure;}
     }
-    private void sendManifest(ServerPlayer player,VideoSessionCoordinator.Snapshot state){ActiveMedia media=active.get(key(state.id(),state.generation()));if(media==null)return;int first=media.segmentAt(state.positionMs());sendManifest(player,state.id(),state.generation(),media,first,state.item()==null?0:state.item().durationMs());}
-    private void sendManifest(ServerPlayer player,UUID session,long generation,ActiveMedia media,int first,long duration){List<VideoPackets.SegmentDescriptor> descriptors=media.descriptors(first,ProtocolLimits.MAX_VIDEO_SEGMENTS_PER_MANIFEST);if(descriptors.isEmpty())return;int end=first+descriptors.size();CinemarrNetwork.sendToPlayer(player,new VideoPayloads.SegmentManifest(new VideoPackets.SegmentManifest(session,generation,media.dimensions.width(),media.dimensions.height(),"mpegts","h264","aac",duration,end<media.segmentCount(),descriptors)));}
+    private void sendManifest(ServerPlayer player,VideoSessionCoordinator.Snapshot state){ActiveVideoMedia media=active.get(key(state.id(),state.generation()));if(media==null)return;int first=media.segmentAt(state.positionMs());sendManifest(player,state.id(),state.generation(),media,first,state.item()==null?0:state.item().durationMs());}
+    private void sendManifest(ServerPlayer player,UUID session,long generation,ActiveVideoMedia media,int first,long duration){List<VideoPackets.SegmentDescriptor> descriptors=media.descriptors(first,ProtocolLimits.MAX_VIDEO_SEGMENTS_PER_MANIFEST);if(descriptors.isEmpty())return;int end=first+descriptors.size();CinemarrNetwork.sendToPlayer(player,new VideoPayloads.SegmentManifest(new VideoPackets.SegmentManifest(session,generation,media.dimensions.width(),media.dimensions.height(),"mpegts","h264","aac",duration,end<media.segmentCount(),descriptors)));}
     private void publish(ServerPlayer requester,CinemarrWorldScreens.Television tv,VideoSessionCoordinator.Snapshot state,PresentationMode mode,String message,boolean includeManifest){for(ServerPlayer recipient:recipients(tv,requester)){sendState(recipient,tv,state,mode,message);sendQueue(recipient,state);if(includeManifest)sendManifest(recipient,state);}}
     private void publishIdle(ServerPlayer requester,CinemarrWorldScreens.Television tv,String message){for(ServerPlayer recipient:recipients(tv,requester))sendIdle(recipient,tv,message);}
     private void publishSession(VideoSessionCoordinator.Snapshot state,String message,boolean includeManifest,ServerPlayer requester){for(CinemarrWorldScreens.Television tv:televisionsForSession(state.name()))for(ServerPlayer recipient:recipients(tv,requester)){sendState(recipient,tv,state,tv.presentationMode(),message);sendQueue(recipient,state);if(includeManifest)sendManifest(recipient,state);}}
@@ -412,7 +469,7 @@ public final class ServerVideoManager implements AutoCloseable {
     private void sendQueue(ServerPlayer player,VideoSessionCoordinator.Snapshot state){CinemarrNetwork.sendToPlayer(player,new VideoPayloads.SessionQueue(new VideoPackets.SessionQueue(state.id(),state.generation(),queues.getOrDefault(state.id(),Collections.emptyList()))));}
     private Set<ServerPlayer> recipients(CinemarrWorldScreens.Television tv,ServerPlayer requester){Set<ServerPlayer> recipients=new LinkedHashSet<>();if(requester!=null)recipients.add(requester);for(Map.Entry<UUID,Map<UUID,Long>> entry:visibleTelevisions.entrySet())if(entry.getValue().containsKey(tv.id())){ServerPlayer player=server.getPlayerList().getPlayer(entry.getKey());if(player!=null)recipients.add(player);}return recipients;}
     private boolean canControl(ServerPlayer player,CinemarrWorldScreens.Television tv){return tv.owner().equals(player.getUUID())||permission(player)>=CinemarrSettings.operatorPermissionLevel();}
-    private void sendState(ServerPlayer player,CinemarrWorldScreens.Television tv,VideoSessionCoordinator.Snapshot state,PresentationMode mode,String message){VideoPackets.SessionStatus status=state.item()==null?VideoPackets.SessionStatus.IDLE:state.paused()?VideoPackets.SessionStatus.PAUSED:state.transcoding()?VideoPackets.SessionStatus.PLAYING:VideoPackets.SessionStatus.IDLE;ActiveMedia media=active.get(key(state.id(),state.generation()));List<VideoStreamOption> streams=media==null?Collections.emptyList():media.options;int audio=media==null?-1:media.audioId,subtitle=media==null?-1:media.subtitleId;CinemarrNetwork.sendToPlayer(player,new VideoPayloads.SessionState(new VideoPackets.SessionState(tv.id(),tv.controllerPos(),state.id(),state.generation(),status,state.item(),state.positionMs(),state.item()==null?0:state.item().durationMs(),state.paused(),mode,tv.width(),tv.height(),tv.mask(),tv.facing(),tv.plane(),tv.minimumU(),tv.minimumV(),streams,audio,subtitle,state.serverEpochMs(),canControl(player,tv),message)));}
+    private void sendState(ServerPlayer player,CinemarrWorldScreens.Television tv,VideoSessionCoordinator.Snapshot state,PresentationMode mode,String message){VideoPackets.SessionStatus status=state.item()==null?VideoPackets.SessionStatus.IDLE:state.paused()?VideoPackets.SessionStatus.PAUSED:state.transcoding()?VideoPackets.SessionStatus.PLAYING:VideoPackets.SessionStatus.IDLE;ActiveVideoMedia media=active.get(key(state.id(),state.generation()));StartOptions configured=playbackOptions.get(state.id());StreamSelection selected=configured==null?new StreamSelection(Collections.emptyList(),-1,-1):configured.streams;List<VideoStreamOption> streams=media==null?selected.options:media.options;int audio=media==null?selected.audioId:media.audioId,subtitle=media==null?selected.subtitleId:media.subtitleId;CinemarrNetwork.sendToPlayer(player,new VideoPayloads.SessionState(new VideoPackets.SessionState(tv.id(),tv.controllerPos(),state.id(),state.generation(),status,state.item(),state.positionMs(),state.item()==null?0:state.item().durationMs(),state.paused(),mode,tv.width(),tv.height(),tv.mask(),tv.facing(),tv.plane(),tv.minimumU(),tv.minimumV(),streams,audio,subtitle,state.serverEpochMs(),canControl(player,tv),message)));}
     private void sendIdle(ServerPlayer player,CinemarrWorldScreens.Television tv,String message){CinemarrNetwork.sendToPlayer(player,new VideoPayloads.SessionState(new VideoPackets.SessionState(tv.id(),tv.controllerPos(),new UUID(0,0),0,VideoPackets.SessionStatus.IDLE,null,0,0,false,tv.presentationMode(),tv.width(),tv.height(),tv.mask(),tv.facing(),tv.plane(),tv.minimumU(),tv.minimumV(),Collections.emptyList(),-1,-1,System.currentTimeMillis(),canControl(player,tv),message)));}
     private PlexVideoService.ResolvedLibrary library(String id,ServerPlayer player){for(PlexVideoService.ResolvedLibrary value:libraries)if(value.rule().id().equals(id)){if(permission(player)<value.rule().permissionLevel()){error(player,"Library permission denied");return null;}return value;}error(player,"Unknown video library");return null;}
     private PlexVideoService.ResolvedLibrary library(String id){for(PlexVideoService.ResolvedLibrary value:libraries)if(value.rule().id().equals(id))return value;return null;}
@@ -423,11 +480,16 @@ public final class ServerVideoManager implements AutoCloseable {
     private static List<SegmentReference> parsePlaylist(PlexVideoService.MediaPlaylist playlist){List<SegmentReference> values=new ArrayList<>();for(HlsPlaylist.MediaSegment value:playlist.segments())values.add(new SegmentReference(value));return values;}
     private static StreamSelection selection(List<VideoStreamOption> options,int requestedAudio,int requestedSubtitle,boolean defaults)throws IOException{int audio=requestedAudio,subtitle=requestedSubtitle;if(audio<0)for(VideoStreamOption option:options)if(option.kind()==VideoStreamOption.Kind.AUDIO&&option.selected()){audio=option.id();break;}if(defaults&&subtitle<0)for(VideoStreamOption option:options)if(option.kind()==VideoStreamOption.Kind.SUBTITLE&&option.selected()){subtitle=option.id();break;}if(audio>=0&&!contains(options,VideoStreamOption.Kind.AUDIO,audio))throw new IOException("Requested Plex audio stream is unavailable");if(subtitle>=0&&!contains(options,VideoStreamOption.Kind.SUBTITLE,subtitle))throw new IOException("Requested Plex subtitle stream is unavailable");return new StreamSelection(options,audio,subtitle);}
     private static boolean contains(List<VideoStreamOption> options,VideoStreamOption.Kind kind,int id){for(VideoStreamOption option:options)if(option.kind()==kind&&option.id()==id)return true;return false;}
-    @Override public void close(){if(closed)return;closed=true;TelevisionLifecycle.listener(null);long now=System.currentTimeMillis();for(String name:sessions.sessionNames()){VideoSessionCoordinator.Snapshot state=sessions.snapshotIfPresent(name,now);if(state!=null)persist(state);}try{sessions.close();}catch(IOException failure){Cinemarr.LOGGER.warn("Unable to close Plex video sessions: {}",SecretRedactor.message(failure,CinemarrSettings.plexToken(),CinemarrSettings.plexUrl()));}workers.close();egress.clear();active.clear();startingOptions.remove();playbackOptions.clear();playbackLibraries.clear();queues.clear();clientHealth.clear();browseGenerations.clear();transferGrants.clear();restartingSessions.clear();advancingSessions.clear();trackedChunks.clear();viewingSessions.clear();visibleTelevisions.clear();}
+    @Override public void close(){if(closed)return;closed=true;browseLimiter.clear();segmentLimiter.clear();TelevisionLifecycle.listener(null);long now=System.currentTimeMillis();for(String name:sessions.sessionNames()){VideoSessionCoordinator.Snapshot state=sessions.snapshotIfPresent(name,now);if(state!=null)persist(state);}workers.close();try{sessions.close();}catch(IOException failure){Cinemarr.LOGGER.warn("Unable to close Plex video sessions: {}",SecretRedactor.message(failure,CinemarrSettings.plexToken(),CinemarrSettings.plexUrl()));}egress.clear();active.clear();startingOptions.remove();playbackOptions.clear();playbackMetadataGenerations.clear();playbackLibraries.clear();queues.clear();clientHealth.clear();browseGenerations.clear();transferGrants.clear();restartingSessions.clear();advancingSessions.clear();trackedChunks.clear();viewingSessions.clear();visibleTelevisions.clear();}
     private static final class WrappedFailure extends RuntimeException{WrappedFailure(Throwable cause){super(cause);}}
-    private static final class SegmentReference{final HlsPlaylist.MediaSegment source;final long pts,duration;SegmentReference(HlsPlaylist.MediaSegment source){this.source=source;this.pts=source.presentationTimeMs();this.duration=source.durationMs();}}
-    private static final class SegmentData{final SegmentReference reference;final byte[] bytes;final String sha;SegmentData(SegmentReference reference,byte[] bytes){this.reference=reference;this.bytes=bytes;this.sha=Hashing.sha256(bytes);}}
-    private static final class ActiveMedia{final PlexVideoService plex;final PlexVideoService.VideoSession session;final PlexVideoService.MediaPlaylist playlist;final List<SegmentReference> segments;final RenditionPolicy.Dimensions dimensions;final long durationMs;final List<VideoStreamOption> options;final int audioId,subtitleId;long fetchRetries,fetchFailures;final BoundedByteCache<Integer,SegmentData> cache=new BoundedByteCache<>(16,64L*1024L*1024L,value->value.bytes.length);ActiveMedia(PlexVideoService plex,PlexVideoService.VideoSession session,PlexVideoService.MediaPlaylist playlist,List<SegmentReference> segments,RenditionPolicy.Dimensions dimensions,long durationMs,List<VideoStreamOption> options,int audioId,int subtitleId){this.plex=plex;this.session=session;this.playlist=playlist;this.segments=segments;this.dimensions=dimensions;this.durationMs=durationMs;this.options=Collections.unmodifiableList(new ArrayList<>(options));this.audioId=audioId;this.subtitleId=subtitleId;}synchronized int segmentCount(){return segments.size();}synchronized int cachedSegments(){return cache.size();}synchronized long cachedBytes(){return cache.retainedBytes();}synchronized long presentationTime(int index){return segments.get(index).pts;}synchronized int segmentAt(long position){int first=0;for(int index=0;index<segments.size();index++){if(segments.get(index).pts>position)break;first=index;}return first;}synchronized List<VideoPackets.SegmentDescriptor> descriptors(int first,int maximum){if(first<0||first>=segments.size())return Collections.emptyList();int end=Math.min(segments.size(),first+maximum);List<VideoPackets.SegmentDescriptor> values=new ArrayList<>();for(int i=first;i<end;i++){SegmentReference ref=segments.get(i);values.add(new VideoPackets.SegmentDescriptor(i,ref.pts,ref.duration,true,0,""));}return values;}synchronized SegmentData segment(int index)throws IOException{SegmentData value=cache.get(index);if(value!=null)return value;SegmentReference ref=segments.get(index);IOException last=null;for(int attempt=0;attempt<3;attempt++){try{value=new SegmentData(ref,plex.fetch(session,playlist,ref.source));cache.put(index,value);return value;}catch(IOException failure){last=failure;if(attempt<2){fetchRetries++;try{Thread.sleep(attempt==0?100L:250L);}catch(InterruptedException interrupted){Thread.currentThread().interrupt();throw new IOException("Interrupted while retrying Plex video segment",interrupted);}}}}fetchFailures++;throw last==null?new IOException("Unable to fetch Plex video segment"):last;}}
+    private static final class PreparedPlayback {
+        final VideoSessionCoordinator.Snapshot state;
+        final StartOptions options;
+        final String libraryId;
+        PreparedPlayback(VideoSessionCoordinator.Snapshot state, StartOptions options, String libraryId) {
+            this.state = state; this.options = options; this.libraryId = libraryId;
+        }
+    }
     private static final class StreamSelection{final List<VideoStreamOption> options;final int audioId,subtitleId;StreamSelection(List<VideoStreamOption> options,int audioId,int subtitleId){this.options=Collections.unmodifiableList(new ArrayList<>(options));this.audioId=audioId;this.subtitleId=subtitleId;}}
     private static final class StartOptions{final RenditionPolicy.Dimensions rendition;final StreamSelection streams;StartOptions(RenditionPolicy.Dimensions rendition,StreamSelection streams){this.rendition=rendition;this.streams=streams;}}
     private static final class HealthRecord{final VideoPackets.ClientHealth value;final long receivedAt;HealthRecord(VideoPackets.ClientHealth value,long receivedAt){this.value=value;this.receivedAt=receivedAt;}}

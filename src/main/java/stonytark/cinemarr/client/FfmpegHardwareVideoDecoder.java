@@ -83,6 +83,7 @@ final class FfmpegHardwareVideoDecoder {
     }
 
     static Result decode(byte[] mpegTs, VideoDecoderBackend backend, String device) throws HardwareDecoderException {
+        stonytark.cinemarr.core.client.DecodedBufferBudget.checkCancelled();
         int deviceType = deviceType(backend);
         long started = System.nanoTime();
         long transferNanos = 0L;
@@ -137,6 +138,7 @@ final class FfmpegHardwareVideoDecoder {
 
             int readResult;
             while ((readResult = av_read_frame(format, packet)) >= 0) {
+                stonytark.cinemarr.core.client.DecodedBufferBudget.checkCancelled();
                 if (packet.stream_index() == streamIndex) {
                     check(avcodec_send_packet(codecContext, packet), "submit hardware video packet");
                     Timings timings = receive(codecContext, stream, hardwarePixelFormat, hardwareFrame, softwareFrame, frames);
@@ -199,6 +201,7 @@ final class FfmpegHardwareVideoDecoder {
         long transfer = 0L;
         long conversion = 0L;
         while (true) {
+            stonytark.cinemarr.core.client.DecodedBufferBudget.checkCancelled();
             int result = avcodec_receive_frame(codec, hardware);
             if (result == -11 || result == AVERROR_EOF) break; // AVERROR(EAGAIN) or normal drain completion.
             check(result, "receive hardware video frame");
@@ -223,8 +226,7 @@ final class FfmpegHardwareVideoDecoder {
         int width = source.width();
         int height = source.height();
         if (width < 1 || height < 1) throw failure("read hardware frame dimensions", -1);
-        long size = Math.multiplyExact(Math.multiplyExact((long) width, height), 4L);
-        if (size > Integer.MAX_VALUE) throw failure("allocate RGBA video frame", -1);
+        long size = stonytark.cinemarr.core.client.DecodedBufferBudget.rgbaBytes(width, height);
         BytePointer pixels = new BytePointer(size);
         PointerPointer destination = new PointerPointer(4);
         IntPointer destinationStride = new IntPointer(4);

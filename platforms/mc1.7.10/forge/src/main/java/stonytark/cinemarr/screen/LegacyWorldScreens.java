@@ -38,22 +38,45 @@ public final class LegacyWorldScreens extends WorldSavedData {
     private transient boolean registrationsReconciled;
     private transient boolean constructionsRecovered;
     private transient boolean recoveryProbeLogged;
+    private boolean dimensionLocalStorage;
 
     public LegacyWorldScreens() { this(DATA_NAME); }
     public LegacyWorldScreens(String name) { super(name); }
 
     public static LegacyWorldScreens get(WorldServer world) {
-        MapStorage storage = world.mapStorage;
-        LegacyWorldScreens value = (LegacyWorldScreens) storage.loadData(LegacyWorldScreens.class, DATA_NAME);
-        if (value == null) {
-            value = new LegacyWorldScreens(DATA_NAME);
-            storage.setData(DATA_NAME, value);
+        // Forge shares mapStorage between dimensions. The same coordinates
+        // must instead belong to independent screen indexes and saved files.
+        LegacyWorldScreens value = loadDimension(world.perWorldStorage);
+        if (!value.dimensionLocalStorage) {
+            try {
+                preserveLegacySharedFile(new java.io.File(world.getChunkSaveLocation(), "data/" + DATA_NAME + ".dat").toPath());
+            } catch (java.io.IOException failure) {
+                throw new IllegalStateException("Unable to preserve legacy screen data before dimension-local migration", failure);
+            }
+            value.dimensionLocalStorage = true;
             value.markDirty();
         }
         value.world = world;
         if(!value.registrationsReconciled)value.reconcileRegistrations();
         if(!value.constructionsRecovered)value.recoverConstructions();
         return value;
+    }
+
+    static LegacyWorldScreens loadDimension(MapStorage storage) {
+        LegacyWorldScreens value = (LegacyWorldScreens) storage.loadData(LegacyWorldScreens.class, DATA_NAME);
+        if (value == null) {
+            value = new LegacyWorldScreens(DATA_NAME);
+            storage.setData(DATA_NAME, value);
+            value.markDirty();
+        }
+        return value;
+    }
+
+    static void preserveLegacySharedFile(java.nio.file.Path source) throws java.io.IOException {
+        if (!java.nio.file.Files.exists(source)) return;
+        java.nio.file.Path backup = source.resolveSibling(source.getFileName() + ".before-dimension-isolation.bak");
+        if (!java.nio.file.Files.exists(backup)) java.nio.file.Files.copy(source, backup);
+        // Never replace the original recovery copy on later upgrades/loads.
     }
 
     public void beginQuickTvConstruction(long controller, java.util.Collection<Long> targets) {
@@ -277,6 +300,7 @@ public final class LegacyWorldScreens extends WorldSavedData {
     }
 
     @Override public void readFromNBT(NBTTagCompound tag) {
+        dimensionLocalStorage = tag.getBoolean("dimensionLocalStorage");
         pixels.clear(); televisions.clear();
         NBTTagList pixelTags = tag.getTagList("pixels", 10);
         for (int index = 0; index < pixelTags.tagCount(); index++) {
@@ -301,6 +325,7 @@ public final class LegacyWorldScreens extends WorldSavedData {
 
     @Override public void writeToNBT(NBTTagCompound tag) {
         tag.setInteger("schemaVersion", SCHEMA_VERSION);
+        tag.setBoolean("dimensionLocalStorage", dimensionLocalStorage);
         NBTTagList pixelTags = new NBTTagList();
         for (Map.Entry<Long, ScreenFacing> entry : pixels.entrySet()) {
             NBTTagCompound value = new NBTTagCompound(); value.setLong("pos", entry.getKey());

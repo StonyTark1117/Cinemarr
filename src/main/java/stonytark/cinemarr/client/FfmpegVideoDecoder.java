@@ -4,6 +4,7 @@ import org.bytedeco.javacv.FFmpegFrameGrabber;
 import org.bytedeco.javacv.Frame;
 import org.bytedeco.javacv.FrameGrabber;
 import stonytark.cinemarr.core.platform.DecoderProbeFixture;
+import stonytark.cinemarr.core.client.DecodedBufferBudget;
 import stonytark.cinemarr.core.platform.VideoDecoderBackend;
 import stonytark.cinemarr.core.server.BoundedWorkExecutor;
 
@@ -102,16 +103,18 @@ public final class FfmpegVideoDecoder implements MediaSegmentDecoder {
     List<DecodedAudioFrame> decodeAudio(byte[] mpegTs) throws FrameGrabber.Exception {
         validate(mpegTs);
         List<DecodedAudioFrame> audio = new ArrayList<>();
+        DecodedBufferBudget audioBudget = new DecodedBufferBudget();
         try (FFmpegFrameGrabber grabber = new FFmpegFrameGrabber(new ByteArrayInputStream(mpegTs), 0)) {
             configure(grabber);
             grabber.start();
             Frame frame;
-            while ((frame = grabber.grabSamples()) != null) {
+            while (nextFrameAllowed() && (frame = grabber.grabSamples()) != null) {
                 if (frame.samples != null && frame.samples.length != 0) {
-                    audio.add(audioFrame(frame, Math.max(0, frame.timestamp), grabber.getSampleRate(), grabber.getAudioChannels()));
+                    audio.add(audioFrame(frame, Math.max(0, frame.timestamp), grabber.getSampleRate(), grabber.getAudioChannels(), audioBudget));
                 }
             }
         }
+        DecodedBufferBudget.checkCancelled();
         return List.copyOf(audio);
     }
 
@@ -130,6 +133,7 @@ public final class FfmpegVideoDecoder implements MediaSegmentDecoder {
                         Math.max(bounded.peakBytes, hardware.peakRetainedBytes));
                 return new VideoDecodeResult(List.copyOf(bounded.frames), bounded.dropped + hardware.droppedFrames);
             } catch (FfmpegHardwareVideoDecoder.HardwareDecoderException | RuntimeException | LinkageError failure) {
+                DecodedBufferBudget.checkCancelled();
                 effectiveBackend = VideoDecoderBackend.SOFTWARE;
                 fallbackReason = sanitize(failure.getMessage());
                 fallbackCount++;
@@ -140,12 +144,13 @@ public final class FfmpegVideoDecoder implements MediaSegmentDecoder {
             configure(grabber);
             grabber.start();
             Frame frame;
-            while ((frame = grabber.grabImage()) != null) {
+            while (nextFrameAllowed() && (frame = grabber.grabImage()) != null) {
                 if (frame.image != null && frame.image.length != 0) {
                     video.add(videoFrame(frame, Math.max(0, frame.timestamp)));
                 }
             }
         }
+        DecodedBufferBudget.checkCancelled();
         record(video.frames.size(), started, cpuStarted, 0L, 0L, video.peakBytes);
         return new VideoDecodeResult(List.copyOf(video.frames), video.dropped);
     }
@@ -155,11 +160,17 @@ public final class FfmpegVideoDecoder implements MediaSegmentDecoder {
         FfmpegHardwareVideoDecoder.HardwareDecoderException last = null;
         for (VideoDecoderBackend backend : candidates()) {
             try {
-                String probeFailure = probe(backend).join();
+                DecodedBufferBudget.checkCancelled();
+                String probeFailure = probe(backend).get();
                 if (!probeFailure.isEmpty()) throw new FfmpegHardwareVideoDecoder.HardwareDecoderException(probeFailure);
                 FfmpegHardwareVideoDecoder.Result value = FfmpegHardwareVideoDecoder.decode(mpegTs, backend, requestedDevice);
                 effectiveBackend = backend;
                 return value;
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new java.util.concurrent.CancellationException("Video decode cancelled during hardware probe");
+            } catch (java.util.concurrent.ExecutionException failure) {
+                throw new FfmpegHardwareVideoDecoder.HardwareDecoderException("Hardware probe failed");
             } catch (FfmpegHardwareVideoDecoder.HardwareDecoderException failure) {
                 last = failure;
                 if (requestedBackend != VideoDecoderBackend.AUTO) break;
@@ -270,7 +281,13 @@ public final class FfmpegVideoDecoder implements MediaSegmentDecoder {
         return "explicit-selector";
     }
 
+    private static boolean nextFrameAllowed() {
+        DecodedBufferBudget.checkCancelled();
+        return true;
+    }
+
     private static void validate(byte[] mpegTs) {
+        DecodedBufferBudget.checkCancelled();
         if (mpegTs == null || mpegTs.length == 0 || mpegTs.length > MAX_SEGMENT_BYTES) {
             throw new IllegalArgumentException("Invalid MPEG-TS segment size");
         }
@@ -286,7 +303,7 @@ public final class FfmpegVideoDecoder implements MediaSegmentDecoder {
         if (!(frame.image[0] instanceof ByteBuffer source)) throw new IllegalStateException("FFmpeg produced a non-byte video frame");
         int width = frame.imageWidth, height = frame.imageHeight, stride = frame.imageStride;
         ByteBuffer pixels = source.duplicate();
-        byte[] rgba = new byte[Math.multiplyExact(Math.multiplyExact(width, height), 4)];
+        byte[] rgba = new byte[DecodedBufferBudget.rgbaBytes(width, height)];
         for (int y = 0; y < height; y++) {
             int row = y * stride;
             for (int x = 0; x < width; x++) {
@@ -297,14 +314,14 @@ public final class FfmpegVideoDecoder implements MediaSegmentDecoder {
         return new DecodedVideoFrame(timestamp, width, height, rgba);
     }
 
-    private static DecodedAudioFrame audioFrame(Frame frame, long timestamp, int sampleRate, int channels) {
+    private static DecodedAudioFrame audioFrame(Frame frame, long timestamp, int sampleRate, int channels, DecodedBufferBudget budget) {
         if (channels < 1 || channels > 2) throw new IllegalStateException("Unsupported FFmpeg audio channel count " + channels);
-        int totalSamples = 0;
+        long totalSamples = 0;
         for (Buffer value : frame.samples) {
             if (!(value instanceof ShortBuffer)) throw new IllegalStateException("FFmpeg did not honor signed 16-bit output");
             totalSamples += value.remaining();
         }
-        ByteBuffer pcm = ByteBuffer.allocate(totalSamples * 2).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        ByteBuffer pcm = ByteBuffer.allocate(budget.reservePcm16(totalSamples)).order(java.nio.ByteOrder.LITTLE_ENDIAN);
         if (frame.samples.length == 1) {
             ShortBuffer source = ((ShortBuffer) frame.samples[0]).duplicate();
             while (source.hasRemaining()) pcm.putShort(source.get());

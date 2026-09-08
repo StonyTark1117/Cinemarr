@@ -89,6 +89,73 @@ class PlexVideoServiceTest {
         assertTrue(stopped.get());
     }
 
+    @Test void browsePagesAdvanceReturnAndStopAtTheLastPageWithoutDroppingTheLookaheadItem() throws Exception {
+        java.util.List<Integer> offsets = new java.util.concurrent.CopyOnWriteArrayList<Integer>();
+        java.util.List<String> queries = new java.util.concurrent.CopyOnWriteArrayList<String>();
+        server.removeContext("/library/sections/1/all");
+        server.createContext("/library/sections/1/all", exchange -> {
+            String query = exchange.getRequestURI().getRawQuery();
+            queries.add(query);
+            java.util.regex.Matcher start = java.util.regex.Pattern.compile(
+                    "(?:^|&)X-Plex-Container-Start=([0-9]+)(?:&|$)").matcher(query);
+            if (!start.find()) { json(exchange, "{\"MediaContainer\":{\"Metadata\":[]}}"); return; }
+            int offset = Integer.parseInt(start.group(1));
+            offsets.add(offset);
+            StringBuilder body = new StringBuilder("{\"MediaContainer\":{\"Metadata\":[");
+            for (int index = offset; index < Math.min(41, offset + 21); index++) {
+                if (index > offset) body.append(',');
+                body.append("{\"type\":\"movie\",\"ratingKey\":\"").append(1000 + index)
+                        .append("\",\"title\":\"Film ").append(index)
+                        .append("\",\"contentRating\":\"PG\",\"duration\":60000}");
+            }
+            json(exchange, body.append("]}}").toString());
+        });
+        PlexVideoService service = new PlexVideoService(baseUrl, "secret-token");
+        LibraryRule rule = new LibraryRule("pages", "Movies", "Pages", true, false, "PG", 0);
+        PlexVideoService.ResolvedLibrary library = service.resolveLibraries(Collections.singletonList(rule)).get(0);
+        java.util.Set<String> seen = new java.util.HashSet<String>();
+        for (int page = 0; page < 3; page++) {
+            PlexVideoService.Page result = service.browse(library, "", "film", page, 20, 0);
+            assertEquals(page < 2 ? 20 : 1, result.items().size());
+            assertEquals(page < 2, result.hasMore());
+            assertEquals(Integer.toString(1000 + page * 20), result.items().get(0).key());
+            for (VideoMediaItem item : result.items()) assertTrue(seen.add(item.key()), "duplicate page item");
+        }
+        assertEquals(41, seen.size());
+        PlexVideoService.Page previous = service.browse(library, "", "film", 0, 20, 0);
+        assertEquals("1000", previous.items().get(0).key());
+        assertTrue(previous.hasMore());
+        assertEquals(Arrays.asList(0, 20, 40, 0), offsets);
+        for (String query : queries) {
+            assertTrue(query.contains("X-Plex-Container-Size=21"));
+            assertTrue(query.contains("title=film"));
+        }
+    }
+
+    @Test void browseRejectsOverflowBeforeHttpAndPreservesOffsetAndSizeBoundaries() throws Exception {
+        java.util.List<String> queries = new java.util.ArrayList<>();
+        server.removeContext("/library/sections/1/all");
+        server.createContext("/library/sections/1/all", exchange -> {
+            queries.add(exchange.getRequestURI().getRawQuery());
+            json(exchange, "{\"MediaContainer\":{\"Metadata\":[]}}");
+        });
+        PlexVideoService service = new PlexVideoService(baseUrl, "secret-token");
+        LibraryRule rule = new LibraryRule("pages", "Movies", "Pages", true, false, "PG", 0);
+        PlexVideoService.ResolvedLibrary library = service.resolveLibraries(Collections.singletonList(rule)).get(0);
+        service.browse(library, "", "", Integer.MAX_VALUE / 20, 20, 0);
+        assertEquals("X-Plex-Container-Start=2147483640&X-Plex-Container-Size=21", queries.get(0));
+        assertThrows(IOException.class, () -> service.browse(library, "", "", Integer.MAX_VALUE / 20 + 1, 20, 0));
+        assertThrows(IOException.class, () -> service.browse(library, "", "", Integer.MAX_VALUE, 20, 0));
+        assertThrows(IOException.class, () -> service.browse(library, "", "", Integer.MAX_VALUE, Integer.MAX_VALUE, 0));
+        assertEquals(1, queries.size(), "Invalid offsets must not issue any upstream request");
+        service.browse(library, "", "", Integer.MIN_VALUE, 20, 0);
+        assertEquals("X-Plex-Container-Start=0&X-Plex-Container-Size=21", queries.get(1));
+        service.browse(library, "", "", Integer.MAX_VALUE, Integer.MIN_VALUE, 0);
+        assertEquals("X-Plex-Container-Start=2147483647&X-Plex-Container-Size=2", queries.get(2));
+        service.browse(library, "", "", 1, Integer.MAX_VALUE, 0);
+        assertEquals("X-Plex-Container-Start=100&X-Plex-Container-Size=101", queries.get(3));
+    }
+
     @Test void resolvesNestedMasterPlaylistsThroughTheProductionFetchPath() throws Exception {
         transcodePlaylist.set("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=600000\nnested/master.m3u8\n");
         PlexVideoService service = new PlexVideoService(baseUrl, "secret-token");

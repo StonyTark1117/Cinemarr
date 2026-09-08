@@ -123,7 +123,7 @@ public final class CinemarrServer {
         plexLifecycle = new stonytark.cinemarr.core.server.PlexConnectionLifecycle();
         plexLifecycle.configure(CinemarrSettings.plexUrl(), CinemarrSettings.plexToken(), rules, server::execute, connection -> {
             plex = connection.service(); libraries = connection.libraries();
-            manager = new ServerVideoManager(server, plex, libraries, CinemarrVideoSavedData.get(server));
+            manager = new ServerVideoManager(server, plex, libraries, CinemarrVideoSavedData.get(server), stonytark.cinemarr.core.network.RequiredClientGate::accepted);
             Cinemarr.LOGGER.info("Validated {} allowed Plex video libraries{}", libraries.size(), connection.requested() ? " after manual retry" : "");
         }, (message, delay) -> Cinemarr.LOGGER.warn("Plex unavailable; Cinemarr will retry in {} seconds: {}", delay / 1000, message));
     }
@@ -150,8 +150,7 @@ public final class CinemarrServer {
             for (int y = 100; y <= 109; y++) level.setBlockAndUpdate(new BlockPos(x, y, z), Blocks.AIR.defaultBlockState());
         }
         level.setDayTime(6000);
-        int playerIndex = Math.max(0, player.server.getPlayerList().getPlayers().indexOf(player));
-        double cameraX = (playerIndex & 1) == 0 ? -1.5 : 1.5;
+        double cameraX = stonytark.cinemarr.core.protocol.ProtocolLimits.videoProbeCameraX(player.getGameProfile().getName());
         player.teleportTo(level, cameraX, 100.0, 7.5, 180.0F, 0.0F);
         player.lookAt(EntityAnchorArgument.Anchor.EYES, Vec3.atCenterOf(new BlockPos(0, 104, 0)));
     }

@@ -15,6 +15,67 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class VideoSessionCoordinatorTest {
+    @Test void supersededTrafficIsQuietOnlyForAnExistingViewerAndOlderGeneration() throws Exception {
+        VideoSessionCoordinator coordinator = new VideoSessionCoordinator(2, 30_000,
+                (session, generation, item, offset) -> () -> {});
+        UUID television = UUID.randomUUID(), viewer = UUID.randomUUID();
+        coordinator.tune(television, "race");
+        coordinator.viewerEntered("race", viewer);
+        VideoSessionCoordinator.Snapshot before = coordinator.play("race", movie(), 0, 1_000);
+        assertFalse(coordinator.isSupersededViewer(before.id(), before.generation(), viewer));
+        VideoSessionCoordinator.Snapshot after = coordinator.seek("race", 30_000, 2_000, before.generation());
+        assertTrue(coordinator.isSupersededViewer(before.id(), before.generation(), viewer));
+        assertFalse(coordinator.isViewer(before.id(), before.generation(), viewer));
+        assertTrue(coordinator.isViewer(after.id(), after.generation(), viewer));
+        assertFalse(coordinator.isSupersededViewer(after.id(), after.generation(), viewer));
+        assertFalse(coordinator.isSupersededViewer(after.id(), Long.MAX_VALUE, viewer));
+        assertFalse(coordinator.isSupersededViewer(after.id(), -1, viewer));
+        assertFalse(coordinator.isSupersededViewer(after.id(), before.generation(), UUID.randomUUID()));
+        assertFalse(coordinator.isSupersededViewer(UUID.randomUUID(), before.generation(), viewer));
+        assertFalse(coordinator.isSupersededViewer(null, before.generation(), viewer));
+        assertFalse(coordinator.isSupersededViewer(after.id(), before.generation(), null));
+        coordinator.viewerLeft("race", viewer, 3_000);
+        assertFalse(coordinator.isSupersededViewer(before.id(), before.generation(), viewer));
+        coordinator.viewerEntered("race", viewer);
+        coordinator.close();
+        assertFalse(coordinator.isSupersededViewer(before.id(), before.generation(), viewer));
+    }
+
+    @Test void seekAndReconfigurationPreservePauseAndAdvanceGenerationAtTheLiveCursor() throws Exception {
+        AtomicInteger starts = new AtomicInteger();
+        VideoSessionCoordinator coordinator = new VideoSessionCoordinator(2, 30_000,
+                (session, generation, item, offset) -> { starts.incrementAndGet(); return () -> {}; });
+        coordinator.tune(UUID.randomUUID(), "paused");
+        coordinator.play("paused", movie(), 1_000, 1_000);
+        coordinator.pause("paused", 2_000);
+        VideoSessionCoordinator.Snapshot before = coordinator.snapshot("paused", 3_000);
+        VideoSessionCoordinator.Snapshot seek = coordinator.seek("paused", 32_000, 3_000, before.generation());
+        assertTrue(seek.paused());
+        assertFalse(seek.transcoding());
+        assertTrue(seek.generation() > before.generation());
+        assertEquals(32_000, coordinator.snapshot("paused", 20_000).positionMs());
+        VideoSessionCoordinator.Snapshot streams = coordinator.reconfigure("paused", 21_000, seek.generation());
+        assertTrue(streams.generation() > seek.generation());
+        assertTrue(streams.paused());
+        assertFalse(streams.transcoding());
+        assertEquals(32_000, streams.positionMs());
+        assertEquals(1, starts.get());
+        coordinator.resume("paused", 22_000);
+        VideoSessionCoordinator.Snapshot resumed = coordinator.restart("paused", 22_000, streams.generation());
+        assertFalse(resumed.paused());
+        assertTrue(resumed.transcoding());
+        assertEquals(32_000, resumed.positionMs());
+        assertEquals(2, starts.get());
+        VideoSessionCoordinator.Snapshot playingStreams = coordinator.reconfigure("paused", 27_000, resumed.generation());
+        assertFalse(playingStreams.paused());
+        assertTrue(playingStreams.transcoding());
+        assertTrue(playingStreams.generation() > resumed.generation());
+        assertEquals(37_000, playingStreams.positionMs());
+        assertEquals(3, starts.get());
+        assertThrows(IllegalStateException.class, () -> coordinator.reconfigure("paused", 28_000, resumed.generation()));
+        coordinator.close();
+    }
+
     @Test void watchPartyUsesOneTranscodeAndStopsAfterLastViewerGrace() throws Exception {
         AtomicInteger starts = new AtomicInteger();
         AtomicInteger stops = new AtomicInteger();
@@ -176,9 +237,13 @@ class VideoSessionCoordinatorTest {
         VideoSessionCoordinator coordinator=new VideoSessionCoordinator(1,0,(session,generation,item,offset)->{started.countDown();try{assertTrue(release.await(5,TimeUnit.SECONDS));}catch(InterruptedException interrupted){Thread.currentThread().interrupt();throw new java.io.IOException(interrupted);}return stops::incrementAndGet;});
         UUID television=UUID.randomUUID();coordinator.tune(television,"race");
         java.util.concurrent.atomic.AtomicReference<Throwable> failure=new java.util.concurrent.atomic.AtomicReference<>();
-        Thread play=new Thread(()->{try{coordinator.play("race",movie(),0,1_000);}catch(Throwable error){failure.set(error);}});
+        java.util.concurrent.atomic.AtomicBoolean cancelled=new java.util.concurrent.atomic.AtomicBoolean();
+        Thread play=new Thread(()->{try{coordinator.play("race",movie(),0,1_000);}catch(IllegalStateException expected){cancelled.set(true);}catch(Throwable error){failure.set(error);}});
         Thread remove=new Thread(()->{try{coordinator.untune(television);}catch(Throwable error){failure.set(error);}});
-        play.start();assertTrue(started.await(5,TimeUnit.SECONDS));remove.start();release.countDown();play.join(5_000);remove.join(5_000);
+        play.start();assertTrue(started.await(5,TimeUnit.SECONDS));remove.start();
+        try { remove.join(2_000); assertFalse(remove.isAlive(), "removal must not wait for Plex start"); }
+        finally { release.countDown(); }
+        play.join(5_000);remove.join(5_000);assertTrue(cancelled.get());
         assertFalse(play.isAlive());assertFalse(remove.isAlive());assertEquals(null,failure.get());assertFalse(coordinator.sessionNames().contains("race"));assertEquals(1,stops.get());
     }
 

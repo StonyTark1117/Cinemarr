@@ -20,6 +20,8 @@ public final class SlidingWindowRateLimiter {
     }
 
     public void remove(UUID subject) { windows.remove(subject); }
+    public void clear() { windows.clear(); }
+    public int trackedSubjects() { return windows.size(); }
 
     private static final class Window {
         private final long second;
