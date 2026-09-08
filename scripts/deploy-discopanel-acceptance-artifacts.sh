@@ -274,19 +274,32 @@ do
     continue
   fi
 
-  backup="$stem.pre-final-${old_sha:0:12}.jar"
+  backup_file="$old_file"
+  backup_sha="$old_sha"
+  backup_description='Rollback of immediately preceding Cinemarr acceptance artifact'
+  if [[ -n "$rollback_artifact_dir" && -f "$rollback_artifact_dir/$canonical" ]]; then
+    preferred_file="$rollback_artifact_dir/$canonical"
+    preferred_sha=$(sha256sum "$preferred_file" | awk '{print $1}')
+    if [[ "$preferred_sha" != "$new_sha" ]]; then
+      backup_file="$preferred_file"
+      backup_sha="$preferred_sha"
+      backup_description='Verified prior hosted Cinemarr candidate for rollback'
+    fi
+  fi
+  backup="$stem.pre-final-${backup_sha:0:12}.jar"
   backup_display=${backup%.jar}
   if jq -e --arg name "$backup" '.mods[]|select(.fileName==$name)' <<<"$mods" >/dev/null; then
     backup_id=$(jq -r --arg name "$backup" '.mods[]|select(.fileName==$name)|.id' <<<"$mods")
   else
     echo "$server_name: uploading rollback $backup"
-    if ! session=$(upload_file "$old_file" "$backup"); then
+    if ! session=$(upload_file "$backup_file" "$backup"); then
       echo "$server_name rollback upload failed; canonical artifact was not changed" >&2
       exit 1
     fi
     if ! api_call discopanel.v1.ModService/ImportUploadedMod \
       "$(jq -cn --arg sid "$server_id" --arg upload "$session" --arg display "$backup_display" \
-        '{serverId:$sid,uploadSessionId:$upload,displayName:$display,description:"Rollback of immediately preceding Cinemarr acceptance artifact"}')" >/dev/null; then
+        --arg description "$backup_description" \
+        '{serverId:$sid,uploadSessionId:$upload,displayName:$display,description:$description}')" >/dev/null; then
       echo "$server_name rollback import failed; canonical artifact was not changed" >&2
       exit 1
     fi
@@ -295,7 +308,7 @@ do
   fi
   [[ -n "$backup_id" \
      && $(disabled_mod_sha "$server_id" "$backup_id" "$backup" "$backup_display" \
-       'Rollback of immediately preceding Cinemarr acceptance artifact') == "$old_sha" ]] \
+       "$backup_description") == "$backup_sha" ]] \
     || { echo "$server_name rollback hash verification failed" >&2; exit 1; }
   [[ $(jq -r --arg name "$backup" '.mods[]|select(.fileName==$name)|.enabled // false' <<<"$(get_mods "$server_id")") == false ]] \
     || { echo "$server_name rollback remained enabled" >&2; exit 1; }
@@ -334,5 +347,5 @@ do
   trap - ERR
   trap cleanup EXIT
   printf '%s: active %s %s; disabled rollback %s %s\n' \
-    "$server_name" "$canonical" "$new_sha" "$backup" "$old_sha"
+    "$server_name" "$canonical" "$new_sha" "$backup" "$backup_sha"
 done

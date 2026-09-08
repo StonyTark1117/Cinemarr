@@ -22,6 +22,23 @@ jobs:
         name: Generate matrices from gradle/targets.json
         run: |
           python3 scripts/test-target-matrix.py
+          python3 scripts/test-canonicalize-release-jar.py
+          python3 scripts/test-align-pcm-captures.py
+          python3 scripts/test-redact-evidence-values.py
+          python3 scripts/test-log-marker-polling.py
+          python3 scripts/test-legacy-probe-player-state.py
+          python3 scripts/check-client-join-order.py --self-test
+          python3 scripts/test-private-minecraft-window.py
+          python3 scripts/check-fabric-loader-version.py --self-test
+          python3 scripts/test-packaged-client.py
+          python3 scripts/test-owner-timeline.py
+          python3 scripts/test-post-reconnect-capture.py
+          python3 scripts/test-video-resource-reload.py
+          python3 scripts/test-video-terminal.py
+          python3 scripts/test-legacy-world-change.py
+          python3 scripts/test-video-browse-pressure.py
+          python3 scripts/test-video-segment-pressure.py
+          python3 scripts/test-video-fault-recovery.py
           python3 scripts/target-matrix.py verify
           python3 scripts/check-source-layout.py
           python3 scripts/verify-release-hygiene.py
@@ -43,8 +60,9 @@ jobs:
       - name: Install headless audio acceptance dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg iproute2 libasound2-plugins libgl1-mesa-dri libopenal1 pulseaudio pulseaudio-utils x11-xserver-utils xvfb
+          sudo apt-get install -y ffmpeg imagemagick iproute2 libasound2-plugins libgl1-mesa-dri libopenal1 pulseaudio pulseaudio-utils x11-xserver-utils xdotool xvfb
           pulseaudio --start --exit-idle-time=-1
+          python3 scripts/test-private-xvfb.py
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
@@ -128,6 +146,44 @@ jobs:
           CINEMARR_PROTOCOL_CLIENT_GATE: 'true'
           CINEMARR_COMMAND_CLIENT_GATE: 'true'
           CINEMARR_VIDEO_CLIENT_GATE: 'true'
+          CINEMARR_VIDEO_CONTROL_GATE: 'true'
+          CINEMARR_LEGACY_DECODE_STALL_MS: '10000'
+          CINEMARR_MODERN_AUDIO_SETUP_STALL_MS: '250'
+        run: bash scripts/run-dedicated-server-gate.sh ${{ matrix.runtime }}
+      - name: Validate terminal and queue lifecycle
+        if: ${{ matrix.runtime == '1.7.10-forge' || matrix.runtime == '1.21.1-neoforge' }}
+        env:
+          CINEMARR_ALSA_PCM_TYPE: pulse
+          CINEMARR_GATE_OUTPUT_ROOT: ${{ github.workspace }}/build/video-terminal-gate
+          CINEMARR_PROTOCOL_CLIENT_GATE: 'true'
+          CINEMARR_COMMAND_CLIENT_GATE: 'true'
+          CINEMARR_VIDEO_CLIENT_GATE: 'true'
+          CINEMARR_VIDEO_CONTROL_GATE: 'true'
+          CINEMARR_VIDEO_TERMINAL_GATE: 'true'
+        run: bash scripts/run-dedicated-server-gate.sh ${{ matrix.runtime }}
+      - name: Validate browse and third-peer segment overload isolation
+        if: ${{ matrix.runtime == '1.7.10-forge' || matrix.runtime == '1.21.1-neoforge' }}
+        env:
+          CINEMARR_ALSA_PCM_TYPE: pulse
+          CINEMARR_GATE_OUTPUT_ROOT: ${{ github.workspace }}/build/video-pressure-gate
+          CINEMARR_PROTOCOL_CLIENT_GATE: 'true'
+          CINEMARR_COMMAND_CLIENT_GATE: 'true'
+          CINEMARR_VIDEO_CLIENT_GATE: 'true'
+          CINEMARR_VIDEO_CONTROL_GATE: 'true'
+          CINEMARR_VIDEO_PRESSURE_GATE: 'true'
+          CINEMARR_GATE_VIDEO_DURATION_SECONDS: '600'
+        run: bash scripts/run-dedicated-server-gate.sh ${{ matrix.runtime }}
+      - name: Validate physical A/V after transient, slow and exhausted network faults
+        if: ${{ matrix.runtime == '1.7.10-forge' || matrix.runtime == '1.21.1-neoforge' }}
+        env:
+          CINEMARR_ALSA_PCM_TYPE: pulse
+          CINEMARR_GATE_OUTPUT_ROOT: ${{ github.workspace }}/build/video-fault-recovery-gate
+          CINEMARR_PROTOCOL_CLIENT_GATE: 'true'
+          CINEMARR_COMMAND_CLIENT_GATE: 'true'
+          CINEMARR_VIDEO_CLIENT_GATE: 'true'
+          CINEMARR_VIDEO_CONTROL_GATE: 'true'
+          CINEMARR_VIDEO_ADVERSE_NETWORK_GATE: 'true'
+          CINEMARR_GATE_VIDEO_DURATION_SECONDS: '600'
         run: bash scripts/run-dedicated-server-gate.sh ${{ matrix.runtime }}
       - name: Validate ${{ matrix.quilt }} runtime
         if: ${{ matrix.quilt != '' }}
@@ -137,6 +193,8 @@ jobs:
           CINEMARR_PROTOCOL_CLIENT_GATE: 'true'
           CINEMARR_COMMAND_CLIENT_GATE: 'true'
           CINEMARR_VIDEO_CLIENT_GATE: 'true'
+          CINEMARR_VIDEO_CONTROL_GATE: 'true'
+          CINEMARR_MODERN_AUDIO_SETUP_STALL_MS: '250'
         run: bash scripts/run-dedicated-server-gate.sh ${{ matrix.quilt }}
       - name: Validate ${{ matrix.quilt }} with Mod Menu
         if: ${{ matrix.quilt != '' }}
@@ -144,9 +202,13 @@ jobs:
           CINEMARR_ALSA_PCM_TYPE: pulse
           CINEMARR_GATE_OUTPUT_ROOT: ${{ github.workspace }}/build/quilt-modmenu-gate
           CINEMARR_QUILT_MODMENU_GATE: 'true'
+          # Exercise the OpenAL 1.1 cursor fallback on one representative;
+          # the primary runtime step still covers measured output latency.
+          JDK_JAVA_OPTIONS: ${{ matrix.quilt == '1.20.1-quilt' && '-Dorg.lwjgl.openal.extensionFilter=AL_SOFT_source_latency' || '' }}
           CINEMARR_PROTOCOL_CLIENT_GATE: 'true'
           CINEMARR_COMMAND_CLIENT_GATE: 'true'
           CINEMARR_VIDEO_CLIENT_GATE: 'true'
+          CINEMARR_VIDEO_CONTROL_GATE: 'true'
         run: bash scripts/run-dedicated-server-gate.sh ${{ matrix.quilt }}
       - name: Validate minimum Fabric Loader
         if: ${{ matrix.quilt != '' }}
@@ -168,20 +230,42 @@ jobs:
             build/dedicated-server-gate/**/*.json
             build/dedicated-server-gate/**/*.tsv
             build/dedicated-server-gate/**/*.s16le
+            build/dedicated-server-gate/**/*.png
+            build/video-terminal-gate/**/*.log
+            build/video-terminal-gate/**/*.txt
+            build/video-terminal-gate/**/*.json
+            build/video-terminal-gate/**/*.tsv
+            build/video-terminal-gate/**/*.s16le
+            build/video-terminal-gate/**/*.png
+            build/video-pressure-gate/**/*.log
+            build/video-pressure-gate/**/*.txt
+            build/video-pressure-gate/**/*.json
+            build/video-pressure-gate/**/*.tsv
+            build/video-pressure-gate/**/*.s16le
+            build/video-pressure-gate/**/*.png
+            build/video-fault-recovery-gate/**/*.log
+            build/video-fault-recovery-gate/**/*.txt
+            build/video-fault-recovery-gate/**/*.json
+            build/video-fault-recovery-gate/**/*.tsv
+            build/video-fault-recovery-gate/**/*.s16le
+            build/video-fault-recovery-gate/**/*.png
             build/quilt-gate/**/*.log
             build/quilt-gate/**/*.txt
             build/quilt-gate/**/*.json
             build/quilt-gate/**/*.tsv
             build/quilt-gate/**/*.s16le
+            build/quilt-gate/**/*.png
             build/quilt-modmenu-gate/**/*.log
             build/quilt-modmenu-gate/**/*.txt
             build/quilt-modmenu-gate/**/*.json
             build/quilt-modmenu-gate/**/*.tsv
             build/quilt-modmenu-gate/**/*.s16le
+            build/quilt-modmenu-gate/**/*.png
             build/fabric-loader-0.19.2-gate/**/*.log
             build/fabric-loader-0.19.2-gate/**/*.txt
             build/fabric-loader-0.19.2-gate/**/*.json
             build/fabric-loader-0.19.2-gate/**/*.tsv
+            build/fabric-loader-0.19.2-gate/**/*.png
             build/gametest-gate.log
 
   release-gate:

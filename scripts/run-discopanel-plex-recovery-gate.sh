@@ -46,6 +46,7 @@ update_config() {
 wait_status() {
   local wanted=$1 deadline=$((SECONDS + 180))
   while (( SECONDS < deadline )); do [[ $(get_server | jq -r '.server.status') == "$wanted" ]] && return 0; sleep 2; done
+  echo "$server_name did not reach $wanted before the lifecycle deadline" >&2
   return 1
 }
 send_command() {
@@ -66,7 +67,7 @@ new_logs() {
 wait_log() {
   local pattern=$1 timeout=$2 deadline
   deadline=$((SECONDS + timeout))
-  while (( SECONDS < deadline )); do new_logs | grep -Eq "$pattern" && return 0; sleep 3; done
+  while (( SECONDS < deadline )); do new_logs | grep -E "$pattern" >/dev/null && return 0; sleep 3; done
   return 1
 }
 wait_diagnostics() {
@@ -193,13 +194,23 @@ stop_server; remote_started=0
 update_config "$original_config"; update_overrides "$original_overrides"; remote_prepared=0
 
 final=$(get_server)
-[[ $(jq -r '.server.status' <<<"$final") == SERVER_STATUS_STOPPED \
-   && $(jq -r '.server.autoStart // false' <<<"$final") == false \
-   && $(jq -cS '.server.dockerOverrides // {}' <<<"$final") == $(jq -cS . <<<"$original_overrides") ]] || exit 1
+final_status=$(jq -r '.server.status' <<<"$final")
+final_autostart=$(jq -r '.server.autoStart // false' <<<"$final")
+final_overrides=$(jq -cS '.server.dockerOverrides // {}' <<<"$final")
+original_overrides_sorted=$(jq -cS . <<<"$original_overrides")
+[[ "$final_status" == SERVER_STATUS_STOPPED \
+   && "$final_autostart" == false \
+   && "$final_overrides" == "$original_overrides_sorted" ]] || {
+  echo "$server_name did not restore its stopped/autostart-disabled configuration exactly" >&2
+  exit 1
+}
 restored=$(api_call discopanel.v1.FileService/GetFile \
   "$(jq -cn --arg id "$server_id" '{serverId:$id,path:"world/serverconfig/cinemarr-server.toml"}')" \
   | jq -r '.content' | base64 -d)
-[[ "$restored" == "$original_config" ]] || exit 1
+[[ "$restored" == "$original_config" ]] || {
+  echo "$server_name did not restore its Cinemarr server configuration exactly" >&2
+  exit 1
+}
 
 evidence_dir="$repo_root/build/discopanel-plex-recovery/$label"; mkdir -p "$evidence_dir"
 {

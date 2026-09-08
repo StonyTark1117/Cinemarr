@@ -12,6 +12,11 @@ import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
 import java.security.MessageDigest
 
+def targetManifest = new JsonSlurper().parse(layout.projectDirectory.file('gradle/targets.json').asFile)
+if (targetManifest.schemaVersion != 1 || targetManifest.product != 'Cinemarr') {
+    throw new GradleException('Unsupported Cinemarr target manifest')
+}
+
 version = mod_version
 group = mod_group_id
 
@@ -440,6 +445,26 @@ def verifyLegacy1710 = tasks.register('verifyLegacy1710', Exec) {
     commandLine('./gradlew', 'verifyRelease', '--no-daemon', '--max-workers=1')
 }
 
+// The release orchestrator invokes each maintained target through its own
+// wrapper. Propagate a root --rerun-tasks request into those child Gradle
+// builds; otherwise a purported reproducibility rebuild can reuse the first
+// build's target outputs while only re-running this outer Exec task.
+def releaseGateNames = { target ->
+    List<String> names = [target.task as String]
+    if (target.quiltRuntime != null) names.add((target.task as String).replace('verifyFabric', 'verifyQuilt'))
+    names
+}
+// Keep the Java-8 legacy toolchain last because its isolated build owns its
+// core compilation. Membership comes from the same manifest as CI/indexing.
+def isolatedTargets = targetManifest.artifacts.findAll { it.path != '.' }
+        .sort { a, b -> (a.runtimeJava == 8 ? 1 : 0) <=> (b.runtimeJava == 8 ? 1 : 0) }
+def isolatedGradleReleaseGates = isolatedTargets.collectMany(releaseGateNames).collect { tasks.named(it) }
+if (gradle.startParameter.rerunTasks) {
+    isolatedGradleReleaseGates.each { gate ->
+        gate.configure { args '--rerun-tasks' }
+    }
+}
+
 def verifyGameTests = tasks.register('verifyGameTests', Exec) {
     group = 'verification'
     description = 'Runs NeoForge GameTests and cleans up a successful lingering server process.'
@@ -451,11 +476,8 @@ def verifyGameTests = tasks.register('verifyGameTests', Exec) {
 // Gradle versions. Compile that shared output once in this owning build, then
 // keep child builds read-only with respect to core/classes. Otherwise a child
 // can snapshot the classpath while another Gradle version is replacing it.
-[verifyFabric1201, verifyQuilt1201, verifyForge1201, verifyNeoForge1201,
- verifyFabric1202, verifyQuilt1202, verifyForge1202, verifyNeoForge1202,
- verifyFabric1211, verifyQuilt1211, verifyForge1211,
- verifyFabric2612, verifyQuilt2612, verifyForge2612, verifyNeoForge2612,
- verifyFabric262, verifyQuilt262, verifyForge262, verifyNeoForge262].each { targetTask ->
+isolatedTargets.findAll { it.runtimeJava != 8 }.collectMany(releaseGateNames).each { taskName ->
+    def targetTask = tasks.named(taskName)
     targetTask.configure {
         dependsOn project(':core').tasks.named('classes')
         args '-x', ':core:compileJava'
@@ -465,12 +487,7 @@ def verifyGameTests = tasks.register('verifyGameTests', Exec) {
 // Run the shared core suite once in the owning root build. Nested loader builds
 // use different Gradle versions but share core/build; asking each of them to
 // rewrite binary test results makes otherwise-serial family gates nondeterministic.
-[verifyFabric1201, verifyQuilt1201, verifyForge1201, verifyNeoForge1201,
- verifyFabric1202, verifyQuilt1202, verifyForge1202, verifyNeoForge1202,
- verifyFabric1211, verifyQuilt1211, verifyForge1211,
- verifyFabric2612, verifyQuilt2612, verifyForge2612, verifyNeoForge2612,
- verifyFabric262, verifyQuilt262, verifyForge262, verifyNeoForge262,
- verifyLegacy1710].each { isolatedGate ->
+isolatedGradleReleaseGates.each { isolatedGate ->
     isolatedGate.configure { dependsOn(':core:test') }
 }
 
@@ -478,48 +495,23 @@ def verifyGameTests = tasks.register('verifyGameTests', Exec) {
 // family boundaries serialized as well as the loaders within each family so
 // cleanTest/core:jar cannot remove or replace files while another JVM is using
 // them.
-verifyFabric1202.configure { mustRunAfter(verifyNeoForge1201) }
-verifyFabric1211.configure { mustRunAfter(verifyNeoForge1202) }
-verifyFabric2612.configure { mustRunAfter(verifyForge1211) }
-verifyFabric262.configure { mustRunAfter(verifyNeoForge2612) }
-verifyLegacy1710.configure { mustRunAfter(verifyNeoForge262) }
-verifyGameTests.configure { mustRunAfter(verifyLegacy1710) }
-
-tasks.register('verify1211Family') {
-    group = 'verification'
-    description = 'Builds and verifies the NeoForge, Fabric, and Forge Minecraft 1.21.1 artifacts.'
-    dependsOn(':core:test', tasks.named('test'), tasks.named('verifyRelease'), verifyFabric1211, verifyQuilt1211, verifyForge1211)
+isolatedGradleReleaseGates.eachWithIndex { gate, index ->
+    if (index > 0) gate.configure { mustRunAfter(isolatedGradleReleaseGates[index - 1]) }
 }
+verifyGameTests.configure { mustRunAfter(isolatedGradleReleaseGates, tasks.named('verifyRelease')) }
 
-tasks.register('verify1201Family') {
-    group = 'verification'
-    description = 'Builds and verifies the Fabric/Quilt, Forge, and transitional NeoForge Minecraft 1.20.1 artifacts.'
-    dependsOn(verifyFabric1201, verifyQuilt1201, verifyForge1201, verifyNeoForge1201)
-}
-
-tasks.register('verify1202Family') {
-    group = 'verification'
-    description = 'Builds and verifies the Fabric/Quilt, Forge, and NeoForge Minecraft 1.20.2 artifacts.'
-    dependsOn(verifyFabric1202, verifyQuilt1202, verifyForge1202, verifyNeoForge1202)
-}
-
-tasks.register('verify2612Family') {
-    group = 'verification'
-    description = 'Builds and verifies the Java 25 Fabric/Quilt, Forge, and NeoForge Minecraft 26.1.2 artifacts.'
-    dependsOn(verifyFabric2612, verifyQuilt2612, verifyForge2612, verifyNeoForge2612)
-}
-
-tasks.register('verify262Family') {
-    group = 'verification'
-    description = 'Builds and verifies the Java 25 Fabric/Quilt, Forge, and NeoForge Minecraft 26.2 artifacts.'
-    dependsOn(verifyFabric262, verifyQuilt262, verifyForge262, verifyNeoForge262)
+def familyReleaseGates = targetManifest.artifacts.groupBy { it.minecraft }.collect { minecraft, targets ->
+    tasks.register("verify${minecraft.replace('.', '')}Family") {
+        group = 'verification'
+        description = "Builds and verifies every manifest target for Minecraft ${minecraft}."
+        dependsOn(':core:test', targets.collectMany(releaseGateNames).collect { tasks.named(it) })
+    }
 }
 
 tasks.register('verifyAllTargets') {
     group = 'verification'
     description = 'Builds and verifies every currently registered Cinemarr target.'
-    dependsOn(tasks.named('verify1201Family'), tasks.named('verify1202Family'), tasks.named('verify1211Family'),
-            tasks.named('verify2612Family'), tasks.named('verify262Family'), verifyLegacy1710, verifyGameTests)
+    dependsOn(familyReleaseGates, verifyGameTests)
 }
 
 tasks.register('verifySourceLayout', Exec) {
@@ -531,7 +523,14 @@ tasks.register('verifySourceLayout', Exec) {
 tasks.register('verifyTargetManifest', Exec) {
     group = 'verification'
     description = 'Validates the single-source maintained target and runtime manifest.'
+    dependsOn('verifyTargetManifestTests')
     commandLine 'python3', 'scripts/target-matrix.py', 'verify'
+}
+
+tasks.register('verifyTargetManifestTests', Exec) {
+    group = 'verification'
+    description = 'Rejects invalid target identities, Java mappings, protocol drift and missing runtime tasks.'
+    commandLine 'python3', 'scripts/test-target-matrix.py'
 }
 
 tasks.register('verifyReleaseHygiene', Exec) {
@@ -540,20 +539,142 @@ tasks.register('verifyReleaseHygiene', Exec) {
     commandLine 'python3', 'scripts/verify-release-hygiene.py'
 }
 
-tasks.named('verifyAllTargets') {
-    dependsOn tasks.named('verifySourceLayout'), tasks.named('verifyTargetManifest'), tasks.named('verifyReleaseHygiene')
+tasks.register('verifyPcmCaptureAlignment', Exec) {
+    group = 'verification'
+    description = 'Proves shared-marker capture alignment preserves real program lag.'
+    commandLine 'python3', 'scripts/test-align-pcm-captures.py'
 }
 
-def targetManifest = new JsonSlurper().parse(layout.projectDirectory.file('gradle/targets.json').asFile)
-if (targetManifest.schemaVersion != 1 || targetManifest.product != 'Cinemarr') {
-    throw new GradleException('Unsupported Cinemarr target manifest')
+tasks.register('verifyLogMarkerPolling', Exec) {
+    group = 'verification'
+    description = 'Rejects false pipefail timeouts in release evidence log polling.'
+    commandLine 'python3', 'scripts/test-log-marker-polling.py'
 }
+
+tasks.register('verifyLegacyProbePlayerState', Exec) {
+    group = 'verification'
+    description = 'Validates bounded, lossless preparation of reusable legacy test-player state.'
+    commandLine 'python3', 'scripts/test-legacy-probe-player-state.py'
+}
+
+tasks.register('verifyPrivateXvfb', Exec) {
+    group = 'verification'
+    description = 'Proves atomic private-display allocation and owned-process teardown.'
+    commandLine 'python3', 'scripts/test-private-xvfb.py'
+}
+
+tasks.register('verifyClientJoinOrder', Exec) {
+    group = 'verification'
+    description = 'Rejects modern media snapshots arriving before client JOIN reset.'
+    commandLine 'python3', 'scripts/check-client-join-order.py', '--self-test'
+}
+
+tasks.register('verifyFabricLoaderVersion', Exec) {
+    group = 'verification'
+    description = 'Rejects minimum-loader checks that silently run a newer locked loader.'
+    commandLine 'python3', 'scripts/check-fabric-loader-version.py', '--self-test'
+}
+
+tasks.register('verifyPrivateMinecraftWindow', Exec) {
+    group = 'verification'
+    description = 'Proves GUI input/capture rejects unowned or replaced private displays.'
+    commandLine 'python3', 'scripts/test-private-minecraft-window.py'
+}
+
+tasks.register('verifyPackagedClientInputs', Exec) {
+    group = 'verification'
+    description = 'Rejects mismatched production-client bytes, development inputs and unowned workspaces.'
+    commandLine 'python3', 'scripts/test-packaged-client.py'
+}
+
+tasks.register('verifyOwnerTimeline', Exec) {
+    group = 'verification'
+    description = 'Requires a real authoritative stream change and preserved cursor for audio or subtitle fixtures.'
+    commandLine 'python3', 'scripts/test-owner-timeline.py'
+}
+
+tasks.register('verifyPostReconnectCapture', Exec) {
+    group = 'verification'
+    description = 'Rejects stale or unowned post-reconnect video evidence without claiming visual acceptance.'
+    commandLine 'python3', 'scripts/test-post-reconnect-capture.py'
+}
+
+tasks.register('verifyVideoResourceReload', Exec) {
+    group = 'verification'
+    description = 'Requires fresh live video resource/sound reload evidence before physical A/V acceptance.'
+    commandLine 'python3', 'scripts/test-video-resource-reload.py'
+}
+
+tasks.register('verifyVideoTerminal', Exec) {
+    group = 'verification'
+    description = 'Rejects stale terminal/queue evidence and active underruns hidden by later resets.'
+    commandLine 'python3', 'scripts/test-video-terminal.py'
+}
+
+tasks.register('verifyLegacyWorldChange', Exec) {
+    group = 'verification'
+    description = 'Requires same-JVM dimension cleanup and fresh world-return evidence.'
+    commandLine 'python3', 'scripts/test-legacy-world-change.py'
+}
+
+tasks.register('verifyVideoBrowsePressure', Exec) {
+    group = 'verification'
+    description = 'Rejects missing, unsaturated, shared-pool or unbounded live browse pressure evidence.'
+    commandLine 'python3', 'scripts/test-video-browse-pressure.py'
+}
+
+tasks.register('verifyVideoSegmentPressure', Exec) {
+    group = 'verification'
+    description = 'Requires real bounded third-peer traffic, two healthy viewers, and transfer cleanup.'
+    commandLine 'python3', 'scripts/test-video-segment-pressure.py'
+}
+
+tasks.register('verifyVideoFaultRecovery', Exec) {
+    group = 'verification'
+    description = 'Requires fresh private frames and physical PCM after every injected network fault.'
+    commandLine 'python3', 'scripts/test-video-fault-recovery.py'
+}
+
+tasks.named('verifyAllTargets') {
+    dependsOn tasks.named('verifySourceLayout'), tasks.named('verifyTargetManifest'),
+            tasks.named('verifyReleaseHygiene'), tasks.named('verifyPcmCaptureAlignment'),
+            tasks.named('verifyLogMarkerPolling'), tasks.named('verifyLegacyProbePlayerState'),
+            tasks.named('verifyPrivateXvfb'), tasks.named('verifyClientJoinOrder'),
+            tasks.named('verifyPrivateMinecraftWindow'), tasks.named('verifyFabricLoaderVersion'),
+            tasks.named('verifyPackagedClientInputs'), tasks.named('verifyOwnerTimeline'),
+            tasks.named('verifyPostReconnectCapture'), tasks.named('verifyVideoResourceReload'),
+            tasks.named('verifyVideoTerminal'), tasks.named('verifyLegacyWorldChange'), tasks.named('verifyVideoBrowsePressure'),
+            tasks.named('verifyVideoSegmentPressure'), tasks.named('verifyVideoFaultRecovery')
+}
+
 def expectedArtifactCount = targetManifest.expected.artifacts as int
 def expectedRuntimeCount = targetManifest.expected.runtimes as int
 def canonicalArtifacts = targetManifest.artifacts.collect { target ->
     String prefix = target.path == '.' ? '' : "${target.path}/"
-    [minecraft: target.minecraft, java: target.runtimeJava, loader: target.loader,
+    [minecraft: target.minecraft, java: target.runtimeJava, loader: target.loader, task: target.task,
      path: "${prefix}build/libs/${target.artifact}"]
+}
+
+// Loader plugins can emit semantically identical release JARs with
+// host-specific manifest discovery or ZIP entry order. Canonicalize the final
+// artifact after each isolated gate so local, CI, and published hashes name the
+// same bytes rather than the machine that assembled them.
+canonicalArtifacts.each { artifact ->
+    def canonicalizeAfter = { String gateName ->
+        String canonicalizerName = "canonicalize${gateName.substring(0, 1).toUpperCase()}${gateName.substring(1)}Artifact"
+        def canonicalizer = tasks.register(canonicalizerName, Exec) {
+            group = 'verification'
+            description = "Canonicalizes the release artifact emitted by ${gateName}."
+            commandLine 'python3', 'scripts/canonicalize-release-jar.py',
+                    layout.projectDirectory.file(artifact.path as String).asFile.absolutePath
+            doNotTrackState('Canonicalization atomically normalizes its input archive in place.')
+        }
+        tasks.named(gateName).configure { finalizedBy(canonicalizer) }
+    }
+    canonicalizeAfter(artifact.task as String)
+    if (artifact.loader == 'fabric') {
+        canonicalizeAfter((artifact.task as String).replace('verifyFabric', 'verifyQuilt'))
+    }
 }
 
 def catalogVersions = { String minecraft ->
@@ -643,8 +764,9 @@ indexRelease.configure {
 
 tasks.register('releaseMatrixGate') {
     group = 'verification'
-    description = 'Runs the certified NeoForge 1.21.1 release checks.'
-    dependsOn(tasks.named('test'), tasks.named('verifyRelease'), verifyGameTests, verifyDedicatedServers)
+    description = 'Builds and inspects all 16 artifacts, runs GameTests, all 21 runtimes and required supplements; direct review and remote CI remain separate.'
+    dependsOn('inspectReleaseArtifacts', verifyGameTests, 'verifyRuntimeMatrix',
+            'verifyQuiltModMenuRuntimes', 'verifyFabricLoaderMinimumRuntimes')
 }
 
 tasks.register('inspectReleaseArtifacts', Exec) {
@@ -663,6 +785,7 @@ tasks.register('verifyDedicatedServers', Exec) {
     environment('CINEMARR_PROTOCOL_CLIENT_GATE', 'true')
     environment('CINEMARR_COMMAND_CLIENT_GATE', 'true')
     environment('CINEMARR_VIDEO_CLIENT_GATE', 'true')
+    environment('CINEMARR_VIDEO_CONTROL_GATE', 'true')
     commandLine('bash', 'scripts/run-dedicated-server-gate.sh', '1.21.1-neoforge')
 }
 
@@ -670,11 +793,97 @@ tasks.register('verifyRuntimeMatrix', Exec) {
     group = 'verification'
     description = "Runs all ${expectedRuntimeCount} manifest-derived dedicated-server and two-client video profiles."
     mustRunAfter('inspectReleaseArtifacts')
+    dependsOn('verifyVideoTerminalRuntimes', 'verifyVideoPressureRuntimes', 'verifyVideoFaultRecoveryRuntimes')
     workingDir(layout.projectDirectory)
     environment('CINEMARR_PROTOCOL_CLIENT_GATE', 'true')
     environment('CINEMARR_COMMAND_CLIENT_GATE', 'true')
     environment('CINEMARR_VIDEO_CLIENT_GATE', 'true')
+    environment('CINEMARR_VIDEO_CONTROL_GATE', 'true')
+    environment('CINEMARR_LEGACY_DECODE_STALL_MS', '10000')
+    environment('CINEMARR_MODERN_AUDIO_SETUP_STALL_MS', '250')
     commandLine('bash', 'scripts/run-dedicated-server-gate.sh', 'all')
+}
+
+def terminalRuntimeGates = [
+        '1.7.10-forge': 'verifyLegacyVideoTerminalRuntime',
+        '1.21.1-neoforge': 'verifyModernVideoTerminalRuntime'
+].collect { profile, taskName ->
+    tasks.register(taskName, Exec) {
+        group = 'verification'
+        description = "Exercises queue advancement, near-EOS reconnect, replay and stop on ${profile}."
+        workingDir(layout.projectDirectory)
+        environment('CINEMARR_GATE_OUTPUT_ROOT', layout.buildDirectory.dir("video-terminal-gate/${profile}").get().asFile.absolutePath)
+        environment('CINEMARR_ALSA_PCM_TYPE', 'pulse')
+        environment('CINEMARR_PROTOCOL_CLIENT_GATE', 'true')
+        environment('CINEMARR_COMMAND_CLIENT_GATE', 'true')
+        environment('CINEMARR_VIDEO_CLIENT_GATE', 'true')
+        environment('CINEMARR_VIDEO_CONTROL_GATE', 'true')
+        environment('CINEMARR_VIDEO_TERMINAL_GATE', 'true')
+        mustRunAfter('inspectReleaseArtifacts', 'verifyDedicatedServers')
+        commandLine('bash', 'scripts/run-dedicated-server-gate.sh', profile)
+    }
+}
+terminalRuntimeGates[1].configure { mustRunAfter(terminalRuntimeGates[0]) }
+tasks.register('verifyVideoTerminalRuntimes') {
+    group = 'verification'
+    description = 'Runs both supplemental terminal lifecycle representatives, serially.'
+    dependsOn(terminalRuntimeGates)
+}
+
+def pressureRuntimeGates = [
+        '1.7.10-forge': 'verifyLegacyVideoPressureRuntime',
+        '1.21.1-neoforge': 'verifyModernVideoPressureRuntime'
+].collect { profile, taskName ->
+    tasks.register(taskName, Exec) {
+        group = 'verification'
+        description = "Exercises real browse and third-peer segment overload without starving playback on ${profile}."
+        workingDir(layout.projectDirectory)
+        environment('CINEMARR_GATE_OUTPUT_ROOT', layout.buildDirectory.dir("video-pressure-gate/${profile}").get().asFile.absolutePath)
+        environment('CINEMARR_ALSA_PCM_TYPE', 'pulse')
+        environment('CINEMARR_PROTOCOL_CLIENT_GATE', 'true')
+        environment('CINEMARR_COMMAND_CLIENT_GATE', 'true')
+        environment('CINEMARR_VIDEO_CLIENT_GATE', 'true')
+        environment('CINEMARR_VIDEO_CONTROL_GATE', 'true')
+        environment('CINEMARR_VIDEO_PRESSURE_GATE', 'true')
+        environment('CINEMARR_GATE_VIDEO_DURATION_SECONDS', '600')
+        mustRunAfter('inspectReleaseArtifacts', 'verifyDedicatedServers')
+        mustRunAfter(terminalRuntimeGates)
+        commandLine('bash', 'scripts/run-dedicated-server-gate.sh', profile)
+    }
+}
+pressureRuntimeGates[1].configure { mustRunAfter(pressureRuntimeGates[0]) }
+tasks.register('verifyVideoPressureRuntimes') {
+    group = 'verification'
+    description = 'Runs both supplemental live browse and third-peer overload representatives, serially.'
+    dependsOn(pressureRuntimeGates)
+}
+
+def faultRecoveryRuntimeGates = [
+        '1.7.10-forge': 'verifyLegacyVideoFaultRecoveryRuntime',
+        '1.21.1-neoforge': 'verifyModernVideoFaultRecoveryRuntime'
+].collect { profile, taskName ->
+    tasks.register(taskName, Exec) {
+        group = 'verification'
+        description = "Requires physical A/V after transient, slow and exhausted segment delivery on ${profile}."
+        workingDir(layout.projectDirectory)
+        environment('CINEMARR_GATE_OUTPUT_ROOT', layout.buildDirectory.dir("video-fault-recovery-gate/${profile}").get().asFile.absolutePath)
+        environment('CINEMARR_ALSA_PCM_TYPE', 'pulse')
+        environment('CINEMARR_PROTOCOL_CLIENT_GATE', 'true')
+        environment('CINEMARR_COMMAND_CLIENT_GATE', 'true')
+        environment('CINEMARR_VIDEO_CLIENT_GATE', 'true')
+        environment('CINEMARR_VIDEO_CONTROL_GATE', 'true')
+        environment('CINEMARR_VIDEO_ADVERSE_NETWORK_GATE', 'true')
+        environment('CINEMARR_GATE_VIDEO_DURATION_SECONDS', '600')
+        mustRunAfter('inspectReleaseArtifacts', 'verifyDedicatedServers')
+        mustRunAfter(terminalRuntimeGates, pressureRuntimeGates)
+        commandLine('bash', 'scripts/run-dedicated-server-gate.sh', profile)
+    }
+}
+faultRecoveryRuntimeGates[1].configure { mustRunAfter(faultRecoveryRuntimeGates[0]) }
+tasks.register('verifyVideoFaultRecoveryRuntimes') {
+    group = 'verification'
+    description = 'Runs both physical post-network-fault representatives, serially.'
+    dependsOn(faultRecoveryRuntimeGates)
 }
 
 tasks.register('verifyQuiltRuntimes', Exec) {
@@ -684,6 +893,8 @@ tasks.register('verifyQuiltRuntimes', Exec) {
     environment('CINEMARR_PROTOCOL_CLIENT_GATE', 'true')
     environment('CINEMARR_COMMAND_CLIENT_GATE', 'true')
     environment('CINEMARR_VIDEO_CLIENT_GATE', 'true')
+    environment('CINEMARR_VIDEO_CONTROL_GATE', 'true')
+    environment('CINEMARR_MODERN_AUDIO_SETUP_STALL_MS', '250')
     commandLine('bash', 'scripts/run-dedicated-server-gate.sh', 'quilt')
 }
 
@@ -696,8 +907,9 @@ tasks.register('verifyQuiltModMenuRuntimes', Exec) {
     environment('CINEMARR_PROTOCOL_CLIENT_GATE', 'true')
     environment('CINEMARR_COMMAND_CLIENT_GATE', 'true')
     environment('CINEMARR_VIDEO_CLIENT_GATE', 'true')
+    environment('CINEMARR_VIDEO_CONTROL_GATE', 'true')
     commandLine('bash', 'scripts/run-dedicated-server-gate.sh', 'quilt')
-    mustRunAfter('verifyDedicatedServers')
+    mustRunAfter('verifyDedicatedServers', 'verifyRuntimeMatrix', 'inspectReleaseArtifacts')
 }
 
 tasks.register('verifyFabricLoaderMinimumRuntimes', Exec) {

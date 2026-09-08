@@ -25,7 +25,11 @@ case "$label" in
   *) echo "Usage: $0 {1.7.10-forge|1.21.1-neoforge}" >&2; exit 2 ;;
 esac
 
-for tool in curl jq base64 pactl xvfb-run sha256sum; do command -v "$tool" >/dev/null || { echo "Missing required tool: $tool" >&2; exit 2; }; done
+python3 "$repo_root/scripts/launch-packaged-client.py" "$label" --check-only \
+  --game-dir "$repo_root/build/packaged-client-focus/preflight-$label" \
+  --username CinemarrVideoA --server "$server_host:1" --expected-server-host "$server_host"
+
+for tool in curl jq base64 pactl xvfb-run sha256sum python3; do command -v "$tool" >/dev/null || { echo "Missing required tool: $tool" >&2; exit 2; }; done
 [[ -x "$java_home/bin/java" && -f "$repo_root/build/releases/$expected_jar" ]] \
   || { echo "$label requires its indexed release JAR and Java runtime" >&2; exit 2; }
 
@@ -54,7 +58,7 @@ new_logs() {
 wait_for_log() {
   local pattern=$1 timeout=${2:-240} deadline
   deadline=$((SECONDS+timeout))
-  while (( SECONDS < deadline )); do new_logs | grep -Eq "$pattern" && return 0; sleep 2; done
+  while (( SECONDS < deadline )); do new_logs | grep -E "$pattern" >/dev/null && return 0; sleep 2; done
   echo "$server_name did not log $pattern" >&2; return 1
 }
 send_command() {
@@ -97,6 +101,12 @@ cleanup() {
   fi
   (( remote_started )) && stop_remote
   (( remote_prepared )) && update_overrides "$original_overrides"
+  if [[ -n "${output_root:-}" && -d "$output_root" ]]; then
+    if ! printf '%s\0%s\0' "$server_host" "$DISCOPANEL_TOKEN" \
+        | python3 "$repo_root/scripts/redact-evidence-values.py" "$output_root"; then
+      status=1
+    fi
+  fi
   unset DISCOPANEL_TOKEN
   exit "$status"
 }
@@ -125,23 +135,18 @@ output_root="$repo_root/build/discopanel-lifecycle/$label"
 mkdir -p "$output_root"
 jammarr_name=$(jq -r '.mods[]|select(.enabled==true and (.fileName|ascii_downcase|startswith("jammarr-") and endswith(".jar")))|.fileName' <<<"$mods")
 [[ -n "$jammarr_name" ]] || { echo "$label has no enabled Jammarr dependency" >&2; exit 1; }
-if [[ "$label" == 1.7.10-forge ]]; then
-  jammarr_source="/home/braydon/PAmpMod/platforms/mc1.7.10/forge/build/libs/${jammarr_name%.jar}-dev.jar"
-  [[ -f "$jammarr_source" ]] || { echo "Legacy Jammarr development JAR is unavailable" >&2; exit 1; }
-  for role in leader follower; do
-    mods_dir="$output_root/$label.audio-$role/mods"
-    mkdir -p "$mods_dir"
-    # The lifecycle workspace is intentionally reusable, but the active
-    # Jammarr development filename changes with its version. Remove only the
-    # task-owned legacy dev JARs so a prior run cannot create a duplicate mod.
-    find "$mods_dir" -maxdepth 1 -type f -name 'jammarr-*-dev.jar' -delete
-    cp -- "$jammarr_source" "$mods_dir/"
-  done
-else
-  jammarr_content=$(api_call discopanel.v1.FileService/GetFile "$(jq -cn --arg id "$server_id" --arg path "mods/$jammarr_name" '{serverId:$id,path:$path}')" | jq -r '.content')
-  for role in leader follower; do mkdir -p "$output_root/$label.audio-$role/mods"; base64 -d <<<"$jammarr_content" > "$output_root/$label.audio-$role/mods/$jammarr_name"; done
-  unset jammarr_content
-fi
+# Both clients use the exact server dependency, even on legacy Forge.
+jammarr_content=$(api_call discopanel.v1.FileService/GetFile "$(jq -cn --arg id "$server_id" --arg path "mods/$jammarr_name" '{serverId:$id,path:$path}')" | jq -r '.content')
+for role in leader follower; do
+  mods_dir="$output_root/$label.audio-$role/mods"
+  mkdir -p "$mods_dir"
+  if find "$mods_dir" -maxdepth 1 -type f -name 'jammarr-*-dev.jar' -print -quit | grep . >/dev/null; then
+    echo "Preserve/archive the prior development workspace before packaged lifecycle acceptance" >&2
+    exit 1
+  fi
+  base64 -d <<<"$jammarr_content" > "$mods_dir/$jammarr_name"
+done
+unset jammarr_content
 
 lifecycle_overrides=$(jq -c '
   .environment=(.environment//{})
@@ -167,11 +172,28 @@ fi
 sink="cinemarr_${BASHPID}_${label//[^a-zA-Z0-9]/_}_lifecycle"
 module=$(pactl load-module module-null-sink sink_name="$sink" rate=48000 channels=2)
 active_audio_modules+=("$module")
+warmup_pid=""
+if [[ "$label" == 1.7.10-forge ]]; then
+  # A cleared footprint alone is not a prepared legacy world: the first
+  # neighbor notification can synchronously load/populate its adjacent chunks
+  # and decorate the new pixels with snow. Settle the full player view before
+  # the builder clears the fixture, retaining that ticket through checkpoint.
+  # This does not change production obstruction checks or retry a failed build.
+  start_audio_client "$label" "$target_dir" "$java_home" "$port" follower CinemarrRecovery "$sink"
+  warmup_pid=$started_audio_client_pid
+  wait_for_log 'CinemarrRecovery joined the game' 180
+  command_output 'gamemode 1 CinemarrRecovery' >/dev/null
+  sleep 5
+fi
 start_audio_client "$label" "$target_dir" "$java_home" "$port" leader CinemarrVideoA "$sink"
 builder_pid=$started_audio_client_pid
 wait_for_log 'Acceptance Quick TV lifecycle checkpoint:.*placed=256.*remaining=8960' 300
 checkpoint_log=$(new_logs | grep 'Acceptance Quick TV lifecycle checkpoint:' | tail -n 1)
 terminate_client_launch "$builder_pid" 20
+if [[ -n "$warmup_pid" ]]; then
+  terminate_client_launch "$warmup_pid" 20
+  cp -- "$output_root/$label.audio-follower.console.log" "$output_root/$label.chunk-warmup.console.log"
+fi
 if (( modern_forceload )); then
   command_output 'forceload remove 1968 2048 2128 2048' >/dev/null
   modern_forceload=0

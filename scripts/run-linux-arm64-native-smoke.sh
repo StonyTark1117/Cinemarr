@@ -47,6 +47,12 @@ cleanup() {
     cleanup_status=$?
     (( cleanup_status == 0 )) || status=$cleanup_status
   fi
+  if [[ -d "$evidence_dir" ]]; then
+    if ! printf '%s\0' "$host" \
+        | python3 "$repo_root/scripts/redact-evidence-values.py" "$evidence_dir"; then
+      status=1
+    fi
+  fi
   for file in "$runtime_dir/user-data" "$runtime_dir/meta-data"; do
     [[ -f "$file" ]] && unlink -- "$file"
   done

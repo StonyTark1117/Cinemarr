@@ -119,6 +119,15 @@ def main() -> None:
                     "myPlexSubscription": True
                 }}
             elif path == "/library/sections/1/all":
+                # Deliberately occupy metadata workers beyond the clients'
+                # prefetch runway without delaying segment HTTP responses.
+                # Always bounded, and released immediately when the gate exits
+                # the fault phase. Client HTTP timeouts remain unmodified.
+                if state == "browse-held":
+                    deadline = time.monotonic() + 45
+                    while time.monotonic() < deadline and state_file is not None \
+                            and state_file.exists() and state_file.read_text().strip() == "browse-held":
+                        time.sleep(0.1)
                 body = {"MediaContainer": {"Metadata": [movie] if video_directory is not None else tracks}}
             elif path.startswith("/library/metadata/") and path.endswith("/nearest"):
                 key = path.removeprefix("/library/metadata/").removesuffix("/nearest")

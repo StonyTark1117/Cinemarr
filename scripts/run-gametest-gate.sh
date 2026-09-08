@@ -15,13 +15,18 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+gametests_passed() {
+    # A passing subset is not the maintained ten-test release gate.
+    grep -Eq 'All 10 required tests passed([[:space:]]|$)' "$1"
+}
+
 cd "$repo_dir"
 setsid ./gradlew runGameTestServer --no-daemon --max-workers=1 >"$log_file" 2>&1 &
 gate_pid=$!
 
 passed=false
 for ((second = 0; second < 180; second++)); do
-    if grep -Eq 'All [0-9]+ required tests passed' "$log_file"; then
+    if gametests_passed "$log_file"; then
         passed=true
         break
     fi
@@ -57,4 +62,4 @@ if grep -Eq '[1-9][0-9]* required tests failed|BUILD FAILED' "$log_file"; then
     exit 1
 fi
 
-grep -E 'GAME TESTS COMPLETE|All [0-9]+ required tests passed' "$log_file"
+grep -E 'GAME TESTS COMPLETE|All 10 required tests passed' "$log_file"

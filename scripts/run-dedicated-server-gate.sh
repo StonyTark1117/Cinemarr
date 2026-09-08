@@ -3,6 +3,9 @@ set -uo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 output_root=${CINEMARR_GATE_OUTPUT_ROOT:-"$repo_root/build/dedicated-server-gate"}
+if [[ "$output_root" != /* ]]; then
+  output_root="$repo_root/$output_root"
+fi
 mkdir -p "$output_root"
 gate_lock="${output_root}.lock"
 exec 9>"$gate_lock"
@@ -72,15 +75,35 @@ audio_client_gate=${CINEMARR_AUDIO_CLIENT_GATE:-false}
 audio_scenario_gate=${CINEMARR_AUDIO_SCENARIO_GATE:-false}
 video_client_gate=${CINEMARR_VIDEO_CLIENT_GATE:-false}
 video_control_gate=${CINEMARR_VIDEO_CONTROL_GATE:-false}
+video_terminal_gate=${CINEMARR_VIDEO_TERMINAL_GATE:-false}
+video_pressure_gate=${CINEMARR_VIDEO_PRESSURE_GATE:-false}
 video_adverse_network_gate=${CINEMARR_VIDEO_ADVERSE_NETWORK_GATE:-false}
 video_follower_first_gate=${CINEMARR_VIDEO_FOLLOWER_FIRST_GATE:-false}
 external_video_client_gate=${CINEMARR_EXTERNAL_VIDEO_CLIENT_GATE:-false}
 live_plex_gate=${CINEMARR_LIVE_PLEX_GATE:-false}
+if [[ "$video_pressure_gate" != true && "$video_pressure_gate" != false ]]; then
+  echo 'CINEMARR_VIDEO_PRESSURE_GATE must be true or false' >&2; exit 2
+fi
+if [[ "$video_pressure_gate" == true ]] && { [[ "$video_client_gate" != true || "$video_control_gate" != true || "$live_plex_gate" == true || "$video_terminal_gate" == true || "$video_adverse_network_gate" == true || "$external_video_client_gate" == true ]] \
+    || [[ "$requested" != '1.7.10-forge' && "$requested" != '1.21.1-neoforge' ]]; }; then
+  echo 'Pressure scenarios require a separate deterministic full-video case on 1.7.10-forge or 1.21.1-neoforge' >&2; exit 2
+fi
+if [[ "$video_terminal_gate" != true && "$video_terminal_gate" != false ]]; then
+  echo 'CINEMARR_VIDEO_TERMINAL_GATE must be true or false' >&2
+  exit 2
+fi
+if [[ "$video_terminal_gate" == true ]] && { [[ "$video_client_gate" != true || "$video_control_gate" != true || "$live_plex_gate" == true || "$video_adverse_network_gate" == true ]] \
+    || [[ "$requested" != '1.7.10-forge' && "$requested" != '1.21.1-neoforge' ]]; }; then
+  echo 'Terminal scenarios require a separate deterministic full-video case on 1.7.10-forge or 1.21.1-neoforge' >&2
+  exit 2
+fi
 acceptance_server_host=${CINEMARR_ACCEPTANCE_SERVER_HOST:-127.0.0.1}
 video_decoder_backend=${CINEMARR_VIDEO_DECODER_BACKEND:-software}
 video_decoder_device=${CINEMARR_VIDEO_DECODER_DEVICE:-}
 video_decoder_expected_effective=${CINEMARR_VIDEO_DECODER_EXPECTED_EFFECTIVE:-$video_decoder_backend}
 video_decoder_expect_fallback=${CINEMARR_VIDEO_DECODER_EXPECT_FALLBACK:-false}
+legacy_decode_stall_ms=${CINEMARR_LEGACY_DECODE_STALL_MS:-0}
+modern_audio_setup_stall_ms=${CINEMARR_MODERN_AUDIO_SETUP_STALL_MS:-0}
 fabric_loader_version=${CINEMARR_FABRIC_LOADER_VERSION:-}
 quilt_modmenu_gate=${CINEMARR_QUILT_MODMENU_GATE:-false}
 
@@ -98,6 +121,14 @@ if [[ "$video_decoder_device" == *$'\n'* || "$video_decoder_device" == *$'\r'* |
 fi
 if [[ "$video_decoder_expect_fallback" != true && "$video_decoder_expect_fallback" != false ]]; then
   echo "CINEMARR_VIDEO_DECODER_EXPECT_FALLBACK must be true or false" >&2
+  exit 2
+fi
+if [[ ! "$legacy_decode_stall_ms" =~ ^[0-9]+$ ]] || (( legacy_decode_stall_ms > 15000 )); then
+  echo "CINEMARR_LEGACY_DECODE_STALL_MS must be an integer from 0 through 15000" >&2
+  exit 2
+fi
+if [[ ! "$modern_audio_setup_stall_ms" =~ ^[0-9]+$ ]] || (( modern_audio_setup_stall_ms > 400 )); then
+  echo "CINEMARR_MODERN_AUDIO_SETUP_STALL_MS must be an integer from 0 through 400" >&2
   exit 2
 fi
 if [[ "$external_video_client_gate" != true && "$external_video_client_gate" != false ]]; then
@@ -124,14 +155,19 @@ if [[ "$video_adverse_network_gate" == true && "$live_plex_gate" == true ]]; the
   echo "CINEMARR_VIDEO_ADVERSE_NETWORK_GATE requires the deterministic fault-injection Plex service" >&2
   exit 2
 fi
-if [[ "$video_adverse_network_gate" == true && -z "${CINEMARR_GATE_VIDEO_DURATION_SECONDS+x}" ]]; then
-  fake_video_duration_seconds=300
-fi
 if [[ "$video_control_gate" == true && -z "${CINEMARR_GATE_VIDEO_DURATION_SECONDS+x}" ]]; then
   # The control sequence deliberately waits for stable playback between pause,
   # resume, seek, stream replacement, and reconnect. Keep the deterministic
   # fixture alive long enough that those checks cannot run into its natural end.
   fake_video_duration_seconds=300
+fi
+if [[ "$video_adverse_network_gate" == true && -z "${CINEMARR_GATE_VIDEO_DURATION_SECONDS+x}" ]]; then
+  # Three fault/recovery cases each require fresh physical frames and PCM after
+  # the normal controls. Do not confuse natural fixture EOS with a transport fault.
+  fake_video_duration_seconds=600
+fi
+if [[ "$video_pressure_gate" == true && -z "${CINEMARR_GATE_VIDEO_DURATION_SECONDS+x}" ]]; then
+  fake_video_duration_seconds=600
 fi
 if [[ "$external_video_client_gate" == true && "$video_client_gate" != true ]]; then
   echo "CINEMARR_EXTERNAL_VIDEO_CLIENT_GATE requires CINEMARR_VIDEO_CLIENT_GATE=true" >&2
@@ -296,7 +332,7 @@ cleanup_all() {
 }
 
 cleanup_audio_processes() {
-  local pid module
+  local pid module index
   for pid in "${active_audio_client_pids[@]}"; do
     terminate_client_launch "$pid" 10 || true
   done
@@ -304,7 +340,10 @@ cleanup_audio_processes() {
     kill -TERM "$pid" 2>/dev/null || true
     wait "$pid" 2>/dev/null || true
   done
-  for module in "${active_audio_modules[@]}"; do
+  # Some acceptance scenarios create dependent audio modules. Unload in the
+  # reverse of creation order so a master cannot be left behind.
+  for ((index=${#active_audio_modules[@]} - 1; index >= 0; index--)); do
+    module=${active_audio_modules[index]}
     pactl unload-module "$module" > /dev/null 2>&1 || true
   done
   active_audio_client_pids=()
@@ -488,7 +527,7 @@ run_acceptance_client() {
   (
     cd "$target_dir" || exit 1
     exec setsid env -u WAYLAND_DISPLAY XDG_SESSION_TYPE=x11 \
-      xvfb-run -a -s '-screen 0 1280x720x24 -ac +extension GLX +render -noreset' env \
+      bash "$repo_root/scripts/run-private-xvfb.sh" 1280x720x24 env \
       JAVA_HOME="$java_home" PATH="$java_home/bin:$PATH" \
       JAVA_TOOL_OPTIONS="$java_tool_options" \
       LIBGL_ALWAYS_SOFTWARE=1 \
@@ -589,7 +628,7 @@ run_command_client() {
   (
     cd "$target_dir" || exit 1
     exec setsid env -u WAYLAND_DISPLAY XDG_SESSION_TYPE=x11 \
-      xvfb-run -a -s '-screen 0 1280x720x24 -ac +extension GLX +render -noreset' env \
+      bash "$repo_root/scripts/run-private-xvfb.sh" 1280x720x24 env \
       JAVA_HOME="$java_home" PATH="$java_home/bin:$PATH" \
       JAVA_TOOL_OPTIONS='-Dcinemarr.acceptance.enabled=true -Dcinemarr.acceptance.commandProbe=true -Dorg.lwjgl.opengl.Display.allowSoftwareOpenGL=true' \
       LIBGL_ALWAYS_SOFTWARE=1 \
@@ -742,6 +781,19 @@ start_audio_client() {
   fi
   if [[ "$video_client_gate" == "true" ]]; then
     java_options+=" -Dcinemarr.acceptance.videoProbe=true -Dcinemarr.acceptance.videoLeader=$leader -Dcinemarr.acceptance.audioControlFile=$control_file"
+    if [[ "$video_pressure_gate" == true ]]; then java_options+=' -Dcinemarr.acceptance.browsePressureProbe=true'; fi
+    if [[ "$video_pressure_gate" == true && "$role" == peer ]]; then
+      java_options+=' -Dcinemarr.acceptance.segmentPressurePeer=true'
+    fi
+    if [[ "$video_terminal_gate" == true && "$label" == '1.7.10-forge' ]]; then
+      java_options+=' -Dcinemarr.acceptance.worldChangeProbe=true'
+    fi
+    if [[ "$label" == "1.7.10-forge" && "$legacy_decode_stall_ms" != 0 ]]; then
+      java_options+=" -Dcinemarr.acceptance.legacyDecodeStallMs=$legacy_decode_stall_ms"
+    fi
+    if [[ "$label" == "1.20.2-quilt" && "$modern_audio_setup_stall_ms" != 0 ]]; then
+      java_options+=" -Dcinemarr.acceptance.modernAudioSetupStallMs=$modern_audio_setup_stall_ms"
+    fi
   fi
   [[ "$active_disable_configuration_cache" == true ]] && cache_args+=(--no-configuration-cache)
 
@@ -759,8 +811,11 @@ start_audio_client() {
     'onboardAccessibility:false' \
     'skipMultiplayerWarning:true' \
     'joinedFirstServer:true' \
+    'pauseOnLostFocus:false' \
     'narrator:0' \
-    'guiScale:1' \
+    'guiScale:2' \
+    'tutorialStep:none' \
+    'showInventoryAchievementHint:false' \
     'soundCategory_master:1.0' \
     'soundCategory_music:0.0' \
     'soundCategory_weather:0.0' \
@@ -809,15 +864,36 @@ start_audio_client() {
     '[general]' \
     'period_size = 512' \
     'periods = 8' > "$client_dir/alsoft.conf"
-  if [[ "$video_client_gate" == "true" && "$role" == "follower" \
-      && "${CINEMARR_VIDEO_FOLLOWER_SMALL_WINDOW:-false}" == "true" ]]; then
-    xvfb_geometry=640x360x24
-    runtime_args+=(-PcinemarrAcceptanceWidth=640 -PcinemarrAcceptanceHeight=360)
+  # Exercise a normal scaled GUI: a 640x480 physical window at scale two is
+  # Minecraft's minimum 320x240 logical viewport, not a scale-one exception.
+  if [[ "$video_client_gate" == "true" ]] \
+      && { [[ "$video_control_gate" == true ]] \
+        || { [[ "$role" == follower ]] && [[ "${CINEMARR_VIDEO_FOLLOWER_SMALL_WINDOW:-false}" == true ]]; }; }; then
+    xvfb_geometry=640x480x24
+    runtime_args+=(-PcinemarrAcceptanceWidth=640 -PcinemarrAcceptanceHeight=480)
   fi
   (
     cd "$target_dir" || exit 1
+    if [[ -n "${CINEMARR_PACKAGED_CLIENT_RUNTIME_ROOT:-}" ]]; then
+      if [[ "$quilt_modmenu_gate" == true || -n "$fabric_loader_version" ]]; then
+        echo 'Packaged client inputs cannot silently stand in for Mod Menu or minimum-loader overrides' >&2
+        exit 2
+      fi
+      # Production acceptance uses the indexed JAR, the manifest's runtime
+      # Java, and prepared loader libraries. The launcher owns private X;
+      # never nest a second X wrapper or fall back to Gradle on failure.
+      exec setsid env -u WAYLAND_DISPLAY XDG_SESSION_TYPE=x11 \
+        JAVA_TOOL_OPTIONS="$java_options" \
+        ALSA_CONFIG_PATH="$client_dir/alsa.conf" ALSOFT_CONF="$client_dir/alsoft.conf" \
+        ALSOFT_DRIVERS=alsa LIBGL_ALWAYS_SOFTWARE=1 \
+        python3 "$repo_root/scripts/launch-packaged-client.py" "$label" \
+        --game-dir "$client_dir" --username "$username" \
+        --server "${acceptance_server_host}:${port}" --expected-server-host "$acceptance_server_host" \
+        --width "${xvfb_geometry%%x*}" --height "$(cut -dx -f2 <<<"$xvfb_geometry")" \
+        > "$client_console" 2>&1
+    fi
     exec setsid env -u WAYLAND_DISPLAY XDG_SESSION_TYPE=x11 \
-      xvfb-run -a -s "-screen 0 $xvfb_geometry -ac +extension GLX +render -noreset" env \
+      bash "$repo_root/scripts/run-private-xvfb.sh" "$xvfb_geometry" env \
       JAVA_HOME="$java_home" PATH="$java_home/bin:$PATH" \
       JAVA_TOOL_OPTIONS="$java_options" \
       ALSA_CONFIG_PATH="$client_dir/alsa.conf" ALSOFT_CONF="$client_dir/alsoft.conf" \
@@ -860,6 +936,11 @@ wait_for_audio_playing() {
     fi
     if (( initialized == 0 && SECONDS >= initialization_deadline )); then
       echo "$label: $role client did not initialize Cinemarr within 180 seconds; see $client_console" >&2
+      if declare -F new_logs >/dev/null; then
+        new_logs 2>/dev/null \
+          | grep -E 'CinemarrVideo[AB]|Cinemarr client handshake|Malformed Cinemarr|Cinemarr is required' \
+          | tail -n 40 >&2 || true
+      fi
       return 1
     fi
     if (( SECONDS >= deadline )); then
@@ -946,33 +1027,10 @@ launch_audio_client() {
   local role=$5
   local username=$6
   local sink=$7
-  local attempt pid status existing
-  local -a remaining=()
-
   ready_audio_client_pid=""
-  for attempt in 1 2; do
-    start_audio_client "$label" "$target_dir" "$java_home" "$port" "$role" "$username" "$sink"
-    pid=$started_audio_client_pid
-    wait_for_audio_playing "$label" "$role" "$pid"
-    status=$?
-    if (( status == 0 )); then
-      ready_audio_client_pid=$pid
-      return 0
-    fi
-    if (( attempt == 2 )); then return 1; fi
-
-    # Headless OpenAL and the client bootstrap can fail transiently on a loaded
-    # hosted runner. Retry the complete clean client launch once, but still
-    # require the replacement process to reach real Cinemarr PLAYING state.
-    echo "$label: retrying $role client once after a pre-playback failure" >&2
-    terminate_client_launch "$pid" 20 || return 1
-    remaining=()
-    for existing in "${active_audio_client_pids[@]}"; do
-      if [[ "$existing" != "$pid" ]]; then remaining+=("$existing"); fi
-    done
-    active_audio_client_pids=("${remaining[@]}")
-  done
-  return 1
+  start_audio_client "$label" "$target_dir" "$java_home" "$port" "$role" "$username" "$sink"
+  ready_audio_client_pid=$started_audio_client_pid
+  wait_for_audio_playing "$label" "$role" "$ready_audio_client_pid"
 }
 
 audio_capture_is_audible() {
@@ -1045,6 +1103,59 @@ capture_audio_sink() {
   wait "$recorder" 2>/dev/null || true
 }
 
+capture_calibrated_audio_pair() {
+  local sink_leader=$1 sink_follower=$2
+  local capture_leader=$3 capture_follower=$4
+  local raw_leader=$5 raw_follower=$6 alignment_evidence=$7
+  local leader_recorder follower_recorder calibration_status=0 existing
+  local -a remaining_recorders=()
+
+  : > "$capture_leader"
+  : > "$capture_follower"
+  parec --raw --latency-msec=50 --device="${sink_leader}.monitor" \
+    --format=s16le --rate=48000 --channels=2 > "$capture_leader" &
+  leader_recorder=$!
+  active_audio_recorder_pids+=("$leader_recorder")
+  parec --raw --latency-msec=50 --device="${sink_follower}.monitor" \
+    --format=s16le --rate=48000 --channels=2 > "$capture_follower" &
+  follower_recorder=$!
+  active_audio_recorder_pids+=("$follower_recorder")
+
+  # The recorders have independent device-open clocks. Inject one 4093 Hz
+  # marker through a single pre-opened FFmpeg graph to establish the same
+  # physical sink instant in both raw streams. The subsequent comparison still
+  # measures the clients' 997 Hz program lag and retains the 150 ms limit.
+  sleep 0.75
+  if ! ffmpeg -hide_banner -loglevel error -re \
+      -f lavfi -i 'sine=frequency=4093:sample_rate=48000:duration=0.4' \
+      -filter_complex '[0:a]volume=4,asplit=2[leader][follower]' \
+      -map '[leader]' -ac 2 -ar 48000 -c:a pcm_s16le \
+        -device "$sink_leader" -buffer_duration 50 -f pulse cinemarr-calibration-leader \
+      -map '[follower]' -ac 2 -ar 48000 -c:a pcm_s16le \
+        -device "$sink_follower" -buffer_duration 50 -f pulse cinemarr-calibration-follower; then
+    calibration_status=1
+  else
+    # Eight seconds are retained after marker alignment; leave margin for
+    # Pulse buffering and the half-second post-marker exclusion window.
+    sleep 9
+  fi
+
+  kill -TERM "$leader_recorder" "$follower_recorder" 2>/dev/null || true
+  wait "$leader_recorder" 2>/dev/null || true
+  wait "$follower_recorder" 2>/dev/null || true
+  for existing in "${active_audio_recorder_pids[@]}"; do
+    if [[ "$existing" != "$leader_recorder" && "$existing" != "$follower_recorder" ]]; then
+      remaining_recorders+=("$existing")
+    fi
+  done
+  active_audio_recorder_pids=("${remaining_recorders[@]}")
+  (( calibration_status == 0 )) || return 1
+
+  python3 "$repo_root/scripts/align-pcm-captures.py" \
+    "$capture_leader" "$capture_follower" "$raw_leader" "$raw_follower" \
+    --evidence "$alignment_evidence"
+}
+
 audio_control_sequence=0
 send_audio_control() {
   local label=$1
@@ -1058,7 +1169,8 @@ send_audio_control() {
 wait_for_pattern_after() {
   local file=$1 first_line=$2 pattern=$3 timeout=${4:-90}
   local deadline=$((SECONDS + timeout))
-  while ! tail -n "+$((first_line + 1))" "$file" 2>/dev/null | grep -Eq "$pattern"; do
+  # Consume the complete tail: grep -q can SIGPIPE the producer under pipefail.
+  while ! tail -n "+$((first_line + 1))" "$file" 2>/dev/null | grep -E "$pattern" >/dev/null; do
     if (( SECONDS >= deadline )); then return 1; fi
     sleep 1
   done
@@ -1094,14 +1206,33 @@ run_video_control_scenarios() {
   first_follower=$(wc -l < "$follower_log")
   send_audio_control "$label" follower 'video:open-ui'
   if ! wait_for_pattern_after "$follower_log" "$first_follower" \
-      'Acceptance video UI: width=640 height=360 widgets=[1-9][0-9]* clipped=0 canControl=false' 90; then
-    echo "$label: non-owner small-window controller UI was clipped, missing, or incorrectly privileged" >&2
+      'Acceptance video UI: width=320 height=240 widgets=[1-9][0-9]* clipped=0 canControl=false overlaps=0' 90; then
+    echo "$label: non-owner scaled controller UI was clipped, overlapping, missing, or incorrectly privileged" >&2
     return 1
   fi
   for _ in {1..60}; do [[ -s "$follower_ui" ]] && break; sleep 1; done
   [[ -s "$follower_ui" ]] || { echo "$label: non-owner small-window UI screenshot was not saved" >&2; return 1; }
-  printf 'Non-owner controller UI rendered at 640x360 with zero clipped widgets. Screenshot SHA-256: ' >> "$evidence"
+  printf 'Non-owner controller UI rendered at 320x240 logical (640x480 physical, scale two) with zero clipped or overlapping widgets. Screenshot SHA-256: ' >> "$evidence"
   sha256sum "$follower_ui" | awk '{print $1}' >> "$evidence"
+
+  # Keep owner commands idle while real non-owner widgets are exercised. CLI
+  # control probes do not cover Play/Queue/stream buttons or in-screen errors.
+  python3 "$repo_root/scripts/observe-controller-feedback.py" \
+    --log "$follower_log" --output "$output_root/$label.widget-feedback" --gate-pid "$$" \
+    || { echo "$label: actual controller widget feedback failed" >&2; return 1; }
+  printf 'Real widget dispatch/error-route checks passed; widget framebuffer review remains required.\n' >> "$evidence"
+
+  first_leader=$(wc -l < "$leader_log")
+  send_audio_control "$label" leader 'video:open-ui'
+  wait_for_pattern_after "$leader_log" "$first_leader" \
+      'Acceptance video UI: width=320 height=240 widgets=[1-9][0-9]* clipped=0 canControl=true overlaps=0' 90 \
+    || { echo "$label: owner controller UI did not open correctly" >&2; return 1; }
+  python3 "$repo_root/scripts/observe-owner-timeline.py" \
+    --log "$leader_log" --output "$output_root/$label.owner-timeline" --gate-pid "$$" \
+    --follower-log "$follower_log" --edit-output "$output_root/$label.controller-edit" \
+    --stream-kind "${CINEMARR_OWNER_STREAM_KIND:-audio}" \
+    || { echo "$label: actual owner timeline widgets failed" >&2; return 1; }
+  printf 'Actual owner pause/seek/stream/resume timeline checks passed; framebuffer review remains required.\n' >> "$evidence"
 
   first_follower=$(wc -l < "$follower_log")
   send_audio_control "$label" follower 'video:pause'
@@ -1179,17 +1310,31 @@ run_video_control_scenarios() {
   printf 'Stream selection chose audio=%s subtitle=%s and advanced generation %s to %s.\n' \
     "$target_audio" "$target_subtitle" "$old_generation" "$new_generation" >> "$evidence"
 
-  cp -- "$follower_log" "$output_root/$label.audio-follower.pre-reconnect.console.log"
   cp -- "$follower_ui" "$output_root/$label.non-owner-small-window-ui.png"
+  first_follower=$(wc -l < "$follower_log")
+  # Disconnect through the server before terminating the launcher. A process
+  # kill alone cannot prove that the client released its render/audio resources.
+  if [[ -z "$rcon_port" && -z "$fifo_fd" ]] && declare -F command_output >/dev/null; then
+    command_output 'kick CinemarrVideoB Cinemarr acceptance reconnect' >/dev/null || return 1
+  elif [[ "$label" == "1.7.10-forge" ]]; then
+    printf 'kick CinemarrVideoB Cinemarr acceptance reconnect\n' >&"$fifo_fd"
+  else
+    python3 "$repo_root/scripts/minecraft-rcon.py" 127.0.0.1 "$rcon_port" "$rcon_password" \
+      'kick CinemarrVideoB Cinemarr acceptance reconnect' >/dev/null || return 1
+  fi
+  wait_for_marker_after "$follower_log" "$first_follower" 'Acceptance client media reset complete' 60 \
+    || { echo "$label: follower did not finish client-thread cleanup before reconnect" >&2; return 1; }
   terminate_client_launch "$follower_pid" 20 \
     || { echo "$label: follower did not disconnect cleanly" >&2; return 1; }
+  cp -- "$follower_log" "$output_root/$label.audio-follower.pre-reconnect.console.log"
+  verify_video_health_reports "$label" || return 1
   if ! launch_audio_client "$label" "$target_dir" "$java_home" "$port" follower CinemarrVideoB "$sink_follower"; then
     echo "$label: follower did not reconnect to the live session" >&2; return 1
   fi
   video_scenario_follower_pid=$ready_audio_client_pid
   wait_for_video_audio_pair_stable "$label" "$leader_pid" "$video_scenario_follower_pid" \
     || { echo "$label: reconnected follower did not restore synchronized playback" >&2; return 1; }
-  printf 'Follower disconnect/reconnect restored the selected generation with visible, audible playback.\n' >> "$evidence"
+  printf 'Follower disconnect/reconnect restored the selected generation in render/audio logs; physical PCM and direct framebuffer review remain required.\n' >> "$evidence"
 }
 
 wait_for_fault_segment_requests() {
@@ -1206,8 +1351,34 @@ wait_for_fault_segment_requests() {
   return 1
 }
 
+capture_video_fault_recovery() {
+  local label=$1 phase=$2 sink_leader=$3 sink_follower=$4 generation=$5 role
+  local evidence="$output_root/$label.video-adverse-network/$phase"
+  case "$phase" in transient|slow|exhausted) ;; *) return 1 ;; esac
+  [[ ! -e "$evidence" ]] || { echo "$label: refusing to replace fault-recovery evidence" >&2; return 1; }
+  for role in leader follower; do
+    [[ "$(latest_video_generation "$output_root/$label.audio-$role.console.log")" == "$generation" ]] || return 1
+  done
+  python3 "$repo_root/scripts/observe-video-terminal.py" capture-restarted \
+    --leader-log "$output_root/$label.audio-leader.console.log" \
+    --follower-log "$output_root/$label.audio-follower.console.log" \
+    --output "$evidence" --gate-pid "$$" || return 1
+  capture_calibrated_audio_pair "$sink_leader" "$sink_follower" \
+    "$evidence/leader-capture.s16le" "$evidence/follower-capture.s16le" \
+    "$evidence/leader.s16le" "$evidence/follower.s16le" "$evidence/alignment.json" || return 1
+  for role in leader follower; do
+    audio_capture_is_audible "$evidence/$role.s16le" "$evidence/$role.metrics.txt" || return 1
+    [[ "$(latest_video_generation "$output_root/$label.audio-$role.console.log")" == "$generation" ]] || return 1
+  done
+  python3 "$repo_root/scripts/compare-pcm-sync.py" "$evidence/leader.s16le" "$evidence/follower.s16le" \
+    > "$evidence/sync.json" || return 1
+  verify_video_health_reports "$label" || return 1
+  printf 'Generation %s: fresh advancing private-window captures and physical PCM passed; direct visual review remains required.\n' \
+    "$generation" > "$evidence/evidence.txt"
+}
+
 run_video_adverse_network_scenarios() {
-  local label=$1 leader_pid=$2 follower_pid=$3
+  local label=$1 leader_pid=$2 follower_pid=$3 sink_leader=$4 sink_follower=$5
   local leader_log="$output_root/$label.audio-leader.console.log"
   local follower_log="$output_root/$label.audio-follower.console.log"
   local server_log="$output_root/$label.console.log"
@@ -1238,6 +1409,10 @@ run_video_adverse_network_scenarios() {
     printf 'online\n' > "$fake_plex_state"
     echo "$label: two injected HTTP 503 segment responses did not recover inside the bounded server retry" >&2; return 1
   fi
+  if ! capture_video_fault_recovery "$label" transient "$sink_leader" "$sink_follower" "$new_generation"; then
+    printf 'online\n' > "$fake_plex_state"
+    echo "$label: transient recovery physical A/V checks failed" >&2; return 1
+  fi
   printf 'Transient segment fault: generation %s to %s, HTTP attempts=%s, playback remained synchronized.\n' \
     "$old_generation" "$new_generation" "$transient_requests" >> "$evidence"
 
@@ -1263,6 +1438,10 @@ run_video_adverse_network_scenarios() {
     printf 'online\n' > "$fake_plex_state"
     echo "$label: bounded slow segment delivery did not maintain synchronized playback" >&2; return 1
   fi
+  if ! capture_video_fault_recovery "$label" slow "$sink_leader" "$sink_follower" "$new_generation"; then
+    printf 'online\n' > "$fake_plex_state"
+    echo "$label: slow-delivery recovery physical A/V checks failed" >&2; return 1
+  fi
   printf 'Slow segment delivery: generation %s to %s, delayed responses=%s, playback remained synchronized.\n' \
     "$old_generation" "$new_generation" "$slow_requests" >> "$evidence"
 
@@ -1279,7 +1458,7 @@ run_video_adverse_network_scenarios() {
     echo "$label: segment exhaustion did not reach the bounded client/server retry path" >&2; return 1
   fi
   if tail -n "+$((first_server + 1))" "$server_log" \
-      | grep -F -e "$fake_plex_token" -e "http://127.0.0.1:" -e 'X-Plex-Token'; then
+      | grep -F -e "$fake_plex_token" -e "http://127.0.0.1:" -e 'X-Plex-Token' >/dev/null; then
     printf 'online\n' > "$fake_plex_state"
     echo "$label: exhausted segment diagnostics exposed a credential or Plex endpoint" >&2; return 1
   fi
@@ -1293,6 +1472,7 @@ run_video_adverse_network_scenarios() {
   new_generation=$(latest_video_generation "$leader_log")
   [[ "$new_generation" =~ ^[0-9]+$ ]] && (( new_generation > old_generation )) \
     || { echo "$label: exhaustion recovery lost the replacement playback generation" >&2; return 1; }
+  capture_video_fault_recovery "$label" exhausted "$sink_leader" "$sink_follower" "$new_generation" || return 1
   printf 'Exhausted segment fault: generation %s to %s, HTTP attempts=%s, redacted failure observed, in-session recovery passed.\n' \
     "$old_generation" "$new_generation" "$offline_requests" >> "$evidence"
 }
@@ -1303,7 +1483,12 @@ wait_for_marker_after() {
   local marker=$3
   local timeout=${4:-60}
   local deadline=$((SECONDS + timeout))
-  while ! tail -n "+$((first_line + 1))" "$file" 2>/dev/null | grep -Fq "$marker"; do
+  # Avoid `tail | grep -q` under pipefail: once grep finds an early marker in a
+  # large client log it closes the pipe, tail exits on SIGPIPE, and the complete
+  # pipeline is falsely reported as failed even though the marker was present.
+  while ! awk -v first="$first_line" -v marker="$marker" \
+      'NR > first && index($0, marker) { found = 1; exit } END { exit !found }' \
+      "$file" 2>/dev/null; do
     if (( SECONDS >= deadline )); then return 1; fi
     sleep 1
   done
@@ -1673,6 +1858,258 @@ run_two_client_audio() {
   return "$result"
 }
 
+video_media_cleanup_idle() {
+  [[ "$1" == *'mediaStarts=0;'* && "$1" == *'mediaRetiring=0;'* && "$1" == *'mediaCloseFailures=0;'* ]]
+}
+
+verify_video_health_reports() {
+  local label=$1
+  local log
+  for log in "$output_root/$label.audio-leader.console.log" \
+      "$output_root/$label.audio-follower.console.log"; do
+    [[ -f "$log" ]] || { echo "$label: missing health-report evidence" >&2; return 1; }
+  done
+  for log in "$output_root/$label".audio-*.console.log; do
+    if [[ "$label" != "1.7.10-forge" ]]; then
+      python3 "$repo_root/scripts/check-client-join-order.py" "$log" \
+        || { echo "$label: client received media before its JOIN reset; see $log" >&2; return 1; }
+    fi
+    if grep -F 'Invalid video health report' "$log" >/dev/null; then
+      echo "$label: ordinary playback emitted an invalid-health error; see $log" >&2
+      return 1
+    fi
+    if [[ "${video_pressure_gate:-false}" == true && "$log" == "$output_root/$label.audio-peer.console.log" ]]; then
+      python3 "$repo_root/scripts/observe-video-segment-pressure.py" --check-peer-log "$log" || return 1
+    else
+      python3 "$repo_root/scripts/check-video-underruns.py" "$log" || return 1
+    fi
+    if grep -E '[Rr]ender[Ss]ystem called from wrong thread|Failed to close texture cinemarr:' "$log" >/dev/null; then
+      echo "$label: client render-resource cleanup failed; see $log" >&2
+      return 1
+    fi
+  done
+}
+
+capture_pressure_diagnostics() {
+  if [[ "$1" == '1.7.10-forge' ]]; then
+    printf 'cinemarr diagnostics\n' >&"$fifo_fd"
+  else
+    python3 "$repo_root/scripts/minecraft-rcon.py" 127.0.0.1 "$rcon_port" "$rcon_password" \
+      'cinemarr diagnostics' >> "$2"
+  fi
+}
+
+run_video_pressure_scenarios() {
+  local label=$1 sink_leader=$2 sink_follower=$3 leader_pid=$4 follower_pid=$5
+  local pressure="$output_root/$label.video-pressure" pressure_pid result=0 role iteration
+  local diagnostics="$output_root/$label.console.log"
+  if [[ "$label" != '1.7.10-forge' ]]; then
+    diagnostics="$output_root/$label.pressure-diagnostics.log"
+    [[ ! -e "$diagnostics" ]] || return 1
+    : > "$diagnostics"
+  fi
+  local -a observer=(python3 "$repo_root/scripts/observe-video-browse-pressure.py"
+    --server-log "$diagnostics"
+    --leader-log "$output_root/$label.audio-leader.console.log" --follower-log "$output_root/$label.audio-follower.console.log"
+    --output "$pressure" --gate-pid "$$")
+  "${observer[@]}" prepare || return 1
+  printf 'browse-held\n' > "$fake_plex_state"
+  "${observer[@]}" flood & pressure_pid=$!
+  for iteration in 1 2; do
+    sleep 10
+    capture_pressure_diagnostics "$label" "$diagnostics" || result=1
+  done
+  capture_calibrated_audio_pair "$sink_leader" "$sink_follower" \
+    "$pressure/during-leader-capture.s16le" "$pressure/during-follower-capture.s16le" \
+    "$pressure/during-leader.s16le" "$pressure/during-follower.s16le" "$pressure/during-alignment.json" || result=1
+  capture_pressure_diagnostics "$label" "$diagnostics" || result=1
+  wait "$pressure_pid" || result=1
+  capture_pressure_diagnostics "$label" "$diagnostics" || result=1
+  # Restore the fake service even when the pressure observer or PCM fails.
+  printf 'online\n' > "$fake_plex_state"
+  for role in leader follower; do
+    audio_capture_is_audible "$pressure/during-$role.s16le" "$pressure/during-$role.metrics.txt" || result=1
+  done
+  python3 "$repo_root/scripts/compare-pcm-sync.py" "$pressure/during-leader.s16le" "$pressure/during-follower.s16le" \
+    > "$pressure/during-sync.json" || result=1
+  verify_video_health_reports "$label" || result=1
+  (( result == 0 )) || return 1
+  wait_for_video_audio_pair_stable "$label" "$leader_pid" "$follower_pid" || return 1
+  "${observer[@]}" recovered || return 1
+  capture_calibrated_audio_pair "$sink_leader" "$sink_follower" \
+    "$pressure/recovered-leader-capture.s16le" "$pressure/recovered-follower-capture.s16le" \
+    "$pressure/recovered-leader.s16le" "$pressure/recovered-follower.s16le" "$pressure/recovered-alignment.json" || return 1
+  for role in leader follower; do
+    audio_capture_is_audible "$pressure/recovered-$role.s16le" "$pressure/recovered-$role.metrics.txt" || return 1
+  done
+  python3 "$repo_root/scripts/compare-pcm-sync.py" "$pressure/recovered-leader.s16le" "$pressure/recovered-follower.s16le" \
+    > "$pressure/recovered-sync.json" || return 1
+}
+
+run_video_segment_pressure_scenarios() {
+  local label=$1 target_dir=$2 java_home=$3 port=$4 sink_leader=$5 sink_follower=$6 leader_pid=$7 follower_pid=$8
+  local pressure="$output_root/$label.segment-pressure" diagnostics="$output_root/$label.console.log"
+  local sink_peer="${sink_leader}_peer" module peer_pid pressure_pid iteration role result=0 reset_line disconnect_line
+  local peer_log="$output_root/$label.audio-peer.console.log"
+  if [[ "$label" != '1.7.10-forge' ]]; then diagnostics="$output_root/$label.pressure-diagnostics.log"; fi
+  module=$(pactl load-module module-null-sink sink_name="$sink_peer" rate=48000 channels=2) || return 1
+  active_audio_modules+=("$module")
+  start_audio_client "$label" "$target_dir" "$java_home" "$port" peer CinemarrVideoC "$sink_peer" || return 1
+  peer_pid=$started_audio_client_pid
+  wait_for_marker_after "$peer_log" 0 'Acceptance segment peer: ready=true' 180 || return 1
+  local -a observer=(python3 "$repo_root/scripts/observe-video-segment-pressure.py"
+    --server-log "$diagnostics" --peer-log "$peer_log"
+    --leader-log "$output_root/$label.audio-leader.console.log" --follower-log "$output_root/$label.audio-follower.console.log"
+    --output "$pressure" --gate-pid "$$")
+  "${observer[@]}" prepare || return 1
+  "${observer[@]}" flood & pressure_pid=$!
+  for iteration in 1 2; do
+    sleep 10
+    capture_pressure_diagnostics "$label" "$diagnostics" || result=1
+  done
+  capture_calibrated_audio_pair "$sink_leader" "$sink_follower" \
+    "$pressure/during-leader-capture.s16le" "$pressure/during-follower-capture.s16le" \
+    "$pressure/during-leader.s16le" "$pressure/during-follower.s16le" "$pressure/during-alignment.json" || result=1
+  capture_pressure_diagnostics "$label" "$diagnostics" || result=1
+  capture_audio_sink "$sink_peer" "$pressure/during-peer.s16le" 4 || result=1
+  real_video_capture_is_silent "$pressure/during-peer.s16le" "$pressure/during-peer.metrics.txt" || result=1
+  wait "$pressure_pid" || result=1
+  capture_pressure_diagnostics "$label" "$diagnostics" || result=1
+  "${observer[@]}" loaded || result=1
+  for role in leader follower; do
+    audio_capture_is_audible "$pressure/during-$role.s16le" "$pressure/during-$role.metrics.txt" || result=1
+  done
+  python3 "$repo_root/scripts/compare-pcm-sync.py" "$pressure/during-leader.s16le" "$pressure/during-follower.s16le" \
+    > "$pressure/during-sync.json" || result=1
+  verify_video_health_reports "$label" || result=1
+  (( result == 0 )) || return 1
+  reset_line=$(wc -l < "$peer_log")
+  disconnect_line=$(wc -l < "$output_root/$label.console.log")
+  if [[ "$label" == '1.7.10-forge' ]]; then
+    printf 'kick CinemarrVideoC Cinemarr pressure peer teardown\n' >&"$fifo_fd"
+  else
+    python3 "$repo_root/scripts/minecraft-rcon.py" 127.0.0.1 "$rcon_port" "$rcon_password" \
+      'kick CinemarrVideoC Cinemarr pressure peer teardown' > /dev/null || return 1
+  fi
+  wait_for_marker_after "$peer_log" "$reset_line" 'Acceptance client media reset complete' 60 || return 1
+  wait_for_marker_after "$output_root/$label.console.log" "$disconnect_line" 'CinemarrVideoC left the game' 60 || return 1
+  terminate_client_launch "$peer_pid" 10 || return 1
+  "${observer[@]}" departed || return 1
+  for iteration in 1 2 3 4 5; do
+    sleep 1
+    capture_pressure_diagnostics "$label" "$diagnostics" || return 1
+  done
+  wait_for_video_audio_pair_stable "$label" "$leader_pid" "$follower_pid" || return 1
+  "${observer[@]}" recovered || return 1
+  capture_calibrated_audio_pair "$sink_leader" "$sink_follower" \
+    "$pressure/recovered-leader-capture.s16le" "$pressure/recovered-follower-capture.s16le" \
+    "$pressure/recovered-leader.s16le" "$pressure/recovered-follower.s16le" "$pressure/recovered-alignment.json" || return 1
+  for role in leader follower; do
+    audio_capture_is_audible "$pressure/recovered-$role.s16le" "$pressure/recovered-$role.metrics.txt" || return 1
+  done
+  python3 "$repo_root/scripts/compare-pcm-sync.py" "$pressure/recovered-leader.s16le" "$pressure/recovered-follower.s16le" \
+    > "$pressure/recovered-sync.json" || return 1
+}
+
+run_legacy_world_change_scenarios() {
+  local label=$1 sink_leader=$2 sink_follower=$3 leader_pid=$4 follower_pid=$5 terminal=$6
+  local leader_log="$output_root/$label.audio-leader.console.log"
+  local follower_log="$output_root/$label.audio-follower.console.log"
+  local cycle role
+  local -a world=(python3 "$repo_root/scripts/observe-legacy-world-change.py"
+    --leader-log "$leader_log" --follower-log "$follower_log" --gate-pid "$$" --output "$terminal")
+  for cycle in 1 2; do
+    "${world[@]}" begin --cycle "$cycle" || return 1
+    printf 'cinemarr acceptance-dimension -1\n' >&"$fifo_fd"
+    "${world[@]}" away --cycle "$cycle" || return 1
+    sleep 2
+    capture_audio_sink "$sink_follower" "$terminal/world-away-$cycle-follower.s16le" 4 || return 1
+    real_video_capture_is_silent "$terminal/world-away-$cycle-follower.s16le" \
+      "$terminal/world-away-$cycle-follower.metrics.txt" || return 1
+    capture_audio_sink "$sink_leader" "$terminal/world-away-$cycle-leader.s16le" 4 || return 1
+    audio_capture_is_audible "$terminal/world-away-$cycle-leader.s16le" \
+      "$terminal/world-away-$cycle-leader.metrics.txt" || return 1
+    printf 'cinemarr acceptance-dimension 0\n' >&"$fifo_fd"
+    wait_for_video_audio_pair_stable "$label" "$leader_pid" "$follower_pid" || return 1
+    "${world[@]}" returned --cycle "$cycle" || return 1
+    capture_calibrated_audio_pair "$sink_leader" "$sink_follower" \
+      "$terminal/world-return-$cycle-leader-capture.s16le" "$terminal/world-return-$cycle-follower-capture.s16le" \
+      "$terminal/world-return-$cycle-leader.s16le" "$terminal/world-return-$cycle-follower.s16le" \
+      "$terminal/world-return-$cycle-alignment.json" || return 1
+    for role in leader follower; do
+      audio_capture_is_audible "$terminal/world-return-$cycle-$role.s16le" "$terminal/world-return-$cycle-$role.metrics.txt" || return 1
+    done
+    python3 "$repo_root/scripts/compare-pcm-sync.py" "$terminal/world-return-$cycle-leader.s16le" \
+      "$terminal/world-return-$cycle-follower.s16le" > "$terminal/world-return-$cycle-sync.json" || return 1
+    python3 "$repo_root/scripts/observe-video-terminal.py" "capture-world-return-$cycle" \
+      --leader-log "$leader_log" --follower-log "$follower_log" --gate-pid "$$" --output "$terminal" || return 1
+  done
+}
+
+run_video_terminal_scenarios() {
+  local label=$1 target_dir=$2 java_home=$3 port=$4 sink_leader=$5 sink_follower=$6
+  local leader_pid=$7 follower_pid=$8
+  local leader_log="$output_root/$label.audio-leader.console.log"
+  local follower_log="$output_root/$label.audio-follower.console.log"
+  local terminal="$output_root/$label.video-terminal" phase role sink raw first_follower
+  local -a observer=(python3 "$repo_root/scripts/observe-video-terminal.py"
+    --leader-log "$leader_log" --follower-log "$follower_log" --gate-pid "$$" --output "$terminal")
+  [[ ! -e "$terminal" ]] || { echo "$label: terminal evidence already exists" >&2; return 1; }
+  "${observer[@]}" queue || return 1
+  if [[ "$label" == '1.7.10-forge' ]]; then
+    run_legacy_world_change_scenarios "$label" "$sink_leader" "$sink_follower" "$leader_pid" "$follower_pid" "$terminal" || return 1
+  fi
+  for phase in queue restarted; do
+    wait_for_video_audio_pair_stable "$label" "$leader_pid" "$follower_pid" || return 1
+    capture_calibrated_audio_pair "$sink_leader" "$sink_follower" \
+      "$terminal/$phase-leader-capture.s16le" "$terminal/$phase-follower-capture.s16le" \
+      "$terminal/$phase-leader.s16le" "$terminal/$phase-follower.s16le" \
+      "$terminal/$phase-alignment.json" || return 1
+    for role in leader follower; do
+      audio_capture_is_audible "$terminal/$phase-$role.s16le" "$terminal/$phase-$role.metrics.txt" || return 1
+    done
+    python3 "$repo_root/scripts/compare-pcm-sync.py" \
+      "$terminal/$phase-leader.s16le" "$terminal/$phase-follower.s16le" \
+      > "$terminal/$phase-sync.json" || return 1
+    "${observer[@]}" "capture-$phase" || return 1
+    if [[ "$phase" == queue ]]; then
+      "${observer[@]}" near-end || return 1
+      first_follower=$(wc -l < "$follower_log")
+      if [[ "$label" == '1.7.10-forge' ]]; then
+        printf 'kick CinemarrVideoB Cinemarr terminal reconnect\n' >&"$fifo_fd"
+      else
+        python3 "$repo_root/scripts/minecraft-rcon.py" 127.0.0.1 "$rcon_port" "$rcon_password" \
+          'kick CinemarrVideoB Cinemarr terminal reconnect' >/dev/null || return 1
+      fi
+      wait_for_marker_after "$follower_log" "$first_follower" 'Acceptance client media reset complete' 60 || return 1
+      terminate_client_launch "$follower_pid" 20 || return 1
+      verify_video_health_reports "$label" || return 1
+      mv -- "$follower_log" "$output_root/$label.audio-follower.pre-terminal-reconnect.console.log" || return 1
+      cp -a -- "$output_root/$label.audio-follower/screenshots" "$terminal/pre-reconnect-screenshots" || return 1
+      # The new follower can arrive after EOS. Do not require PLAYING during
+      # login, and do not reuse the old log as evidence of a new connection.
+      start_audio_client "$label" "$target_dir" "$java_home" "$port" follower CinemarrVideoB "$sink_follower" || return 1
+      follower_pid=$started_audio_client_pid
+      video_terminal_follower_pid=$follower_pid
+      wait_for_pattern_after "$follower_log" 0 'Acceptance video session:.*status=IDLE' 180 || return 1
+      "${observer[@]}" ended || return 1
+      printf 'Old follower acknowledged media reset after line %s and exited; replacement PID %s reached matching IDLE across EOS.\n' \
+        "$first_follower" "$follower_pid" > "$terminal/reconnect.evidence.txt"
+    else
+      "${observer[@]}" stop || return 1
+    fi
+    sleep 2
+    for role in leader follower; do
+      sink=$sink_leader; [[ "$role" == follower ]] && sink=$sink_follower
+      raw="$terminal/$phase-terminal-$role.s16le"
+      capture_audio_sink "$sink" "$raw" 4 || return 1
+      real_video_capture_is_silent "$raw" "$terminal/$phase-terminal-$role.metrics.txt" || return 1
+    done
+    if [[ "$phase" == queue ]]; then "${observer[@]}" restart || return 1; fi
+  done
+  verify_video_health_reports "$label"
+}
+
 run_two_client_video() {
   local label=$1
   local target_dir=$2
@@ -1685,9 +2122,11 @@ run_two_client_video() {
   local sink_leader="${sink_prefix}_leader" sink_follower="${sink_prefix}_follower"
   local raw_leader="$output_root/$label.video-leader.s16le"
   local raw_follower="$output_root/$label.video-follower.s16le"
-  local paired_capture="$output_root/$label.video-paired.wav"
+  local capture_leader="$output_root/$label.video-leader-capture.s16le"
+  local capture_follower="$output_root/$label.video-follower-capture.s16le"
   local metrics_leader="$output_root/$label.video-leader.metrics.txt"
   local metrics_follower="$output_root/$label.video-follower.metrics.txt"
+  local alignment_evidence="$output_root/$label.video-audio-capture-alignment.json"
   local sync_evidence="$output_root/$label.video-audio-sync.json"
   local evidence="$output_root/$label.two-client-video.evidence.txt"
   local leader_log="$output_root/$label.audio-leader.console.log"
@@ -1728,11 +2167,14 @@ run_two_client_video() {
       start_audio_client "$label" "$target_dir" "$java_home" "$port" leader CinemarrVideoA "$sink_leader"
       leader_pid=$started_audio_client_pid
     fi
-  elif [[ "$label" == "1.21.1-neoforge" || "$label" == "1.7.10-forge" ]]; then
+  elif [[ "$label" == "1.21.1-neoforge" || "$label" == "1.20.2-quilt" \
+      || "$label" == "1.7.10-forge" ]]; then
     # Two cold NeoGradle clients can retain the same project lock, while two
     # simultaneous Forge 1.7.10 handshakes can race inside FML's shared network
-    # dispatcher. Launch these profiles sequentially through the bounded retry
-    # path; both remain connected for the shared-frame and sync evidence window.
+    # dispatcher. Minecraft 1.20.2 can also concurrently mutate RegistryOps'
+    # lookup cache while two login packets are encoded. Launch these profiles
+    # sequentially, then keep both viewers connected for the complete two-client
+    # A/V gate. Every client/runtime failure remains first-attempt terminal.
     if launch_audio_client "$label" "$target_dir" "$java_home" "$port" leader CinemarrVideoA "$sink_leader"; then
       leader_pid=$ready_audio_client_pid
     else
@@ -1754,13 +2196,41 @@ run_two_client_video() {
     start_audio_client "$label" "$target_dir" "$java_home" "$port" follower CinemarrVideoB "$sink_follower"
     follower_pid=$started_audio_client_pid
   fi
-  if (( result == 0 && clients_ready == 0 )); then wait_for_audio_playing "$label" leader "$leader_pid" || result=1; fi
-  if (( result == 0 && clients_ready == 0 )); then wait_for_audio_playing "$label" follower "$follower_pid" || result=1; fi
+  if (( result == 0 && clients_ready == 0 )); then
+    wait_for_audio_playing "$label" leader "$leader_pid" || result=1
+  fi
+  if (( result == 0 && clients_ready == 0 )); then
+    wait_for_audio_playing "$label" follower "$follower_pid" || result=1
+  fi
   if (( result == 0 )); then
     wait_for_video_audio_pair_stable "$label" "$leader_pid" "$follower_pid" || result=1
   fi
 
-  if (( result == 0 )) && [[ "$video_control_gate" == true ]]; then
+  if (( result == 0 )) && [[ "$label" == "1.20.2-quilt" && "$modern_audio_setup_stall_ms" != 0 ]]; then
+    if ! wait_for_marker_after "$leader_log" 0 "Acceptance video audio setup stall injected: delayMs=$modern_audio_setup_stall_ms" 30 \
+        || ! wait_for_marker_after "$follower_log" 0 "Acceptance video audio setup stall injected: delayMs=$modern_audio_setup_stall_ms" 30; then
+      echo "$label: deterministic modern audio setup stall was not exercised by both clients" >&2
+      result=1
+    fi
+  fi
+
+  if (( result == 0 )) && [[ "$label" == "1.7.10-forge" && "$legacy_decode_stall_ms" != 0 ]]; then
+    if ! wait_for_marker_after "$leader_log" 0 "Acceptance legacy decoder stall injected: afterSegments=30 delayMs=$legacy_decode_stall_ms" 120 \
+        || ! wait_for_marker_after "$follower_log" 0 "Acceptance legacy decoder stall injected: afterSegments=30 delayMs=$legacy_decode_stall_ms" 120 \
+        || ! wait_for_video_audio_pair_stable "$label" "$leader_pid" "$follower_pid"; then
+      echo "$label: deterministic legacy decoder stall was not absorbed without an underrun" >&2
+      result=1
+    fi
+  fi
+
+  if (( result == 0 )) && [[ "$video_pressure_gate" == true ]]; then
+    run_video_pressure_scenarios "$label" "$sink_leader" "$sink_follower" "$leader_pid" "$follower_pid" || result=1
+  fi
+  if (( result == 0 )) && [[ "$video_pressure_gate" == true ]]; then
+    run_video_segment_pressure_scenarios "$label" "$target_dir" "$java_home" "$port" \
+      "$sink_leader" "$sink_follower" "$leader_pid" "$follower_pid" || result=1
+  fi
+  if (( result == 0 )) && [[ "$video_control_gate" == true && "$video_terminal_gate" != true ]]; then
     video_scenario_follower_pid=""
     if run_video_control_scenarios "$label" "$target_dir" "$java_home" "$port" \
         "$sink_leader" "$sink_follower" "$leader_pid" "$follower_pid"; then
@@ -1771,7 +2241,7 @@ run_two_client_video() {
   fi
 
   if (( result == 0 )) && [[ "$video_adverse_network_gate" == true ]]; then
-    if ! run_video_adverse_network_scenarios "$label" "$leader_pid" "$follower_pid"; then
+    if ! run_video_adverse_network_scenarios "$label" "$leader_pid" "$follower_pid" "$sink_leader" "$sink_follower"; then
       result=1
     fi
   fi
@@ -1796,28 +2266,39 @@ run_two_client_video() {
     fi
   fi
 
+  if (( result == 0 )) && [[ "$label" == "1.7.10-forge" && "$video_control_gate" == true && "$video_terminal_gate" != true ]]; then
+    python3 "$repo_root/scripts/exercise-video-resource-reload.py" \
+      --leader-log "$leader_log" --follower-log "$follower_log" --gate-pid "$$" \
+      --output "$output_root/$label.video-resource-reload" \
+      || { echo "$label: live video resource/sound reload failed" >&2; result=1; }
+    if (( result == 0 )); then
+      wait_for_video_audio_pair_stable "$label" "$leader_pid" "$follower_pid" || result=1
+    fi
+  fi
+
   if (( result == 0 )); then
-    sleep 1
-    : > "$raw_leader"
-    : > "$raw_follower"
-    rm -f -- "$paired_capture"
-    if ! ffmpeg -hide_banner -loglevel error -y -copyts -start_at_zero \
-        -f pulse -i "${sink_leader}.monitor" -f pulse -i "${sink_follower}.monitor" \
-        -filter_complex '[0:a][1:a]join=inputs=2:channel_layout=quad:map=0.0-FL|0.1-FR|1.0-BL|1.1-BR[out]' \
-        -map '[out]' -t 8 -c:a pcm_s16le "$paired_capture"; then
-      echo "$label: shared-clock two-client audio capture failed" >&2
-      result=1
-    elif ! ffmpeg -hide_banner -loglevel error -y -i "$paired_capture" \
-        -af 'pan=stereo|c0=c0|c1=c1' -f s16le "$raw_leader" \
-      || ! ffmpeg -hide_banner -loglevel error -y -i "$paired_capture" \
-        -af 'pan=stereo|c0=c2|c1=c3' -f s16le "$raw_follower"; then
-      echo "$label: shared-clock two-client audio channels could not be separated" >&2
+    if ! capture_calibrated_audio_pair "$sink_leader" "$sink_follower" \
+        "$capture_leader" "$capture_follower" "$raw_leader" "$raw_follower" \
+        "$alignment_evidence"; then
+      echo "$label: calibrated two-client audio capture failed; see $alignment_evidence" >&2
       result=1
     fi
   fi
 
   if (( result == 0 )); then
     wait_for_video_audio_pair_stable "$label" "$leader_pid" "$follower_pid" || result=1
+  fi
+
+  if (( result == 0 )) && [[ "$video_control_gate" == true && "$video_terminal_gate" != true && ( "$live_plex_gate" == true || "$label" == "1.7.10-forge" ) ]]; then
+    # Capture only after physical PCM recording has ended. The first automatic
+    # join screenshot can be a black movie frame and is not sufficient evidence
+    # that both world views are actually displaying the program after reconnect.
+    # Legacy also requires these views after the live resource/sound reloads,
+    # including in deterministic local/CI cases without a real Plex server.
+    python3 "$repo_root/scripts/capture-post-reconnect-video.py" \
+      --leader-log "$leader_log" --follower-log "$follower_log" --gate-pid "$$" \
+      --output "$output_root/$label.post-reconnect-video" \
+      || { echo "$label: post-reconnect world capture failed" >&2; result=1; }
   fi
 
   if (( result == 0 )) && ! audio_capture_is_audible "$raw_leader" "$metrics_leader"; then
@@ -1837,7 +2318,7 @@ run_two_client_video() {
     common_frame=$(comm -12 \
       <(sed -n 's/.*Acceptance video rendered:.*frameSha256=\([0-9a-f]\{64\}\).*/\1/p' "$leader_log" | sort -u) \
       <(sed -n 's/.*Acceptance video rendered:.*frameSha256=\([0-9a-f]\{64\}\).*/\1/p' "$follower_log" | sort -u) \
-      | head -n 1)
+      | sed -n '1p')
     if [[ -z "$common_frame" ]]; then
       echo "$label: clients did not render a common identifiable decoded frame" >&2
       result=1
@@ -1862,6 +2343,7 @@ run_two_client_video() {
       grep -F 'Acceptance video ready:' "$follower_log" | tail -n 1
       printf 'Leader screenshot SHA-256: '; sha256sum "$leader_shot" | awk '{print $1}'
       printf 'Follower screenshot SHA-256: '; sha256sum "$follower_shot" | awk '{print $1}'
+      cat "$alignment_evidence"
       cat "$sync_evidence"
       printf 'Decoder requested=%s expectedEffective=%s expectedFallback=%s\n' \
         "$video_decoder_backend" "$video_decoder_expected_effective" "$video_decoder_expect_fallback"
@@ -1874,37 +2356,71 @@ run_two_client_video() {
       else
         printf 'Fake Plex served master playlist, media playlist, and MPEG-TS program segments.\n'
       fi
-      if [[ "$video_control_gate" == true ]]; then cat "$output_root/$label.video-controls.evidence.txt"; fi
+      if [[ "$video_control_gate" == true && "$video_terminal_gate" != true ]]; then cat "$output_root/$label.video-controls.evidence.txt"; fi
       if [[ "$video_adverse_network_gate" == true ]]; then cat "$output_root/$label.video-adverse-network.evidence.txt"; fi
     } > "$evidence"
+  fi
+  if (( result == 0 )) && [[ "$video_terminal_gate" == true ]]; then
+    video_terminal_follower_pid=$follower_pid
+    run_video_terminal_scenarios "$label" "$target_dir" "$java_home" "$port" \
+      "$sink_leader" "$sink_follower" "$leader_pid" "$follower_pid" || result=1
+    follower_pid=$video_terminal_follower_pid
   fi
   if (( result == 0 )); then
     # Exercise the real disconnect cleanup before terminating the headless game
     # launchers. Killing clients while OpenAL is actively mixing can crash in
     # libopenal and hide whether Cinemarr released its decoder/audio resources.
-    disconnect_line=$(wc -l < "$server_log")
+    local remote_disconnect=false disconnect_cursor='' disconnect_line=0
+    local client_reset_leader_line client_reset_follower_line
+    client_reset_leader_line=$(wc -l < "$leader_log")
+    client_reset_follower_line=$(wc -l < "$follower_log")
     if [[ -z "$rcon_port" && -z "$fifo_fd" ]] && declare -F command_output >/dev/null; then
+      remote_disconnect=true
+      if ! declare -F remote_log_cursor >/dev/null || ! declare -F wait_for_remote_marker_after >/dev/null; then
+        echo "$label: remote server control did not provide timestamped disconnect-log helpers" >&2
+        result=1
+      else
+        disconnect_cursor=$(remote_log_cursor)
+      fi
+    else
+      disconnect_line=$(wc -l < "$server_log")
+    fi
+    if (( result == 0 )) && [[ "$remote_disconnect" == true ]]; then
       command_output 'kick CinemarrVideoA Cinemarr acceptance teardown' > /dev/null \
         && command_output 'kick CinemarrVideoB Cinemarr acceptance teardown' > /dev/null \
         || result=1
-    elif [[ "$label" == "1.7.10-forge" ]]; then
+    elif (( result == 0 )) && [[ "$label" == "1.7.10-forge" ]]; then
       printf 'kick CinemarrVideoA Cinemarr acceptance teardown\n' >&"$fifo_fd"
       printf 'kick CinemarrVideoB Cinemarr acceptance teardown\n' >&"$fifo_fd"
-    else
+    elif (( result == 0 )); then
       python3 "$repo_root/scripts/minecraft-rcon.py" 127.0.0.1 "$rcon_port" "$rcon_password" \
         'kick CinemarrVideoA Cinemarr acceptance teardown' > /dev/null \
         && python3 "$repo_root/scripts/minecraft-rcon.py" 127.0.0.1 "$rcon_port" "$rcon_password" \
           'kick CinemarrVideoB Cinemarr acceptance teardown' > /dev/null \
         || result=1
     fi
-    if (( result == 0 )) \
-        && { ! wait_for_marker_after "$server_log" "$disconnect_line" 'CinemarrVideoA left the game' 60 \
-          || ! wait_for_marker_after "$server_log" "$disconnect_line" 'CinemarrVideoB left the game' 60; }; then
-      echo "$label: clients did not complete the acceptance disconnect cleanup" >&2
-      result=1
+    if (( result == 0 )); then
+      if [[ "$remote_disconnect" == true ]]; then
+        if ! wait_for_remote_marker_after "$disconnect_cursor" 'CinemarrVideoA left the game' 60 \
+            || ! wait_for_remote_marker_after "$disconnect_cursor" 'CinemarrVideoB left the game' 60; then
+          echo "$label: clients did not complete the remote acceptance disconnect cleanup" >&2
+          result=1
+        fi
+      elif ! wait_for_marker_after "$server_log" "$disconnect_line" 'CinemarrVideoA left the game' 60 \
+          || ! wait_for_marker_after "$server_log" "$disconnect_line" 'CinemarrVideoB left the game' 60; then
+        echo "$label: clients did not complete the acceptance disconnect cleanup" >&2
+        result=1
+      fi
     fi
-    # Leave several client ticks between the disconnect callbacks and launcher
-    # termination so renderer and OpenAL teardown have completed.
+    if (( result == 0 )); then
+      if ! wait_for_marker_after "$leader_log" "$client_reset_leader_line" 'Acceptance client media reset complete' 60 \
+          || ! wait_for_marker_after "$follower_log" "$client_reset_follower_line" 'Acceptance client media reset complete' 60; then
+        echo "$label: client-thread media cleanup was not acknowledged by both clients" >&2
+        result=1
+      fi
+    fi
+    # Allow backend audio tasks to drain after the observed client reset, not
+    # instead of observing it. Closed logs are checked for suppressed GL errors.
     sleep 3
   fi
   cleanup_audio_processes
@@ -1916,6 +2432,7 @@ run_two_client_video() {
   elif (( result == 0 )); then
     printf 'Both clients completed disconnect cleanup without native JVM crash reports.\n' >> "$evidence"
   fi
+  if (( result == 0 )) && ! verify_video_health_reports "$label"; then result=1; fi
   return "$result"
 }
 
@@ -2072,20 +2589,28 @@ terminate_client_launch() {
   mapfile -t groups < <(printf '%s\n' "${groups[@]}" | sed '/^$/d' | sort -unr)
 
   for group in "${groups[@]}"; do stop_group "$group" TERM; done
+  # xvfb-run and Gradle can move descendants into another session between the
+  # snapshot above and signal delivery. Also signal the exact task-owned tree;
+  # this keeps cleanup bounded even if no longer-related group state was
+  # observed. The server group is a sibling and cannot enter this tree.
+  stop_process_tree "$root" TERM
   deadline=$((SECONDS + seconds))
   while true; do
     live=0
     for group in "${groups[@]}"; do group_alive "$group" && live=1; done
+    [[ -n "$(process_tree_pids "$root")" ]] && live=1
     if (( live == 0 )); then break; fi
     if (( SECONDS >= deadline )); then result=1; break; fi
     sleep 1
   done
   if (( result != 0 )); then
     for group in "${groups[@]}"; do stop_group "$group" KILL; done
+    stop_process_tree "$root" KILL
     deadline=$((SECONDS + 10))
     while true; do
       live=0
       for group in "${groups[@]}"; do group_alive "$group" && live=1; done
+      [[ -n "$(process_tree_pids "$root")" ]] && live=1
       if (( live == 0 )); then result=0; break; fi
       if (( SECONDS >= deadline )); then break; fi
       sleep 1
@@ -2283,6 +2808,9 @@ run_target() {
   [[ "$label" == *-fabric && -n "$fabric_loader_version" ]] && runtime_args+=(-PcinemarrFabricLoaderVersion="$fabric_loader_version")
   if [[ "$video_client_gate" == "true" ]]; then
     server_java_options='-Dcinemarr.acceptance.enabled=true -Dcinemarr.acceptance.videoProbe=true'
+    if [[ "$video_terminal_gate" == true && "$label" == '1.7.10-forge' ]]; then
+      server_java_options+=' -Dcinemarr.acceptance.worldChangeProbe=true'
+    fi
   fi
   if [[ "$live_plex_gate" == true ]]; then
     plex_runtime_token="$CINEMARR_PLEX_TOKEN"
@@ -2326,6 +2854,8 @@ run_target() {
   # Keep hostile mobs from moving or killing the two physical-audio probes.
   # Listener displacement changes positional gain and invalidates the capture.
   set_property "$run_dir/server.properties" spawn-monsters false
+  set_property "$run_dir/server.properties" spawn-animals false
+  set_property "$run_dir/server.properties" spawn-npcs false
   # The acceptance scene fits within one chunk. Keep the isolated world small
   # so software-rendered multi-client runs do not leave hundreds of generated
   # chunks for the server to drain during the bounded clean-shutdown gate.
@@ -2402,6 +2932,14 @@ run_target() {
     fi
     sleep 1
   done
+
+  if (( result == 0 )) && [[ "$label" == *-fabric && -n "$fabric_loader_version" ]]; then
+    if ! python3 "$repo_root/scripts/check-fabric-loader-version.py" "$console_log" \
+        --minecraft "${label%-fabric}" --loader "$fabric_loader_version"; then
+      echo "$label: runtime did not use the explicitly requested Fabric loader" >&2
+      result=1
+    fi
+  fi
 
   if (( result == 0 )); then
     plex_deadline=$((SECONDS + 30))
@@ -2578,6 +3116,11 @@ run_target() {
   if grep -Eiq 'Failed to start the minecraft server|ModLoadingException|Preparing crash report|Encountered an unexpected exception' \
       "$latest_log" "$console_log"; then
     echo "$label: fatal startup marker found; see $console_log" >&2
+    result=1
+  fi
+  if grep -Ei 'Unable to close Plex video sessions|Unable to stop inactive Plex video session|Timed out draining Plex media lifecycle' \
+      "$latest_log" "$console_log" >/dev/null; then
+    echo "$label: Plex media lifecycle cleanup failed; see $console_log" >&2
     result=1
   fi
   if ss -ltnH "sport = :$port" | grep -q .; then

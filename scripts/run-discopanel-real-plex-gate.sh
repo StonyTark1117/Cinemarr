@@ -47,10 +47,42 @@ case "$label" in
     ;;
 esac
 
-for tool in curl jq base64 pactl parec ffmpeg xvfb-run sha256sum; do
+# Fail before contacting or changing a managed server if production-client
+# inputs are unavailable. Exact server bytes plus a development client are
+# insufficient for this release gate.
+python3 "$repo_root/scripts/launch-packaged-client.py" "$label" --check-only \
+  --game-dir "$repo_root/build/packaged-client-focus/preflight-$label" \
+  --username CinemarrVideoA --server "$server_host:1" --expected-server-host "$server_host"
+
+for tool in curl jq base64 pactl parec ffmpeg xvfb-run sha256sum python3; do
   command -v "$tool" >/dev/null || { echo "Missing required tool: $tool" >&2; exit 2; }
 done
 [[ -x "$java_home/bin/java" ]] || { echo "Java home is unavailable: $java_home" >&2; exit 2; }
+
+jar_payload_sha() {
+  python3 - "$1" <<'PY'
+import hashlib
+import pathlib
+import sys
+import zipfile
+
+path = pathlib.Path(sys.argv[1])
+digest = hashlib.sha256()
+with zipfile.ZipFile(path) as archive:
+    entries = [entry for entry in archive.infolist() if not entry.is_dir()]
+    names = [entry.filename for entry in entries]
+    if len(names) != len(set(names)):
+        raise SystemExit(f"duplicate JAR entries: {path}")
+    for entry in sorted(entries, key=lambda value: value.filename):
+        name = entry.filename.encode("utf-8")
+        payload = archive.read(entry)
+        digest.update(len(name).to_bytes(4, "big"))
+        digest.update(name)
+        digest.update(len(payload).to_bytes(8, "big"))
+        digest.update(payload)
+print(digest.hexdigest())
+PY
+}
 
 api_call() {
   local endpoint=$1 body=$2 response status attempt
@@ -113,11 +145,28 @@ new_logs() {
     | jq -r --arg started "$started_at" '.logs[] | select(.timestamp >= $started) | .message'
 }
 
+remote_log_cursor() { date -u +%Y-%m-%dT%H:%M:%S.%NZ; }
+
+wait_for_remote_marker_after() {
+  local cursor=$1 marker=$2 timeout=${3:-60} deadline
+  deadline=$((SECONDS + timeout))
+  while (( SECONDS < deadline )); do
+    if api_call discopanel.v1.ServerService/GetServerLogs \
+        "$(jq -cn --arg id "$server_id" '{id:$id,tail:1000}')" \
+        | jq -r --arg cursor "$cursor" '.logs[] | select(.timestamp >= $cursor) | .message' \
+        | grep -Fq "$marker"; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
 wait_for_log() {
   local pattern=$1 timeout=${2:-240} deadline
   deadline=$((SECONDS + timeout))
   while (( SECONDS < deadline )); do
-    new_logs | grep -Eq "$pattern" && return 0
+    new_logs | grep -E "$pattern" >/dev/null && return 0
     sleep 3
   done
   echo "$server_name did not log expected readiness: $pattern" >&2
@@ -135,6 +184,60 @@ restore_properties() {
   api_call discopanel.v1.FileService/UpdateFile \
     "$(jq -cn --arg id "$server_id" --arg content "$original_properties" \
       '{serverId:$id,path:"server.properties",content:$content}')" >/dev/null
+}
+
+# Reusable lifecycle worlds can retain dead probe identities. Prepare only the
+# two named offline test players while stopped, never heal during playback,
+# and restore their original NBT bytes after the run (including failure).
+legacy_probe_files=()
+legacy_probe_originals=()
+prepare_legacy_probe_players() {
+  [[ "$label" == 1.7.10-forge ]] || return 0
+  local files path original prepared
+  [[ $(get_server | jq -r '.server.status') == SERVER_STATUS_STOPPED ]] || return 1
+  files=$(api_call discopanel.v1.FileService/ListFiles \
+    "$(jq -cn --arg id "$server_id" '{serverId:$id,path:"world/playerdata"}')") || return 1
+  for path in world/playerdata/42ca340c-04ef-3fa1-b363-ebb5d33ee76d.dat \
+              world/playerdata/ab770eaf-1e72-3375-9500-a23286375fad.dat; do
+    [[ $(jq --arg path "$path" '[.files[] | select(.path == $path)] | length' <<<"$files") == 1 ]] || continue
+    original=$(api_call discopanel.v1.FileService/GetFile \
+      "$(jq -cn --arg id "$server_id" --arg path "$path" '{serverId:$id,path:$path}')" | jq -er '.content') || return 1
+    prepared=$(printf '%s' "$original" | python3 "$repo_root/scripts/legacy-probe-player-state.py" prepare) || return 1
+    legacy_probe_files+=("$path")
+    legacy_probe_originals+=("$original")
+    api_call discopanel.v1.FileService/UpdateFile \
+      "$(jq -cn --arg id "$server_id" --arg path "$path" --arg content "$prepared" \
+        '{serverId:$id,path:$path,content:$content}')" >/dev/null || return 1
+  done
+}
+
+check_legacy_probe_players_alive() {
+  [[ "$label" == 1.7.10-forge ]] || return 0
+  local path content
+  for path in world/playerdata/42ca340c-04ef-3fa1-b363-ebb5d33ee76d.dat \
+              world/playerdata/ab770eaf-1e72-3375-9500-a23286375fad.dat; do
+    content=$(api_call discopanel.v1.FileService/GetFile \
+      "$(jq -cn --arg id "$server_id" --arg path "$path" '{serverId:$id,path:$path}')" | jq -er '.content') || return 1
+    printf '%s' "$content" | python3 "$repo_root/scripts/legacy-probe-player-state.py" check || return 1
+  done
+  echo "$label: both saved acceptance players remained alive" >> "$CINEMARR_GATE_OUTPUT_ROOT/$label.remote-server.evidence.txt"
+}
+
+restore_legacy_probe_players() {
+  (( ${#legacy_probe_files[@]} > 0 )) || return 0
+  local index actual
+  [[ $(get_server | jq -r '.server.status') == SERVER_STATUS_STOPPED ]] || return 1
+  for index in "${!legacy_probe_files[@]}"; do
+    api_call discopanel.v1.FileService/UpdateFile \
+      "$(jq -cn --arg id "$server_id" --arg path "${legacy_probe_files[$index]}" \
+        --arg content "${legacy_probe_originals[$index]}" '{serverId:$id,path:$path,content:$content}')" >/dev/null || return 1
+    actual=$(api_call discopanel.v1.FileService/GetFile \
+      "$(jq -cn --arg id "$server_id" --arg path "${legacy_probe_files[$index]}" \
+        '{serverId:$id,path:$path}')" | jq -er '.content') || return 1
+    [[ "$actual" == "${legacy_probe_originals[$index]}" ]] || return 1
+  done
+  legacy_probe_files=()
+  legacy_probe_originals=()
 }
 
 plex_cinemarr_session_count() {
@@ -172,6 +275,17 @@ cleanup_remote() {
   if (( remote_prepared )); then
     restore_properties
     update_overrides "$original_overrides"
+  fi
+  if ! restore_legacy_probe_players; then
+    echo "Failed to restore saved legacy probe identities; cleanup is incomplete" >&2
+    cleanup_status=1
+  fi
+  if [[ -n "${CINEMARR_GATE_OUTPUT_ROOT:-}" && -d "$CINEMARR_GATE_OUTPUT_ROOT" ]]; then
+    if ! printf '%s\0%s\0%s\0%s\0' "$server_host" "${CINEMARR_PLEX_TOKEN:-}" \
+        "${CINEMARR_PLEX_URL:-}" "$DISCOPANEL_TOKEN" \
+        | python3 "$repo_root/scripts/redact-evidence-values.py" "$CINEMARR_GATE_OUTPUT_ROOT"; then
+      cleanup_status=1
+    fi
   fi
   unset CINEMARR_PLEX_TOKEN CINEMARR_PLEX_URL DISCOPANEL_TOKEN
   exit "$cleanup_status"
@@ -232,25 +346,8 @@ follower_jammarr_sha=$(sha256sum "$repo_root/build/discopanel-real-plex/$label/$
   || { echo "Temporary clients received different Jammarr artifacts" >&2; exit 1; }
 server_jammarr_sha=$leader_jammarr_sha
 client_jammarr_name=$jammarr_name
-if [[ "$label" == 1.7.10-forge ]]; then
-  jammarr_build_dir=${JAMMARR_LEGACY_BUILD_DIR:-/home/braydon/PAmpMod/platforms/mc1.7.10/forge/build/libs}
-  local_production_jar="$jammarr_build_dir/$jammarr_name"
-  local_development_jar="$jammarr_build_dir/${jammarr_name%.jar}-dev.jar"
-  [[ -f "$local_production_jar" && -f "$local_development_jar" ]] \
-    || { echo "Matching Jammarr 1.7.10 production/development artifacts are required" >&2; exit 1; }
-  [[ $(sha256sum "$local_production_jar" | awk '{print $1}') == "$server_jammarr_sha" ]] \
-    || { echo "Local Jammarr production artifact does not match the DiscPanel server" >&2; exit 1; }
-  client_jammarr_name=$(basename "$local_development_jar")
-  for role in leader follower; do
-    client_mod_dir="$repo_root/build/discopanel-real-plex/$label/$label.audio-$role/mods"
-    mv "$client_mod_dir/$jammarr_name" "$client_mod_dir/$jammarr_name.production-reference"
-    cp "$local_development_jar" "$client_mod_dir/$client_jammarr_name"
-  done
-  leader_jammarr_sha=$(sha256sum "$repo_root/build/discopanel-real-plex/$label/$label.audio-leader/mods/$client_jammarr_name" | awk '{print $1}')
-  follower_jammarr_sha=$(sha256sum "$repo_root/build/discopanel-real-plex/$label/$label.audio-follower/mods/$client_jammarr_name" | awk '{print $1}')
-  [[ "$leader_jammarr_sha" == "$follower_jammarr_sha" ]] \
-    || { echo "Temporary legacy clients received different deobfuscated Jammarr artifacts" >&2; exit 1; }
-fi
+# Production clients keep the exact server Jammarr JAR, including legacy.
+# Development-classifier substitution is never valid for this gate.
 unset jammarr_content jammarr_response
 
 file_response=$(api_call discopanel.v1.FileService/GetFile \
@@ -279,6 +376,7 @@ acceptance_overrides=$(jq -c '
   ' <<<"$original_overrides")
 remote_prepared=1
 update_overrides "$acceptance_overrides"
+prepare_legacy_probe_players
 
 started_at=$(date -u +%Y-%m-%dT%H:%M:%S.%NZ)
 api_call discopanel.v1.ServerService/StartServer "$(jq -cn --arg id "$server_id" '{id:$id}')" >/dev/null
@@ -321,7 +419,10 @@ source "$repo_root/scripts/run-dedicated-server-gate.sh" "$label"
 trap cleanup_remote EXIT
 trap 'exit 130' INT TERM
 
-if ! run_two_client_video "$label" "$target_dir" "$java_home" "$port"; then
+# The shared client gate accepts local RCON/FIFO controls for self-hosted
+# servers. DiscPanel control is provided by this wrapper's command_output
+# function instead, so pass explicit empty local-control slots.
+if ! run_two_client_video "$label" "$target_dir" "$java_home" "$port" '' '' ''; then
   echo "$label failed real-Plex two-client playback" >&2
   exit 1
 fi
@@ -337,12 +438,14 @@ command_output 'setblock -1 100 -1 air' >/dev/null
 sleep 3
 for _ in {1..20}; do
   diagnostics=$(command_output 'cinemarr diagnostics')
-  if [[ "$diagnostics" == *"registeredTvs=$baseline_registered_tvs;"* && "$diagnostics" == *'activeStreams=0/'* ]]; then
+  if [[ "$diagnostics" == *"registeredTvs=$baseline_registered_tvs;"* && "$diagnostics" == *'activeStreams=0/'* ]] \
+      && video_media_cleanup_idle "$diagnostics"; then
     break
   fi
   sleep 2
 done
-[[ "$diagnostics" == *"registeredTvs=$baseline_registered_tvs;"* && "$diagnostics" == *'activeStreams=0/'* ]] \
+{ [[ "$diagnostics" == *"registeredTvs=$baseline_registered_tvs;"* && "$diagnostics" == *'activeStreams=0/'* ]] \
+    && video_media_cleanup_idle "$diagnostics"; } \
   || { echo "$label did not restore its baseline TV and stream state: $diagnostics" >&2; exit 1; }
 
 for _ in {1..20}; do
@@ -358,6 +461,7 @@ mkdir -p "$CINEMARR_GATE_OUTPUT_ROOT"
 {
   printf 'DiscPanel server Cinemarr artifact: %s\n' "$cinemarr_name"
   printf 'DiscPanel server Cinemarr SHA-256: %s\n' "$remote_cinemarr_sha"
+  printf 'Client launch mode: indexed production JAR with prepared loader libraries\n'
   printf 'DiscPanel server Jammarr artifact: %s\n' "$jammarr_name"
   printf 'DiscPanel server Jammarr SHA-256: %s\n' "$server_jammarr_sha"
   printf 'Temporary client Jammarr artifact: %s\n' "$client_jammarr_name"
@@ -375,6 +479,8 @@ fi
 api_call discopanel.v1.ServerService/StopServer "$(jq -cn --arg id "$server_id" '{id:$id}')" >/dev/null
 wait_for_status SERVER_STATUS_STOPPED
 remote_started=0
+check_legacy_probe_players_alive
+restore_legacy_probe_players
 restore_properties
 update_overrides "$original_overrides"
 remote_prepared=0

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -64,10 +65,14 @@ def validate(manifest: dict[str, Any]) -> None:
             if not isinstance(value, str) or not value or "|" in value or "\n" in value:
                 fail(f"unsafe or empty target field in {name}")
         add_runtime(entry["runtime"], defaults, runtimes, ports)
+        if entry["runtime"]["name"] != name:
+            fail(f"primary runtime identity does not match artifact: {name}")
         if entry.get("quiltRuntime") is not None:
             if entry["loader"] != "fabric":
                 fail(f"non-Fabric target declares Quilt compatibility: {name}")
             add_runtime(entry["quiltRuntime"], defaults, runtimes, ports)
+            if entry["quiltRuntime"]["name"] != f"{entry['minecraft']}-quilt":
+                fail(f"Quilt runtime identity does not match artifact version: {name}")
     expected = manifest.get("expected", {})
     if expected.get("artifacts") != len(names):
         fail("expected artifact count does not match generated targets")
@@ -143,6 +148,10 @@ def runtime_entries(manifest: dict[str, Any]) -> list[dict[str, Any]]:
 
 def verify_repository(manifest: dict[str, Any], root: Path) -> None:
     root_build = (root / "build.gradle").read_text("utf-8")
+    protocol = (root / "core/src/main/java/stonytark/cinemarr/core/protocol/ProtocolLimits.java").read_text("utf-8")
+    wire_version = re.search(r"public static final int VERSION\s*=\s*(\d+)\s*;", protocol)
+    if wire_version is None or manifest.get("protocolVersion") != int(wire_version[1]):
+        fail("manifest protocol version disagrees with ProtocolLimits.VERSION")
     for entry in manifest["artifacts"]:
         target = root if entry["path"] == "." else root / entry["path"]
         if not target.is_dir():
@@ -152,26 +161,82 @@ def verify_repository(manifest: dict[str, Any], root: Path) -> None:
             fail(f"target build file is missing: {build.relative_to(root)}")
         if entry["task"] != "verifyRelease" and f"tasks.register('{entry['task']}'" not in root_build:
             fail(f"root verification task is missing: {entry['task']}")
+        build_text = build.read_text("utf-8")
+        # Verify actual compiler declarations, not a second version/Java matrix.
+        bytecode = re.search(r"targetCompatibility\s*=\s*JavaVersion.VERSION_(?:1_)?(\d+)", build_text)
+        if bytecode is None:
+            bytecode = re.search(r"toolchain.languageVersion\s*=\s*JavaLanguageVersion.of\((\d+)\)", build_text)
+        if bytecode is None or entry["bytecodeJava"] != int(bytecode[1]):
+            fail(f"manifest bytecode Java disagrees with target build: {entry['name']}")
+        if entry["runtimeJava"] != int(bytecode[1]):
+            fail(f"manifest runtime Java disagrees with target's pinned Java baseline: {entry['name']}")
+        build_java = re.search(r"java.toolchain.languageVersion\s*=\s*JavaLanguageVersion.of\((\d+)\)", root_build)
+        if build_java is None:
+            fail("cannot verify root build Java declaration")
+        expected_build_java = int(build_java[1])
+        if entry["path"] != ".":
+            task = re.search(r"(?ms)tasks.register\('" + re.escape(entry["task"])
+                             + r"', Exec\) \{\n(.*?)^\}", root_build)
+            if task is None:
+                fail(f"cannot verify isolated build Java: {entry['name']}")
+            project = re.search(r"workingDir\(layout\.projectDirectory\.dir\(['\"]([^'\"]+)['\"]\)\)", task[1])
+            if project is None or project[1] != entry["path"]:
+                fail(f"verification task project disagrees with target: {entry['name']}")
+            if not re.search(r"commandLine\(['\"]\./gradlew['\"],\s*['\"]verifyRelease['\"]", task[1]):
+                fail(f"verification task does not run the canonical release gate: {entry['name']}")
+            override = re.search(r"environment\s+'JAVA_HOME',\s+java(\d+)Home", task[1])
+            if "JAVA_HOME" in task[1] and override is None:
+                fail(f"unrecognized isolated build Java override: {entry['name']}")
+            if override is not None:
+                expected_build_java = int(override[1])
+        if entry["buildJava"] != expected_build_java:
+            fail(f"manifest build Java disagrees with verification task: {entry['name']}")
+        if entry["path"] == "." and entry["task"] != "verifyRelease":
+            fail(f"root target must use the root verification task: {entry['name']}")
+        for runtime in (entry["runtime"], entry.get("quiltRuntime")):
+            if runtime is None:
+                continue
+            settings = {**manifest["runtimeDefaults"], **runtime}
+            # All maintained loader plugins expose these conventional launch
+            # tasks. Custom task names need an explicit declaration in their
+            # target build; a typo must not silently enter generated CI routing.
+            for field, conventional in (("clientTask", "runClient"), ("serverTask", "runServer")):
+                launch_task = settings[field]
+                declared = re.search(r"tasks\.(?:register|named)\(['\"]"
+                                     + re.escape(launch_task) + r"['\"]", build_text)
+                if launch_task != conventional and declared is None:
+                    fail(f"runtime task is missing for {runtime['name']}: {launch_task}")
         expected_artifact = f"cinemarr-{manifest['productVersion']}+mc{entry['minecraft']}-{entry['loader']}.jar"
         if entry["artifact"] != expected_artifact:
             fail(f"artifact filename does not match the target identity: {entry['name']}")
-    compatibility_rows = {
-        "1.7.10": "| 1.7.10 | Forge | 8 |",
-        "1.20.1": "| 1.20.1 | Fabric, Quilt via Fabric artifact, Forge, NeoForge | 17 |",
-        "1.20.2": "| 1.20.2 | Fabric, Quilt via Fabric artifact, Forge, NeoForge | 17 |",
-        "1.21.1": "| 1.21.1 | Fabric, Quilt via Fabric artifact, Forge, NeoForge | 21 |",
-        "26.1.2": "| 26.1.2 | Fabric, Quilt via Fabric artifact, Forge, NeoForge | 25 |",
-        "26.2": "| 26.2 | Fabric, Quilt via Fabric artifact, Forge, NeoForge | 25 |",
-    }
     compatibility = (root / "docs/COMPATIBILITY.md").read_text("utf-8")
-    for version in sorted({entry["minecraft"] for entry in manifest["artifacts"]}):
-        if compatibility_rows.get(version) not in compatibility:
-            fail(f"compatibility documentation is stale for Minecraft {version}")
+    table_rows = [line for line in compatibility.splitlines() if re.match(r"^\| \d", line)]
+    if table_rows != compatibility_rows(manifest):
+        fail("compatibility documentation is stale; derive rows from the target manifest")
     for document in (root / "README.md", root / "docs/1.0_RELEASE_HARDENING_PLAN.md",
                      root / "docs/COMPATIBILITY.md"):
         text = document.read_text("utf-8")
         if "16-artifact" not in text or "21-runtime" not in text:
             fail(f"exact release counts are missing from {document.relative_to(root)}")
+
+
+def compatibility_rows(manifest: dict[str, Any]) -> list[str]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    labels = {"fabric": "Fabric", "forge": "Forge", "neoforge": "NeoForge"}
+    for entry in manifest["artifacts"]:
+        grouped.setdefault(entry["minecraft"], []).append(entry)
+    rows = []
+    for version, targets in grouped.items():
+        runtimes = {entry["runtimeJava"] for entry in targets}
+        if len(runtimes) != 1:
+            fail(f"inconsistent runtime Java baseline for Minecraft {version}")
+        loaders = []
+        for entry in targets:
+            loaders.append(labels[entry["loader"]])
+            if entry.get("quiltRuntime"):
+                loaders.append("Quilt via Fabric artifact")
+        rows.append(f"| {version} | {', '.join(loaders)} | {next(iter(runtimes))} |")
+    return rows
 
 
 def main() -> None:

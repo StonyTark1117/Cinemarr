@@ -119,6 +119,9 @@ tasks.withType(JavaCompile).configureEach {
 
 tasks.withType(Test).configureEach {
     useJUnitPlatform()
+    // Reload regression loads the real audio class without creating a native
+    // context. RFG otherwise exposes LWJGL only on the test compile classpath.
+    classpath += configurations.lwjgl2Classpath
     inputs.property('cinemarrLiveTestEnabled', providers.environmentVariable('CINEMARR_LIVE_TEST').orElse('false'))
     outputs.upToDateWhen { System.getenv('CINEMARR_LIVE_TEST') != 'true' }
     outputs.cacheIf('credentialed Plex integration tests must execute live') {

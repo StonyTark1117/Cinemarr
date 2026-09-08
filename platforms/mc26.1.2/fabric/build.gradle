@@ -120,6 +120,17 @@ dependencies {
 }
 
 dependencyLocking { lockAllConfigurations() }
+if (!quiltRuntime.get() && providers.gradleProperty('cinemarrFabricLoaderVersion').isPresent()) {
+    // A minimum-loader test must not silently upgrade to the normal release
+    // lock. Keep all other modules locked, and never persist test overrides.
+    if (gradle.startParameter.writeDependencyLocks) {
+        throw new GradleException('Do not write release locks during a Fabric loader override')
+    }
+    dependencyLocking { ignoredDependencies.add('net.fabricmc:fabric-loader') }
+    configurations.configureEach {
+        resolutionStrategy.force("net.fabricmc:fabric-loader:${fabricLoaderVersion.get()}")
+    }
+}
 if (quiltRuntime.get()) {
     configurations.configureEach {
         resolutionStrategy.deactivateDependencyLocking()
