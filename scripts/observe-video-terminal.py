@@ -4,8 +4,10 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import re
+import tempfile
 import time
 
 spec = importlib.util.spec_from_file_location('world', Path(__file__).with_name('capture-post-reconnect-video.py'))
@@ -67,8 +69,24 @@ class Observer:
 
     def send(self, operation):
         before = self.text()
-        self.controls['leader'].write_text('terminal-' + str(time.monotonic_ns()) + '|video:' + operation + '\n')
+        self._write_control(self.controls['leader'], 'terminal-' + str(time.monotonic_ns()) + '|video:' + operation + '\n')
         return {role: len(text) for role, text in before.items()}
+
+    @staticmethod
+    def _write_control(path, value):
+        """Publish a complete command without exposing a truncated file."""
+        fd, temporary = tempfile.mkstemp(prefix=path.name + '.', dir=path.parent)
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8') as stream:
+                stream.write(value)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, path)
+        finally:
+            try:
+                os.unlink(temporary)
+            except FileNotFoundError:
+                pass
 
     def seek_near_end(self):
         before = self.latest()
@@ -143,7 +161,7 @@ class Observer:
             image_dir.mkdir()
             for role, desktop in self.desktops.items():
                 offset = len(self.logs[role].read_text(errors='replace'))
-                self.controls[role].write_text('terminal-world-' + str(time.monotonic_ns()) + '|video:open-ui\n')
+                self._write_control(self.controls[role], 'terminal-world-' + str(time.monotonic_ns()) + '|video:open-ui\n')
                 self.wait(lambda values: ('true' if role == 'leader' else 'false') in world.UI.findall(values[role][offset:]))
                 time.sleep(0.3); desktop.escape()
             captures = []
