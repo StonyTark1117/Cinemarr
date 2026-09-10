@@ -78,12 +78,17 @@ def main():
             if "Acceptance video controller error displayed" in value:
                 raise RuntimeError("Owner command produced a server error: " + action)
             current = states(value)
-            # A seek is an authoritative state transition even when the
-            # server keeps the same playback generation. Require a fresh
-            # packet whose state differs from the prior snapshot; this still
-            # rejects stale/replayed packets without assuming every command
-            # allocates a new generation.
-            if marker in value and current and current[-1]["status"] == status and current[-1] != previous:
+            transitioned = False
+            if current:
+                latest = current[-1]
+                if action == "SEEK":
+                    transitioned = latest["positionMs"] != previous["positionMs"]
+                elif action == "SET_STREAMS":
+                    _, selected, _ = stream_control(args.stream_kind)
+                    transitioned = latest[selected] != previous[selected]
+                else:
+                    transitioned = latest != previous
+            if marker in value and current and current[-1]["status"] == status and transitioned:
                 result = current[-1]
                 actions.append({"action": action, "marker": marker, "before": previous, "after": result})
                 return result, time.monotonic()
