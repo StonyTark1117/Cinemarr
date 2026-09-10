@@ -5,6 +5,10 @@ if (( $# < 2 )) || [[ ! "$1" =~ ^[1-9][0-9]{1,3}x[1-9][0-9]{1,3}x24$ ]]; then
   echo 'Usage: run-private-xvfb.sh WIDTHxHEIGHTx24 COMMAND [ARGS...]' >&2
   exit 2
 fi
+if ! command -v Xvfb >/dev/null 2>&1; then
+  echo 'Private Xvfb unavailable: install the Xvfb server package before running this gate' >&2
+  exit 1
+fi
 geometry=$1
 shift
 private_dir=$(mktemp -d -t cinemarr-xvfb.XXXXXXXX)

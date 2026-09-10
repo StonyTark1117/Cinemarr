@@ -26,8 +26,9 @@ The fresh local `releaseMatrixGate` for commit `6972cc1` reached all artifact
 families and the ten GameTests, then failed at `verifyPrivateXvfb` after 19m16s:
 all ten launcher cases reported `Private Xvfb did not allocate a live display`.
 This host has no `Xvfb` or `xvfb-run` binary (only the user's existing `:0`
-socket), so the failure is retained as an environment gate failure rather than
-being bypassed or retried with a different display provider.
+socket). The launcher now fails fast with an actionable dependency message;
+the gate is retained as an environment failure rather than being bypassed or
+retried with a different display provider.
 
 Freeze the integrated implementation in an isolated checkout before fresh
 certification. Retain all existing 37 local cases, add the feature smoke across
