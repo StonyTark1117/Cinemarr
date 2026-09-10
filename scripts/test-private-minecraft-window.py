@@ -22,7 +22,7 @@ class PrivateWindowTests(unittest.TestCase):
         with patch('private_minecraft_window.time.sleep'):
             window = PrivateMinecraftWindow(self.log, 42, wait_seconds=10)
         self.assertEqual('111', window.window)
-        self.assertEqual(2, self.run.call_count)
+        self.assertEqual(3, self.run.call_count)
 
     def test_window_wait_does_not_retry_ambiguity_or_x_failure(self):
         for result in (SimpleNamespace(stdout='111\n222\n'),
@@ -90,13 +90,13 @@ class PrivateWindowTests(unittest.TestCase):
         window = PrivateMinecraftWindow(self.log, 42)
         self.identities[51] = (42, "replacement")
         with self.assertRaises(RuntimeError): window.capture(Path("never-created.png"))
-        self.assertEqual(1, self.run.call_count)
+        self.assertEqual(2, self.run.call_count)
 
     def test_reused_gate_pid_rejected_before_input(self):
         window = PrivateMinecraftWindow(self.log, 42)
         self.identities[42] = (1, "replacement")
         with self.assertRaises(RuntimeError): window.escape()
-        self.assertEqual(1, self.run.call_count)
+        self.assertEqual(2, self.run.call_count)
 
     def test_wrong_display_or_geometry_or_binary_rejected(self):
         for argv in ((b"Xvfb", b":0", b"640x480x24"),
@@ -114,7 +114,7 @@ class PrivateWindowTests(unittest.TestCase):
     def test_multiple_minecraft_windows_rejected(self):
         self.run.return_value.stdout = "111\n222\n"
         with self.assertRaises(RuntimeError): PrivateMinecraftWindow(self.log, 42)
-        self.assertEqual(2, self.run.call_count)
+        self.assertEqual(4, self.run.call_count)
 
     def test_reload_holds_f3_across_game_ticks_and_releases_it(self):
         window = PrivateMinecraftWindow(self.log, 42)
