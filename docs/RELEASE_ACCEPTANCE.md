@@ -30,6 +30,11 @@ socket). The launcher now fails fast with an actionable dependency message;
 the gate is retained as an environment failure rather than being bypassed or
 retried with a different display provider.
 
+The scoped exact-value scan over 931 source, script, CI, Gradle and
+documentation files (1,186 payloads; 5,495,997 bytes) completed with zero
+configured-value findings and zero audit errors. Generated platform build
+archives remain under the separate artifact-inspection gate.
+
 Freeze the integrated implementation in an isolated checkout before fresh
 certification. Retain all existing 37 local cases, add the feature smoke across
 all 21 profiles, and inventory additional capacity/failure/raster supplements
