@@ -38,7 +38,7 @@ class LogMarkerPollingTest(unittest.TestCase):
                     self.assertEqual(result.returncode, status, result.stderr)
                     self.assertEqual(result.stdout.splitlines(), [f"launch:{label}:wrong-protocol-client"])
 
-    def test_neoforge_splash_workaround_is_scoped_preserving_and_wired(self):
+    def test_early_display_workaround_is_scoped_preserving_and_wired(self):
         source = (ROOT / "scripts/run-dedicated-server-gate.sh").read_text()
         match = re.search(r"(?ms)^configure_acceptance_loader\(\) \{\n.*?^\}", source)
         self.assertIsNotNone(match)
@@ -56,8 +56,13 @@ class LogMarkerPollingTest(unittest.TestCase):
                                        "loader-config", label, str(directory)],
                                       capture_output=True, text=True, timeout=5)
             client = root / "client"
-            self.assertEqual(invoke("1.20.2-neoforge", client).returncode, 0)
+            for label in ("1.20.2-neoforge", "1.20.1-forge", "1.20.2-forge", "1.21.1-forge", "26.1.2-forge", "26.2-forge"):
+                self.assertEqual(invoke(label, root / label).returncode, 0)
             config = client / "config/fml.toml"
+            self.assertFalse(config.exists())
+            # Validate preservation and conflict handling on the original
+            # NeoForge fixture below.
+            self.assertEqual(invoke("1.20.2-neoforge", client).returncode, 0)
             self.assertEqual(tomllib.loads(config.read_text()), {"earlyWindowControl": False})
             config.write_text(config.read_text() + 'maxThreads = 7\n')
             previous = config.read_bytes()
@@ -75,8 +80,9 @@ class LogMarkerPollingTest(unittest.TestCase):
             self.assertEqual(outside.read_text(), 'earlyWindowControl = true\n')
             profiles = subprocess.check_output(
                 ["python3", "scripts/target-matrix.py", "gate-lines"], cwd=ROOT, text=True)
+            handled = {"1.20.2-neoforge", "1.20.1-forge", "1.20.2-forge", "1.21.1-forge", "26.1.2-forge", "26.2-forge"}
             for label in (line.split("|")[0] for line in profiles.splitlines()):
-                if label == "1.20.2-neoforge":
+                if label in handled:
                     continue
                 untouched = root / label
                 self.assertEqual(invoke(label, untouched).returncode, 0)

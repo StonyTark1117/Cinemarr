@@ -468,12 +468,14 @@ client_bootstrap_failed() {
 
 configure_acceptance_loader() {
   local label=$1 client_dir=$2
-  [[ "$label" == '1.20.2-neoforge' ]] || return 0
-  # FML 1.0.16's splash renderer reads SecureJarHandler 2.1.24's filesystem
-  # HashMap while discovery resizes it. A standalone lookup probe reproduces
-  # FileSystemNotFoundException without Minecraft or Cinemarr. Use FML's
-  # supported no-splash path, not a retry or a changed playback oracle.
-  # This compatibility prerequisite is explicit in RELEASE_ACCEPTANCE.md.
+  case "$label" in
+    1.20.1-forge|1.20.2-forge|1.21.1-forge|26.1.2-forge|26.2-forge|1.20.2-neoforge) ;;
+    *) return 0 ;;
+  esac
+  # Forge's early GL window can crash inside libX11/libglfw on the isolated
+  # software X server before the client reaches the protocol gate. FML's
+  # supported no-splash path avoids that native initialization; this is a
+  # compatibility prerequisite, not a retry or a changed playback oracle.
   if [[ -L "$client_dir" || -L "$client_dir/config" || -L "$client_dir/config/fml.toml" ]]; then
     echo "$label: refusing a symlinked acceptance loader configuration" >&2
     return 1
@@ -485,7 +487,7 @@ configure_acceptance_loader() {
     grep -Eq '^earlyWindowControl[[:space:]]*=[[:space:]]*false[[:space:]]*$' \
       "$client_dir/config/fml.toml" || return 1
   else
-    printf '%s\n' '# Cinemarr acceptance: documented NeoForge 20.2.93 splash race workaround.' \
+    printf '%s\n' '# Cinemarr acceptance: disable Forge early display for isolated X.' \
       'earlyWindowControl = false' > "$client_dir/config/fml.toml"
   fi
 }
