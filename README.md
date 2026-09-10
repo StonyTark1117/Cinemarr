@@ -6,41 +6,29 @@ Cinemarr is a required client-and-server Minecraft mod for server-authoritative 
 
 ## 1.0 prerelease status
 
-This checkout targets **Cinemarr 1.0.0**, protocol **10**, and screen-data
-schema **3**. It is a prerelease development build, **not a release candidate**.
-A green build or partial runtime run does not establish release readiness.
+This checkout targets **Cinemarr 1.0.0**. It is a prerelease development build,
+**not a release candidate**. Custom TV display controls and independent per-TV
+streams are now required 1.0 work across all **16 artifacts / 21 runtimes**.
+See the [full feature specification](docs/1.0_CUSTOM_TV_DISPLAY_PLAN.md) and
+[release hardening plan](docs/1.0_RELEASE_HARDENING_PLAN.md).
 
-Current checkpoint (2026-09-08): r13 passed two byte-identical full builds,
-all 89 tasks and ten GameTests each, but failed its first runtime case:
-zero accepted, one failed and 36 unattempted. The earlier suspension fix
-replaced queue-advancement feedback with generic "Playing," causing the
-unchanged terminal observer to time out despite actual queue advancement.
-The correction restores contextual queue/episode feedback only while playing;
-paused, suspended and idle snapshots retain truthful messages. Eight focused
-coordinator tests, six source-layout tests and representative builds pass.
-The isolated corrective legacy terminal run passed in 348 seconds, with all
-28 captures directly reviewed, five independently checked audio pairs, six
-clean client exits and no owned core dump. This is scoped development evidence.
-R14 tooling preflight passed, but its first full build was interrupted by user
-session shutdown. No second build or r14 runtime ran. Work is paused for a
-user-requested device migration; the tracked hardening plan contains the handoff.
-Complete runtime acceptance, fresh exact-byte production/native testing, the
-final-commit local gate and exact-SHA green GitHub CI with matching downloaded
-artifacts remain required. Failed and superseded attempts retain their
-original evidence in [release acceptance](docs/RELEASE_ACCEPTANCE.md).
+The earlier V11 candidate used protocol 10 and screen-data schema 3. The new
+feature requires deliberate protocol and saved-data migrations; the integrated
+versions and all adapters must be verified together before certification.
+New custom TVs must default to Fit, Detailed, Auto, while Quick TV construction
+sizes and preset resolutions remain intact. Implementation is in progress.
 
-Earlier automation missed real defects, most recently a native client crash
-during teardown despite an automated pass. The failed r8 run remains rejected
-and preserved. Ordered private-display cleanup and normal-window-close/actual
-exit-status checks are implemented and have passed scoped regression tests;
-they do not retroactively certify failed attempts.
+The earlier runtime batch stopped when source changes superseded its frozen
+candidate. Prior matching builds, partial runtime passes, native checks and
+Plex-session diagnostics remain historical evidence. They do not certify the
+changed implementation, and that batch is no longer running.
 
-The **16-artifact / 21-runtime** release matrix and **16 supplemental cases**
-remain in scope, plus real-Plex two-client controller/UI playback,
-physical A/V, recovery/lifecycle, native-platform and cleanup checks. See
-[release acceptance](docs/RELEASE_ACCEPTANCE.md) for candidate-bound evidence,
-visual limitations and the preserved failure history, and the
-[hardening plan](docs/1.0_RELEASE_HARDENING_PLAN.md) for completion criteria.
+Fresh certification must include the existing 37 local cases, feature smoke on
+all 21 profiles, additional capacity/failure/raster supplements, two matching
+builds, all ten GameTests, native guests, real-Plex multi-TV/two-client playback,
+recovery/lifecycle and cleanup. The reviewed final commit must pass the full
+local release gate and all required GitHub jobs with matching downloaded
+artifacts. See [release acceptance](docs/RELEASE_ACCEPTANCE.md).
 
 The old global Plex-music queue, stations, MP3 transport, music UI, and their bundled JLayer/Jump3r libraries have been removed. Cinemarr 1.0 is a television/video mod; it does not require Jammarr.
 
