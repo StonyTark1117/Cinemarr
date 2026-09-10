@@ -30,7 +30,11 @@ class PrivateMinecraftWindow:
         deadline = time.monotonic() + wait_seconds
         while True:
             try:
-                windows = self.run("xdotool", "search", "--onlyvisible", "--name", "Minecraft").splitlines()
+                # The title varies by loader/version (and may be blank while
+                # the client is first mapping). The private X server is owned
+                # exclusively by this gate, so enumerate visible windows and
+                # retain the exact-one invariant instead of assuming a title.
+                windows = self.run("xdotool", "search", "--onlyvisible", "--name", ".*").splitlines()
             except subprocess.CalledProcessError as error:
                 if error.returncode != 1:
                     raise
