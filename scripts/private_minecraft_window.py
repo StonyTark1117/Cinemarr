@@ -80,7 +80,7 @@ class PrivateMinecraftWindow:
                         # to the raw tree; ownership and geometry checks below
                         # still reject unrelated/helper windows.
                         try:
-                            candidates.extend(self.run("xdotool", "search", "--class", ".*").splitlines())
+                            candidates.extend(self.run("xdotool", "search", "--onlyvisible", "--class", ".*").splitlines())
                         except subprocess.CalledProcessError:
                             pass
                         tree = self.run("xwininfo", "-root", "-tree")
