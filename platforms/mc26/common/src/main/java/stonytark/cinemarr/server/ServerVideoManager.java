@@ -342,7 +342,11 @@ public final class ServerVideoManager implements AutoCloseable {
         if (request.sessionId() == null || request.generation() < 0 || request.segmentIndex() < 0 || request.requestId()<1 || request.chunkCount() < 1 || request.chunkCount() > 8 || request.firstChunk() < 0
                 || request.firstChunk()>PlexVideoService.MAX_SEGMENT_BYTES/ProtocolLimits.MAX_VIDEO_CHUNK_BYTES
                 || !segmentLimiter.allow(player.getUUID(), 40, System.currentTimeMillis())) { error(player, "Invalid or excessive segment request"); return; }
-        if (!isCurrentViewer(request.identity(), player.getUUID())) { transportError(player, request.sessionId(), request.generation(),"Video media is available only while tracking its screen"); return; }
+        // Requests already in flight can arrive after a pause, retune, or
+        // viewer detach. The ownership check must still prevent any data
+        // access, but reporting that expected retirement as a user-visible
+        // controller error only creates a false failure on the owner UI.
+        if (!isCurrentViewer(request.identity(), player.getUUID())) return;
         ActiveVideoMedia media=active.get(key(request.sessionId(),request.generation()));
         VideoSessionCoordinator.Snapshot timeline=tvStreams.snapshotIfPresent(request.sessionId(),request.generation(),System.currentTimeMillis());
         if (media==null || timeline==null || request.segmentIndex()<0 || request.segmentIndex()>=media.segmentCount()) { transportError(player, request.sessionId(), request.generation(),"Video segment is no longer available"); return; }
@@ -377,9 +381,7 @@ public final class ServerVideoManager implements AutoCloseable {
         if (request.sessionId() == null || request.generation() < 0 || request.firstSegmentIndex() < 0) {
             error(player, "Invalid video manifest request"); return;
         }
-        if (!isCurrentViewer(request.identity(), player.getUUID())) {
-            transportError(player, request.sessionId(), request.generation(), "Video manifest is available only while tracking its screen"); return;
-        }
+        if (!isCurrentViewer(request.identity(), player.getUUID())) return;
         ActiveVideoMedia media=active.get(key(request.sessionId(),request.generation()));if(media==null){transportError(player, request.sessionId(), request.generation(),"Video manifest is no longer available");return;}
         VideoSessionCoordinator.Snapshot timeline=tvStreams.snapshotIfPresent(request.sessionId(),request.generation(),System.currentTimeMillis());
         if(timeline==null||request.firstSegmentIndex()>=media.segmentCount()||media.presentationTime(request.firstSegmentIndex())>timeline.positionMs()+ProtocolLimits.MAX_VIDEO_SEGMENT_LEAD_MS){transportError(player, request.sessionId(), request.generation(),"Video manifest request exceeds playback lead limit");return;}

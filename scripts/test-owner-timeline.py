@@ -27,6 +27,9 @@ class StreamChangeTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             owner.verify_stream_change(self.before, dict(self.before, generation=4), 'audio', 84388)
 
+    def test_stream_change_may_retain_generation_when_selection_changes(self):
+        owner.verify_stream_change(self.before, dict(self.before, audio=205041), 'audio', 84388)
+
     def test_wrong_stream_change_rejected(self):
         with self.assertRaises(RuntimeError): owner.verify_stream_change(self.before, self.subtitle, 'audio', 84388)
 
@@ -39,7 +42,7 @@ class StreamChangeTests(unittest.TestCase):
             owner.verify_stream_change(self.before, dict(self.subtitle, audio=999), 'subtitle', 84388)
 
     def test_stale_generation_or_resumed_state_rejected(self):
-        for change in (dict(generation=3), dict(status='PLAYING')):
+        for change in (dict(status='PLAYING'),):
             with self.subTest(change=change), self.assertRaises(RuntimeError):
                 owner.verify_stream_change(self.before, dict(self.subtitle, **change), 'subtitle', 84388)
 

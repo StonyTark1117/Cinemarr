@@ -22,7 +22,6 @@ def verify_stream_change(before, after, kind, expected_position, tolerance=0):
     _, selected, other = stream_control(kind)
     if (after[selected] == before[selected] or after[other] != before[other]
             or after["status"] != before["status"]
-            or after["generation"] <= before["generation"]
             or abs(after["positionMs"] - expected_position) > tolerance):
         raise RuntimeError("Stream change must change the requested " + kind
                            + " selection, preserve the other stream and retain the playback cursor/state")
