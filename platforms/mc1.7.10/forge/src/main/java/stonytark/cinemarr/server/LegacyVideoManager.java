@@ -548,7 +548,11 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
         if (request.sessionId() == null || request.generation() < 0 || request.segmentIndex() < 0 || request.requestId() < 1 || request.chunkCount() < 1 || request.chunkCount() > 8 || request.firstChunk() < 0
                 || request.firstChunk() > PlexVideoService.MAX_SEGMENT_BYTES / ProtocolLimits.MAX_VIDEO_CHUNK_BYTES
                 || !segmentLimiter.allow(player.getUniqueID(), 40, System.currentTimeMillis())) { error(player, "Invalid or excessive segment request"); return; }
-        if (!isCurrentViewer(request.identity(), player.getUniqueID())) { transportError(player, request.sessionId(), request.generation(), "Video media is available only while tracking its screen"); return; }
+        // A seek or stream replacement can publish the new identity before
+        // the tracking membership refresh reaches this client. Retire that
+        // in-flight request silently; surfacing it as a controller error
+        // makes a successful owner command appear to have failed.
+        if (!isCurrentViewer(request.identity(), player.getUniqueID())) return;
         final ActiveVideoMedia media = active.get(key(request.sessionId(), request.generation()));
         VideoSessionCoordinator.Snapshot timeline = tvStreams.snapshotIfPresent(request.sessionId(),request.generation(), System.currentTimeMillis());
         if (media == null || timeline == null || request.segmentIndex() < 0 || request.segmentIndex() >= media.segmentCount()) { transportError(player, request.sessionId(), request.generation(), "Video segment is no longer available"); return; }
@@ -590,9 +594,7 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
         if (request.sessionId() == null || request.generation() < 0 || request.firstSegmentIndex() < 0) {
             error(player, "Invalid video manifest request"); return;
         }
-        if (!isCurrentViewer(request.identity(), player.getUniqueID())) {
-            transportError(player, request.sessionId(), request.generation(), "Video manifest is available only while tracking its screen"); return;
-        }
+        if (!isCurrentViewer(request.identity(), player.getUniqueID())) return;
         ActiveVideoMedia media = active.get(key(request.sessionId(), request.generation()));
         VideoSessionCoordinator.Snapshot timeline = tvStreams.snapshotIfPresent(request.sessionId(),request.generation(), System.currentTimeMillis());
         if (media == null || timeline == null || request.firstSegmentIndex() >= media.segmentCount()
