@@ -55,14 +55,18 @@ class PrivateMinecraftWindow:
                     # candidates for a short stability interval so a delayed
                     # XMapWindow cannot be captured, while long-lived clients
                     # remain discoverable without relying on EWMH metadata.
-                    # Some headless Xvfb clients report IsUnviewable despite
-                    # being mapped and renderable. Reject only the explicit
-                    # pre-map state; the private display boundary remains the
-                    # ownership guard.
-                    if "Map State:" not in info or "IsUnmapped" not in info:
+                    if "Map State:" not in info or "IsViewable" in info:
                         mapped.append(window)
-                    else:
+                    elif "IsUnmapped" in info:
                         ambiguous_since.pop(window, None)
+                    else:
+                        # Bare Xvfb can report IsUnviewable for a mapped GL
+                        # client. Hold that ambiguous state briefly so the
+                        # delayed-map probe cannot be captured before mapping.
+                        now = time.monotonic()
+                        first_seen = ambiguous_since.setdefault(window, now)
+                        if now - first_seen >= 0.5:
+                            mapped.append(window)
                 windows = mapped
                 if not windows:
                     # Native clients may briefly expose a blank title. In
