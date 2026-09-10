@@ -74,11 +74,7 @@ class PrivateMinecraftWindow:
                         tree = self.run("xwininfo", "-root", "-tree")
                         root_line = tree.splitlines()[0]
                         root = int(root_line.split("Window id:", 1)[1].split()[0], 16)
-                        tree_windows = [str(int(value, 16)) for value in re.findall(r"0x[0-9a-fA-F]+", tree)
-                                        if int(value, 16) != root]
                         windows = [value for value in candidates if int(value) != root]
-                        if not windows:
-                            windows = tree_windows
                     except (IndexError, ValueError, subprocess.CalledProcessError):
                         windows = []
                 if len(windows) > 1:
