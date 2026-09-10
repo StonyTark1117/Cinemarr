@@ -15,13 +15,11 @@ acceptances preceded those changes; Forge 1.21.1's runtime checks closed but its
 source guard failed, and NeoForge 1.21.1 was interrupted. The 704 reviewed PNGs
 and 38 measured audio pairs, two identical builds, native checks and deployment
 retain their earlier scope and cannot certify the new implementation.
-The latest integrated code candidate is `a7b8ca0`; hosted verification run
-`34528140247` completed with failure. Manifest validation passed and eight
-profiles completed successfully. Four Fabric profiles failed private-window
-observer discovery despite producing video frames; two lifecycle profiles timed
-out waiting for authoritative terminal results; three Forge/NeoForge profiles
-failed real-client readiness, and 26.2 Fabric had both observer and readiness
-failures. No runtime acceptance checkbox is closed from this run.
+The latest integrated code candidate is `9075937`; hosted verification run
+`34530641372` completed with failure. Manifest validation passed; nine profiles
+completed successfully and seven failed (five Fabric runtime/observer cases,
+Forge 1.7.10 terminal lifecycle, and NeoForge 1.21.1 terminal lifecycle).
+No runtime acceptance checkbox is closed from this run.
 
 The authoritative interruption/cleanup record is
 `build/release-resume-20260909/plex-session-lifecycle/source-change-interruption-review.json`.
