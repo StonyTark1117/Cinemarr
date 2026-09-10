@@ -35,11 +35,11 @@ public final class CinemarrVideoRenderer {
         Set<UUID> visible=new LinkedHashSet<>();
         for(VideoPackets.SessionState state:clientState.televisions()){
             if(state.item()==null||state.status()==VideoPackets.SessionStatus.IDLE)continue;
-            CinemarrVideoPlayback pipeline=playback.pipeline(new CinemarrVideoClientState.StreamKey(state.sessionId(),state.generation()));
+            CinemarrVideoPlayback pipeline=playback.pipeline(new CinemarrVideoClientState.StreamKey(state.identity()));
             if(pipeline==null||!pipeline.texture().ready())continue;visible.add(state.televisionId());
-            MeshCache mesh=updateMesh(state);PresentationTransform transform=PresentationTransform.create(pipeline.texture().width(),pipeline.texture().height(),state.screenWidth(),state.screenHeight(),state.presentationMode());
-            RenderType type=RenderTypes.entityCutout(pipeline.texture().location());
-            int sourceWidth=pipeline.texture().width(),sourceHeight=pipeline.texture().height();
+            CinemarrVideoTexture displayTexture=pipeline.texture().forDisplay(state);MeshCache mesh=updateMesh(state);PresentationTransform transform=PresentationTransform.create(displayTexture.width(),displayTexture.height(),state.screenWidth(),state.screenHeight(),state.displaySettings().mapping()==stonytark.cinemarr.core.video.PixelMapping.ONE_PIXEL_PER_BLOCK?stonytark.cinemarr.core.video.PresentationMode.STRETCH:state.presentationMode());
+            RenderType type=RenderTypes.entityCutout(displayTexture.location());
+            int sourceWidth=displayTexture.width(),sourceHeight=displayTexture.height();
             submits.submitCustomGeometry(pose,type,(entry,vertices)->{
                 Matrix4f matrix=entry.pose();
                 for(ScreenMaskMesher.Rectangle rectangle:mesh.rectangles)draw(vertices,matrix,state,rectangle,transform,sourceWidth,sourceHeight);

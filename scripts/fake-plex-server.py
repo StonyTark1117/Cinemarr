@@ -93,6 +93,12 @@ def main() -> None:
     class Handler(BaseHTTPRequestHandler):
         server_version = "CinemarrFakePlex/1"
 
+        def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
+            if urlsplit(self.path).path != "/:/timeline":
+                self.respond(404, {})
+                return
+            self.do_GET()
+
         def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
             request = urlsplit(self.path)
             token = self.headers.get("X-Plex-Token", "")
@@ -101,7 +107,7 @@ def main() -> None:
             state = state_file.read_text(encoding="utf-8").strip() \
                 if state_file is not None and state_file.exists() else "online"
             with request_log.open("a", encoding="utf-8") as stream:
-                stream.write(f"GET\t{request.path}\t{token}\t{state}\n")
+                stream.write(f"{self.command}\t{request.path}\t{token}\t{state}\n")
             if token != args.token:
                 self.respond(401, {})
                 return
@@ -109,7 +115,9 @@ def main() -> None:
                 self.respond(503, {})
                 return
             path = request.path
-            if path == "/library/sections":
+            if path == "/:/timeline":
+                body = {"MediaContainer": {"size": 0}}
+            elif path == "/library/sections":
                 body = {"MediaContainer": {"Directory": [
                     {"type": "movie", "key": "1", "title": "Movies"}
                 ]}}
@@ -165,6 +173,8 @@ def main() -> None:
             elif path == "/music/:/transcode/universal/start.mp3" and audio_file is not None:
                 self.respond_bytes(200, audio_file.read_bytes(), "audio/mpeg")
                 return
+            elif path == "/video/:/transcode/universal/decision" and video_directory is not None:
+                body = {"MediaContainer": {"generalDecisionCode": 1001}}
             elif path == "/video/:/transcode/universal/start.m3u8" and video_directory is not None:
                 master = ("#EXTM3U\n#EXT-X-VERSION:3\n"
                           "#EXT-X-STREAM-INF:BANDWIDTH=500000,RESOLUTION=160x90,"

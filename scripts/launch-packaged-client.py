@@ -20,6 +20,13 @@ import uuid
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def client_environment():
+    environment = dict(os.environ)
+    for name in ('CINEMARR_PLEX_TOKEN', 'CINEMARR_PLEX_URL', 'DISCOPANEL_TOKEN', 'DISCOPANEL_API_BASE'):
+        environment.pop(name, None)
+    return environment
+
+
 def digest(path, algorithm='sha256'):
     with path.open('rb') as stream:
         return hashlib.file_digest(stream, algorithm).hexdigest()
@@ -148,7 +155,8 @@ def main():
     java_home = args.java_home or Path(os.environ.get('CINEMARR_PACKAGED_JAVA' + str(target['runtimeJava']) + '_HOME',
                                                      '/usr/lib/jvm/java-' + str(target['runtimeJava']) + '-openjdk'))
     java = str(java_home.resolve() / 'bin/java')
-    java_version = subprocess.check_output([java, '-version'], stderr=subprocess.STDOUT, text=True)
+    environment = client_environment()
+    java_version = subprocess.check_output([java, '-version'], stderr=subprocess.STDOUT, text=True, env=environment)
     assert re.search(r'version "(?:1\.)?' + str(target['runtimeJava']) + r'(?:[.\-"+])', java_version)
     options = ['-Xms256m', '-Xmx1536m', '-Djava.library.path=' + runtime['nativeDirectory'],
                '-Dorg.lwjgl.librarypath=' + runtime['nativeDirectory'], '-Dlog4j2.formatMsgNoLookups=true']
@@ -179,7 +187,7 @@ def main():
     # The X wrapper backgrounds its child group; open the input inside that
     # child rather than relying on inherited stdin through a background shell.
     feeder = ['bash', '-c', 'exec "${@:2}" < "$1"', 'cinemarr-packaged-input', str(launch_input)]
-    result = subprocess.run(private + feeder + command, cwd=game)
+    result = subprocess.run(private + feeder + command, cwd=game, env=environment)
     assert digest(candidate) == expected and digest(mods / candidate.name) == expected
     return result.returncode
 

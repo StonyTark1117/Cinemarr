@@ -46,11 +46,11 @@ public final class CinemarrVideoRenderer {
         Set<RenderType> used=new LinkedHashSet<>();Set<UUID> visible=new LinkedHashSet<>();
         for(VideoPackets.SessionState state:clientState.televisions()){
             if(state.item()==null||state.status()==VideoPackets.SessionStatus.IDLE)continue;
-            CinemarrVideoPlayback pipeline=playback.pipeline(new CinemarrVideoClientState.StreamKey(state.sessionId(),state.generation()));
+            CinemarrVideoPlayback pipeline=playback.pipeline(new CinemarrVideoClientState.StreamKey(state.identity()));
             if(pipeline==null||!pipeline.texture().ready())continue;visible.add(state.televisionId());
-            MeshCache mesh=updateMesh(state);PresentationTransform transform=PresentationTransform.create(pipeline.texture().width(),pipeline.texture().height(),state.screenWidth(),state.screenHeight(),state.presentationMode());
-            RenderType type=RenderTypes.entityCutout(pipeline.texture().location());used.add(type);VertexConsumer vertices=buffers.getBuffer(type);
-            for(ScreenMaskMesher.Rectangle rectangle:mesh.rectangles)draw(vertices,matrix,state,rectangle,transform,pipeline.texture().width(),pipeline.texture().height());
+            CinemarrVideoTexture displayTexture=pipeline.texture().forDisplay(state);MeshCache mesh=updateMesh(state);PresentationTransform transform=PresentationTransform.create(displayTexture.width(),displayTexture.height(),state.screenWidth(),state.screenHeight(),state.displaySettings().mapping()==stonytark.cinemarr.core.video.PixelMapping.ONE_PIXEL_PER_BLOCK?stonytark.cinemarr.core.video.PresentationMode.STRETCH:state.presentationMode());
+            RenderType type=RenderTypes.entityCutout(displayTexture.location());used.add(type);VertexConsumer vertices=buffers.getBuffer(type);
+            for(ScreenMaskMesher.Rectangle rectangle:mesh.rectangles)draw(vertices,matrix,state,rectangle,transform,displayTexture.width(),displayTexture.height());
             if(ProtocolLimits.videoProbeEnabled()&&!pipeline.lastFrameSha256().equals(acceptanceFrames.put(state.televisionId(),pipeline.lastFrameSha256())))Cinemarr.LOGGER.info(
                     "Acceptance video rendered: television={} frameSha256={} ptsUs={} rectangles={}",state.televisionId(),pipeline.lastFrameSha256(),pipeline.lastPresentedUs(),mesh.rectangles.size());
         }

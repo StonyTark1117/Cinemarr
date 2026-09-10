@@ -31,7 +31,11 @@ The Proxmox host retains only the prepared guest state:
 
 Each directory is mode `0700` and contains `state.json` with an exact platform identity. The runner refuses an absent, malformed, non-ready, or mismatched marker instead of guessing that an arbitrary directory is safe. The ARM private key defaults to `~/.local/share/cinemarr-hwtest/linux-arm64/id_ed25519`, remains outside the repository, and is forced to mode `0600`.
 
-The Windows guest installs an at-startup `CinemarrNativeSmoke` scheduled task during its first acceptance run. On later boots that task waits for the fresh `CINEMARR` payload ISO and `CINEVIDENCE` disk, runs the current benchmark bundle, writes evidence, and powers the guest off. The ARM guest retains its cloud image overlay and Java/native ABI packages; each run transfers the current bundle over its dedicated SSH identity and powers the guest off after evidence retrieval.
+The Windows guest installs an at-startup `CinemarrNativeSmoke` scheduled task during its first acceptance run. Its retained script is a bootstrap that loads the runner from the current `CINEMARR` payload. Each run gets a fresh `C:\CinemarrNativeSmoke\runs\<run-id>` directory; an existing run directory is rejected. The guest hashes every copied bundle file before launching Java, and the host compares that proof and all reported fixture hashes against the current input manifest. A pass marker alone cannot certify retained-guest reuse.
+
+Guests prepared before this bootstrap correction need a one-time replacement of their dedicated `C:\ProgramData\CinemarrNativeSmoke\windows-native-decoder-smoke.ps1` with `scripts/windows-native-smoke-bootstrap.ps1`, while powered off and after backing up and verifying the previous runner. Preserve the installed disk, guest identity and scheduled task. The release test guest received that scoped update after read-only inspection proved stale `bundle/bundle` copying; its rejected run remains in release acceptance history.
+
+On later boots that task waits for the fresh `CINEMARR` payload ISO and `CINEVIDENCE` disk, runs the current benchmark bundle, writes evidence, and powers the guest off. The ARM guest retains its cloud image overlay and Java/native ABI packages; each run transfers the current bundle over its dedicated SSH identity and powers the guest off after evidence retrieval.
 
 ## First provisioning and later reuse
 

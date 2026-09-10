@@ -32,6 +32,7 @@ jobs:
           python3 scripts/test-client-exit.py
           python3 scripts/check-fabric-loader-version.py --self-test
           python3 scripts/test-packaged-client.py
+          python3 scripts/test-native-bundle-evidence.py
           python3 scripts/test-owner-timeline.py
           python3 scripts/test-post-reconnect-capture.py
           python3 scripts/test-video-resource-reload.py

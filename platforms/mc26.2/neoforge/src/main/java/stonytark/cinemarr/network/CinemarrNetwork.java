@@ -64,7 +64,8 @@ public final class CinemarrNetwork {
 
     private static void client(CustomPacketPayload payload,
                                net.neoforged.neoforge.network.handling.IPayloadContext context) {
-        context.enqueueWork(() -> ClientPayloadBridge.accept((CinemarrMessage) payload));
+        var connection = context.connection();
+        context.enqueueWork(() -> ClientPayloadBridge.accept(connection, (CinemarrMessage) payload));
     }
     private CinemarrNetwork() {}
 }

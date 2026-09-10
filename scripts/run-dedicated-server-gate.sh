@@ -157,9 +157,11 @@ if [[ "$video_adverse_network_gate" == true && "$live_plex_gate" == true ]]; the
 fi
 if [[ "$video_control_gate" == true && -z "${CINEMARR_GATE_VIDEO_DURATION_SECONDS+x}" ]]; then
   # The control sequence deliberately waits for stable playback between pause,
-  # resume, seek, stream replacement, and reconnect. Keep the deterministic
-  # fixture alive long enough that those checks cannot run into its natural end.
-  fake_video_duration_seconds=300
+  # resume, seek, stream replacement, reconnect and resource reloads. The cold
+  # hosted legacy run reached 300 seconds during its post-reload window. Give
+  # the whole sequence runway; all eight-second stability checks, their
+  # deadlines, and the zero-active-underrun requirement remain unchanged.
+  fake_video_duration_seconds=900
 fi
 if [[ "$video_adverse_network_gate" == true && -z "${CINEMARR_GATE_VIDEO_DURATION_SECONDS+x}" ]]; then
   # Three fault/recovery cases each require fresh physical frames and PCM after
@@ -546,7 +548,7 @@ run_acceptance_client() {
     'narrator:0' > "$client_dir/options.txt"
   (
     cd "$target_dir" || exit 1
-    exec setsid env -u WAYLAND_DISPLAY XDG_SESSION_TYPE=x11 \
+    exec setsid env -u CINEMARR_PLEX_TOKEN -u CINEMARR_PLEX_URL -u DISCOPANEL_TOKEN -u DISCOPANEL_API_BASE -u WAYLAND_DISPLAY XDG_SESSION_TYPE=x11 \
       bash "$repo_root/scripts/run-private-xvfb.sh" 1280x720x24 env \
       JAVA_HOME="$java_home" PATH="$java_home/bin:$PATH" \
       JAVA_TOOL_OPTIONS="$java_tool_options" \
@@ -651,7 +653,7 @@ run_command_client() {
 
   (
     cd "$target_dir" || exit 1
-    exec setsid env -u WAYLAND_DISPLAY XDG_SESSION_TYPE=x11 \
+    exec setsid env -u CINEMARR_PLEX_TOKEN -u CINEMARR_PLEX_URL -u DISCOPANEL_TOKEN -u DISCOPANEL_API_BASE -u WAYLAND_DISPLAY XDG_SESSION_TYPE=x11 \
       bash "$repo_root/scripts/run-private-xvfb.sh" 1280x720x24 env \
       JAVA_HOME="$java_home" PATH="$java_home/bin:$PATH" \
       JAVA_TOOL_OPTIONS='-Dcinemarr.acceptance.enabled=true -Dcinemarr.acceptance.commandProbe=true -Dorg.lwjgl.opengl.Display.allowSoftwareOpenGL=true' \
@@ -908,7 +910,7 @@ start_audio_client() {
       # Production acceptance uses the indexed JAR, the manifest's runtime
       # Java, and prepared loader libraries. The launcher owns private X;
       # never nest a second X wrapper or fall back to Gradle on failure.
-      exec setsid env -u WAYLAND_DISPLAY XDG_SESSION_TYPE=x11 \
+      exec setsid env -u CINEMARR_PLEX_TOKEN -u CINEMARR_PLEX_URL -u DISCOPANEL_TOKEN -u DISCOPANEL_API_BASE -u WAYLAND_DISPLAY XDG_SESSION_TYPE=x11 \
         JAVA_TOOL_OPTIONS="$java_options" \
         ALSA_CONFIG_PATH="$client_dir/alsa.conf" ALSOFT_CONF="$client_dir/alsoft.conf" \
         ALSOFT_DRIVERS=alsa LIBGL_ALWAYS_SOFTWARE=1 \
@@ -918,7 +920,7 @@ start_audio_client() {
         --width "${xvfb_geometry%%x*}" --height "$(cut -dx -f2 <<<"$xvfb_geometry")" \
         > "$client_console" 2>&1
     fi
-    exec setsid env -u WAYLAND_DISPLAY XDG_SESSION_TYPE=x11 \
+    exec setsid env -u CINEMARR_PLEX_TOKEN -u CINEMARR_PLEX_URL -u DISCOPANEL_TOKEN -u DISCOPANEL_API_BASE -u WAYLAND_DISPLAY XDG_SESSION_TYPE=x11 \
       bash "$repo_root/scripts/run-private-xvfb.sh" "$xvfb_geometry" env \
       JAVA_HOME="$java_home" PATH="$java_home/bin:$PATH" \
       JAVA_TOOL_OPTIONS="$java_options" \
@@ -951,7 +953,7 @@ wait_for_audio_playing() {
       echo "$label: $role client failed during bootstrap; see $client_console" >&2
       return 1
     fi
-    if grep -Eq 'Acceptance audio state: ERROR|Cinemarr rejected video segment|Client disconnected with reason:|Connection reset by peer|Couldn.t connect to server|Failed to open OpenAL device|Error starting SoundSystem|NoClassDefFoundError: (javazoom|de/sciss)' \
+    if grep -Eq 'Acceptance audio state: ERROR|Cinemarr rejected (legacy )?video segment|Client disconnected with reason:|Connection reset by peer|Couldn.t connect to server|Failed to open OpenAL device|Error starting SoundSystem|NoClassDefFoundError: (javazoom|de/sciss)' \
         "$client_console" 2>/dev/null; then
       echo "$label: $role client failed before playback; see $client_console" >&2
       return 2
@@ -1010,7 +1012,7 @@ wait_for_video_audio_pair_stable() {
       echo "$label: a video client exited while its audio backend was stabilizing" >&2
       return 1
     fi
-    if grep -Eq 'Video segment request exceeds playback lead limit|Cinemarr rejected video segment' \
+    if grep -Eq 'Video segment request exceeds playback lead limit|Cinemarr rejected (legacy )?video segment' \
         "$leader_log" "$follower_log" 2>/dev/null; then
       echo "$label: a video client hit a rejected segment request during A/V stabilization" >&2
       return 1
@@ -1246,7 +1248,7 @@ run_video_control_scenarios() {
   local leader_log="$output_root/$label.audio-leader.console.log"
   local follower_log="$output_root/$label.audio-follower.console.log"
   local leader_control="$output_root/$label.audio-leader.control"
-  local follower_ui="$output_root/$label.audio-follower/screenshots/cinemarr-video-ui-acceptance.png"
+  local follower_ui="$output_root/$label.non-owner-small-window-ui.png"
   local evidence="$output_root/$label.video-controls.evidence.txt"
   local raw="$output_root/$label.video-control.s16le" metrics="$output_root/$label.video-control.metrics.txt"
   local first_leader first_follower old_generation new_generation action target_audio target_subtitle
@@ -1259,16 +1261,18 @@ run_video_control_scenarios() {
     echo "$label: non-owner scaled controller UI was clipped, overlapping, missing, or incorrectly privileged" >&2
     return 1
   fi
-  for _ in {1..60}; do [[ -s "$follower_ui" ]] && break; sleep 1; done
-  [[ -s "$follower_ui" ]] || { echo "$label: non-owner small-window UI screenshot was not saved" >&2; return 1; }
-  printf 'Non-owner controller UI rendered at 320x240 logical (640x480 physical, scale two) with zero clipped or overlapping widgets. Screenshot SHA-256: ' >> "$evidence"
-  sha256sum "$follower_ui" | awk '{print $1}' >> "$evidence"
-
   # Keep owner commands idle while real non-owner widgets are exercised. CLI
   # control probes do not cover Play/Queue/stream buttons or in-screen errors.
   python3 "$repo_root/scripts/observe-controller-feedback.py" \
     --log "$follower_log" --output "$output_root/$label.widget-feedback" --gate-pid "$$" \
     || { echo "$label: actual controller widget feedback failed" >&2; return 1; }
+  # The client continuously rewrites its own UI PNG. Retain the observer's
+  # completed initial capture while owner commands are still idle instead.
+  python3 "$repo_root/scripts/png_capture.py" "$output_root/$label.widget-feedback/initial-status.png" \
+    --copy "$follower_ui" \
+    || { echo "$label: non-owner small-window UI screenshot is invalid or could not be retained" >&2; return 1; }
+  printf 'Non-owner controller UI rendered at 320x240 logical (640x480 physical, scale two) with zero clipped or overlapping widgets. Screenshot SHA-256: ' >> "$evidence"
+  sha256sum "$follower_ui" | awk '{print $1}' >> "$evidence"
   printf 'Real widget dispatch/error-route checks passed; widget framebuffer review remains required.\n' >> "$evidence"
 
   first_leader=$(wc -l < "$leader_log")
@@ -1359,7 +1363,6 @@ run_video_control_scenarios() {
   printf 'Stream selection chose audio=%s subtitle=%s and advanced generation %s to %s.\n' \
     "$target_audio" "$target_subtitle" "$old_generation" "$new_generation" >> "$evidence"
 
-  cp -- "$follower_ui" "$output_root/$label.non-owner-small-window-ui.png"
   first_follower=$(wc -l < "$follower_log")
   # Disconnect through the server before terminating the launcher. A process
   # kill alone cannot prove that the client released its render/audio resources.
@@ -2490,6 +2493,12 @@ run_two_client_video() {
     printf 'Both clients completed disconnect cleanup and normal window shutdown with verified zero process exits and no native JVM crash reports.\n' >> "$evidence"
   fi
   if (( result == 0 )) && ! verify_video_health_reports "$label"; then result=1; fi
+  # Automatic screenshots use asynchronous game encoders. Validate their final
+  # bytes as well as every private-window capture only after all writers exit.
+  if (( result == 0 )) && ! python3 "$repo_root/scripts/png_capture.py" "$output_root" --closed-profile "$label"; then
+    echo "$label: closed screenshot evidence failed integrity validation" >&2
+    result=1
+  fi
   return "$result"
 }
 
@@ -2654,6 +2663,12 @@ finish_client_launch() {
   if [[ "$(grep -c '^Private X command exited:' "$log")" != 1 ]] \
       || ! grep -Fxq 'Private X command exited: status=0' "$log"; then
     echo "Client lacks one successful private command exit receipt; see $log" >&2
+    return 1
+  fi
+  # Include errors emitted after the last playback check, including old jobs
+  # completing during stream retirement and normal application shutdown.
+  if grep -Eq 'Cinemarr rejected (legacy )?video segment' "$log"; then
+    echo "Client reported a rejected video segment before exit; see $log" >&2
     return 1
   fi
   # Do not retain a completed PID for later forced cleanup or PID reuse.

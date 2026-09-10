@@ -87,6 +87,17 @@ class LaunchTests(unittest.TestCase):
         self.assertFalse(self.game.exists())
         self.run.assert_not_called()
 
+    def test_java_probe_and_launch_do_not_inherit_server_credentials(self):
+        names = ('CINEMARR_PLEX_TOKEN', 'CINEMARR_PLEX_URL', 'DISCOPANEL_TOKEN', 'DISCOPANEL_API_BASE')
+        with patch.dict(os.environ, {**{name: 'test-only-canary' for name in names},
+                                    'PULSE_SINK': 'cinemarr_test_sink'}):
+            self.assertEqual(0, self.invoke(preflight=False))
+            for call in (self.java.call_args, self.run.call_args):
+                environment = call.kwargs.get('env', os.environ)
+                self.assertTrue(all(name not in environment for name in names))
+                self.assertEqual('cinemarr_test_sink', environment['PULSE_SINK'])
+            self.assertEqual('test-only-canary', os.environ['CINEMARR_PLEX_TOKEN'])
+
     def test_launch_copies_exact_candidate_and_uses_private_x_not_gradle(self):
         self.assertEqual(0, self.invoke(preflight=False))
         self.assertEqual(self.sha, launch.digest(self.game / 'mods' / self.jar.name))

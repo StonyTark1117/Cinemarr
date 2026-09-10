@@ -75,7 +75,7 @@ public final class CinemarrNetwork {
 
     private static <T extends CustomPacketPayload & CinemarrMessage> void client(PayloadFlow<RegistryFriendlyByteBuf, CustomPacketPayload> flow,
             CustomPacketPayload.Type<T> type, StreamCodec<RegistryFriendlyByteBuf, T> codec) {
-        flow.addMain(type, codec, (payload, context) -> ClientPayloadBridge.accept(payload));
+        flow.addMain(type, codec, (payload, context) -> ClientPayloadBridge.accept(context.getConnection(), payload));
     }
     private static <T extends CustomPacketPayload & CinemarrMessage> void server(PayloadFlow<RegistryFriendlyByteBuf, CustomPacketPayload> flow,
             CustomPacketPayload.Type<T> type, StreamCodec<RegistryFriendlyByteBuf, T> codec,
