@@ -149,6 +149,11 @@ class PrivateMinecraftWindow:
                               check=True, timeout=6).stdout.strip()
 
     def click(self, x, y):
+        # Fabric clients can finish their private-X bootstrap without taking
+        # input focus. Activate the verified window before dispatching a
+        # coordinate so widget acceptance probes reach the game window rather
+        # than an unfocused X client.
+        self.run("xdotool", "windowactivate", "--sync", self.window)
         self.run("xdotool", "mousemove", "--window", self.window, str(x), str(y), "click", "1")
 
     def capture(self, path):
