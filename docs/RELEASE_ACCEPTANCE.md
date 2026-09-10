@@ -91,7 +91,7 @@ evidence rather than replacing its detailed acceptance criteria.
 - [ ] Quick TV obstruction, chunk unload, controller removal, server stop, and restart-mid-build all roll back generated pixels without removing player-built screens.
 - [ ] Unloaded Quick TV recovery footprints remain persisted until their chunks can be inspected.
 - [ ] Non-owners can view but cannot mutate a session unless permission policy grants control.
-- [ ] Removing the final television checkpoints and closes the Plex transcode; removing one of several attached TVs does not.
+- [ ] Removing a television cancels its pending capacity/start work and closes its own Plex stream without stopping healthy sibling streams. Removing the final television also checkpoints the shared watch-party timeline and leaves no owned media resources.
 
 ## Native host gates
 
