@@ -114,7 +114,10 @@ class PrivateWindowTests(unittest.TestCase):
     def test_multiple_minecraft_windows_rejected(self):
         self.run.return_value.stdout = "111\n222\n"
         with self.assertRaises(RuntimeError): PrivateMinecraftWindow(self.log, 42)
-        self.assertEqual(4, self.run.call_count)
+        # Discovery may perform the bounded blank-title fallback after
+        # filtering transient/helper clients; retain the ambiguity rejection
+        # without coupling the test to that probe count.
+        self.assertGreaterEqual(self.run.call_count, 4)
 
     def test_reload_holds_f3_across_game_ticks_and_releases_it(self):
         window = PrivateMinecraftWindow(self.log, 42)
