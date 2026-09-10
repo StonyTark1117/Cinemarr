@@ -20,7 +20,13 @@ The authoritative interruption/cleanup record is
 `build/release-resume-20260909/plex-session-lifecycle/source-change-interruption-review.json`.
 It overrides the earlier in-progress summaries. The original 843-input source
 snapshot and prior receipts remain historical evidence. Designated Proxmox,
-DiscPanel, Plex and native guest access works; access is not the blocker.
+DiscPanel, Plex and native guest access works; access is not the blocker. The
+retained `codex-minecraft-dev` guest (`qemu/143`) was rechecked on 2026-09-10
+through the Proxmox guest agent: it provides `/usr/bin/Xvfb` and
+`/usr/bin/xvfb-run`, and its private `/opt/cinemarr/java8` Temurin 8 runtime
+was restored for the legacy gate. The guest was powered off after inspection;
+the candidate runtime bundle still must be staged there before real-Plex
+acceptance.
 
 The fresh local `releaseMatrixGate` for commit `6972cc1` reached all artifact
 families and the ten GameTests, then failed at `verifyPrivateXvfb` after 19m16s:
