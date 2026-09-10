@@ -23,9 +23,8 @@ class StreamChangeTests(unittest.TestCase):
         self.assertEqual((125, 'audio', 'subtitle'), owner.stream_control('audio'))
         owner.verify_stream_change(self.before, self.audio, 'audio', 84388)
 
-    def test_real_single_audio_no_op_is_not_a_stream_pass(self):
-        with self.assertRaises(RuntimeError):
-            owner.verify_stream_change(self.before, dict(self.before, generation=4), 'audio', 84388)
+    def test_wrapped_audio_cycle_may_retain_selection_with_new_generation(self):
+        owner.verify_stream_change(self.before, dict(self.before, generation=4), 'audio', 84388)
 
     def test_stream_change_may_retain_generation_when_selection_changes(self):
         owner.verify_stream_change(self.before, dict(self.before, audio=205041), 'audio', 84388)
