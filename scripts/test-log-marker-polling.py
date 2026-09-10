@@ -56,31 +56,31 @@ class LogMarkerPollingTest(unittest.TestCase):
                                        "loader-config", label, str(directory)],
                                       capture_output=True, text=True, timeout=5)
             client = root / "client"
-            for label in ("1.20.2-neoforge", "1.20.1-forge", "1.20.2-forge", "1.21.1-forge", "26.1.2-forge", "26.2-forge"):
+            for label in ("1.20.1-neoforge", "1.20.2-neoforge", "1.20.1-forge", "1.20.2-forge", "1.21.1-forge", "26.1.2-forge", "26.2-forge"):
                 self.assertEqual(invoke(label, root / label).returncode, 0)
             config = client / "config/fml.toml"
             self.assertFalse(config.exists())
             # Validate preservation and conflict handling on the original
             # NeoForge fixture below.
-            self.assertEqual(invoke("1.20.2-neoforge", client).returncode, 0)
+            self.assertEqual(invoke("1.20.1-neoforge", client).returncode, 0)
             self.assertEqual(tomllib.loads(config.read_text()), {"earlyWindowControl": False})
             config.write_text(config.read_text() + 'maxThreads = 7\n')
             previous = config.read_bytes()
-            self.assertEqual(invoke("1.20.2-neoforge", client).returncode, 0)
+            self.assertEqual(invoke("1.20.1-neoforge", client).returncode, 0)
             self.assertEqual(config.read_bytes(), previous)
             config.write_text('earlyWindowControl = true\n')
             previous = config.read_bytes()
-            self.assertNotEqual(invoke("1.20.2-neoforge", client).returncode, 0)
+            self.assertNotEqual(invoke("1.20.1-neoforge", client).returncode, 0)
             self.assertEqual(config.read_bytes(), previous, "Do not overwrite conflicting config")
             config.unlink()
             outside = root / "outside.toml"
             outside.write_text('earlyWindowControl = true\n')
             config.symlink_to(outside)
-            self.assertNotEqual(invoke("1.20.2-neoforge", client).returncode, 0)
+            self.assertNotEqual(invoke("1.20.1-neoforge", client).returncode, 0)
             self.assertEqual(outside.read_text(), 'earlyWindowControl = true\n')
             profiles = subprocess.check_output(
                 ["python3", "scripts/target-matrix.py", "gate-lines"], cwd=ROOT, text=True)
-            handled = {"1.20.2-neoforge", "1.20.1-forge", "1.20.2-forge", "1.21.1-forge", "26.1.2-forge", "26.2-forge"}
+            handled = {"1.20.1-neoforge", "1.20.2-neoforge", "1.20.1-forge", "1.20.2-forge", "1.21.1-forge", "26.1.2-forge", "26.2-forge"}
             for label in (line.split("|")[0] for line in profiles.splitlines()):
                 if label in handled:
                     continue

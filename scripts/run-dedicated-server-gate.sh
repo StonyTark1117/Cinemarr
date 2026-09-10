@@ -469,10 +469,10 @@ client_bootstrap_failed() {
 configure_acceptance_loader() {
   local label=$1 client_dir=$2
   case "$label" in
-    1.20.1-forge|1.20.2-forge|1.21.1-forge|26.1.2-forge|26.2-forge|1.20.2-neoforge) ;;
+    1.20.1-forge|1.20.2-forge|1.21.1-forge|26.1.2-forge|26.2-forge|1.20.1-neoforge|1.20.2-neoforge) ;;
     *) return 0 ;;
   esac
-  # Forge's early GL window can crash inside libX11/libglfw on the isolated
+  # Forge/NeoForge's early GL window can crash inside libX11/libglfw on the isolated
   # software X server before the client reaches the protocol gate. FML's
   # supported no-splash path avoids that native initialization; this is a
   # compatibility prerequisite, not a retry or a changed playback oracle.
