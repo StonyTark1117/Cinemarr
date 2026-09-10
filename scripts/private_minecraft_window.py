@@ -82,7 +82,7 @@ class PrivateMinecraftWindow:
                             # probes cannot select an unmapped child.
                             for value in re.findall(r"0x[0-9a-fA-F]+", tree):
                                 window = str(int(value, 16))
-                                if window == str(root):
+                                if window == "0" or window == str(root):
                                     continue
                                 try:
                                     info = self.run("xwininfo", "-id", window)
