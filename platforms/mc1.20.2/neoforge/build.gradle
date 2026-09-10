@@ -105,6 +105,7 @@ sourceSets {
             exclude 'stonytark/cinemarr/client/CinemarrClient.java'
             exclude 'stonytark/cinemarr/client/CinemarrClientConfigScreen.java'
             exclude 'stonytark/cinemarr/client/CinemarrScreen.java'
+            exclude 'stonytark/cinemarr/client/DisplaySettingsScreen.java'
             exclude 'stonytark/cinemarr/config/CinemarrConfig.java'
             exclude 'stonytark/cinemarr/gametest/**'
             exclude 'stonytark/cinemarr/network/CinemarrNetwork.java'
