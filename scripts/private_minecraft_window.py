@@ -40,6 +40,7 @@ class PrivateMinecraftWindow:
                     # same display. Keep only X clients descended from this
                     # gate so unrelated windows cannot violate exact-one.
                     owned_windows = []
+                    unresolved_windows = []
                     for window in windows:
                         try:
                             owner = int(self.run("xdotool", "getwindowpid", window))
@@ -47,12 +48,17 @@ class PrivateMinecraftWindow:
                             # A window can disappear between search and PID
                             # lookup (notably during delayed mapping); retry
                             # the bounded discovery loop.
+                            unresolved_windows.append(window)
                             continue
                         except (ValueError, KeyError, StopIteration) as error:
                             raise RuntimeError("Unable to identify private Minecraft window owner") from error
                         if self.owned(owner):
                             owned_windows.append(window)
-                    windows = owned_windows
+                    # Some native X clients omit _NET_WM_PID. If ownership
+                    # data is unavailable, a single surviving candidate is
+                    # still safe under the private-display boundary; keep
+                    # ambiguity rejection when multiple candidates remain.
+                    windows = owned_windows or unresolved_windows
             except subprocess.CalledProcessError as error:
                 if error.returncode != 1:
                     raise
