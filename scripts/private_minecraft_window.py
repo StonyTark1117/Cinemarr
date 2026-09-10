@@ -28,6 +28,7 @@ class PrivateMinecraftWindow:
         self.env["DISPLAY"] = self.display
         self.env["XAUTHORITY"] = "/tmp/nonexistent-cinemarr-xauthority"
         deadline = time.monotonic() + wait_seconds
+        ambiguous_since = {}
         while True:
             try:
                 # The title varies by loader/version (and may be blank while
@@ -51,20 +52,19 @@ class PrivateMinecraftWindow:
                     except (subprocess.CalledProcessError, StopIteration):
                         info = ""
                     # Xvfb clients without a window manager can report an
-                    # ambiguous map state even after mapping. For those
-                    # states, require the same capture operation used by the
-                    # gate before accepting the window; this also waits
-                    # through delayed XMapWindow races.
+                    # ambiguous map state even after mapping. Hold those
+                    # candidates for a short stability interval so a delayed
+                    # XMapWindow cannot be captured, while long-lived clients
+                    # remain discoverable without relying on EWMH metadata.
                     if "Map State:" not in info or "IsViewable" in info:
                         mapped.append(window)
                     elif "IsUnmapped" not in info:
-                        try:
-                            subprocess.run(("import", "-window", window, "png:-"),
-                                            env=self.env, stdout=subprocess.DEVNULL,
-                                            stderr=subprocess.DEVNULL, check=True, timeout=6)
+                        now = time.monotonic()
+                        first_seen = ambiguous_since.setdefault(window, now)
+                        if now - first_seen >= 0.5:
                             mapped.append(window)
-                        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-                            pass
+                    else:
+                        ambiguous_since.pop(window, None)
                 windows = mapped
                 if not windows and not had_named_window:
                     # Native clients may briefly expose a blank title. In
