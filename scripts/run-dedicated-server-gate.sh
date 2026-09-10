@@ -773,7 +773,7 @@ run_command_client() {
     } > "$evidence"
   fi
 
-  if (( result == 0 )); then finish_client_launch "$pid" 120 "$client_console" || result=1; fi
+  if (( result == 0 )); then finish_client_launch "$pid" 120 "$client_console" true || result=1; fi
   terminate_client_launch "$pid" 20 || result=1
   active_client_pid=""
   return "$result"
