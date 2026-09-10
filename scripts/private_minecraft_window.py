@@ -65,7 +65,7 @@ class PrivateMinecraftWindow:
                         # delayed-map probe cannot be captured before mapping.
                         now = time.monotonic()
                         first_seen = ambiguous_since.setdefault(window, now)
-                        if now - first_seen >= 0.5:
+                        if now - first_seen >= 1.0:
                             mapped.append(window)
                 windows = mapped
                 if not windows:
@@ -110,7 +110,7 @@ class PrivateMinecraftWindow:
                                 elif "IsUnmapped" not in info:
                                     now = time.monotonic()
                                     first_seen = ambiguous_since.setdefault(window, now)
-                                    if now - first_seen >= 0.5:
+                                    if now - first_seen >= 1.0:
                                         windows.append(window)
                     except (IndexError, ValueError, subprocess.CalledProcessError):
                         windows = []
