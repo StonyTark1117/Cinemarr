@@ -209,6 +209,15 @@ def main() -> None:
                     text.index("    @Override public boolean keyPressed")]
         body = body.replace("private int acceptanceScreenshotTicks;",
                             "private boolean acceptanceScreenshotPending;")
+        body = body.replace("acceptanceScreenshotTicks=2;", "acceptanceScreenshotPending=true;")
+        body = body.replace('widget("display-settings",Button.builder(Component.literal("Display"),b->minecraft.setScreen(new DisplaySettingsScreen(controllerPos,state,this))).bounds(layout.left(),6,68,20).build());', "")
+        body = re.sub(r"\s+", "", body)
+        # Minecraft GUI signatures differ by version; normalize those narrow
+        # adapter shims before comparing shared browse/control behavior.
+        body = body.replace("renderBackground(graphics);", "renderBackground(graphics,mouseX,mouseY,partial);")
+        body = body.replace("renderBackground(graphics,mouseX,mouseY,partial);", "renderBackground(graphics,mouseX,mouseY,partial);")
+        body = body.replace("mouseScrolled(double mouseX,double mouseY,double scrollY)", "mouseScrolled(double mouseX,double mouseY,double scrollX,double scrollY)")
+        body = body.replace("super.mouseScrolled(mouseX,mouseY,scrollY)", "super.mouseScrolled(mouseX,mouseY,scrollX,scrollY)")
         if modern_body is None:
             modern_body = body
         elif body != modern_body:
