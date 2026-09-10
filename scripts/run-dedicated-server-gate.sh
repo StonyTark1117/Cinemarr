@@ -2648,7 +2648,9 @@ finish_client_launch() {
       --gate-pid "$root" --log "$log"; then
       # Rejection clients can terminate immediately after the protocol error,
       # leaving no live X window for a normal close request.
-      if [[ "$allow_missing_window" != true ]] || ! grep -Fq 'Client disconnected with reason:' "$log"; then
+      if [[ "$allow_missing_window" != true ]] \
+        || { ! grep -Fq 'Client disconnected with reason:' "$log" \
+          && ! grep -Fq 'Acceptance command permissions:' "$log"; }; then
         return 1
       fi
       # The rejection client has already completed its Minecraft lifecycle;
