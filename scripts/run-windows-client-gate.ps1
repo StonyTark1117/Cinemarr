@@ -125,7 +125,7 @@ function Run-Profile([string]$Name, [string]$RelativeDirectory, [int]$Port) {
             if (Test-Path $stdout) { $combined += Get-Content $stdout -Raw }
             if (Test-Path $stderr) { $combined += Get-Content $stderr -Raw }
             if ($combined -match "Acceptance video ready:") { $ready = $true; break }
-            if ($combined -match "Cinemarr rejected video segment|Acceptance audio state: ERROR|Failed to open OpenAL device") {
+            if ($combined -match "Cinemarr rejected (legacy )?video segment|Acceptance audio state: ERROR|Failed to open OpenAL device") {
                 throw "$Name reported a playback failure"
             }
             Start-Sleep -Seconds 2

@@ -44,7 +44,7 @@ cleanup() {
     (( cleanup_status == 0 )) || status=$cleanup_status
   fi
   if [[ -d "$evidence_dir" ]]; then
-    if ! printf '%s\0' "$host" \
+    if ! printf '%s\0' "$host" "${host^}" "${host^^}" \
         | python3 "$repo_root/scripts/redact-evidence-values.py" "$evidence_dir"; then
       status=1
     fi
@@ -107,6 +107,17 @@ for library in core-1.0.0.jar javacpp-1.5.14.jar javacpp-1.5.14-windows-x86_64.j
 done
 printf '%s\n' "$stamp" > "$payload_dir/run-id.txt"
 cp "$repo_root/scripts/windows-native-decoder-smoke.ps1" "$payload_dir/"
+cp "$repo_root/scripts/windows-native-smoke-bootstrap.ps1" "$payload_dir/"
+python3 - "$payload_dir" "$stamp" <<'PY_MANIFEST'
+import hashlib, json, pathlib, sys
+root = pathlib.Path(sys.argv[1])
+files = [{"path": p.relative_to(root / "bundle").as_posix(),
+          "sha256": hashlib.sha256(p.read_bytes()).hexdigest()}
+         for p in sorted((root / "bundle").rglob("*")) if p.is_file()]
+(root / "bundle-manifest.json").write_text(json.dumps(
+    {"schema": 1, "runId": sys.argv[2], "files": files}, indent=2) + "\n")
+PY_MANIFEST
+cp "$payload_dir/bundle-manifest.json" "$evidence_dir/input-bundle-manifest.json"
 if [[ "$provision" == true ]]; then
   cp "$repo_root/scripts/windows-native-smoke-autounattend.xml" "$payload_dir/Autounattend.xml"
 fi
@@ -195,6 +206,10 @@ sshpass -f "$password_file" scp -q "${ssh_options[@]}" \
   || { [[ -f "$evidence_dir/failed.txt" ]] && cat "$evidence_dir/failed.txt" >&2; exit 1; }
 [[ $(tr -d '\r\n' < "$evidence_dir/run-id.txt") == "$stamp" ]]
 
+python3 "$repo_root/scripts/verify-native-bundle-evidence.py" \
+  "$evidence_dir/input-bundle-manifest.json" "$evidence_dir/bundle-verification.json" \
+  "$evidence_dir/decoder-benchmark.json"
+
 jq -e '.schema == 3 and (.os | startswith("Windows"))
   and (.arch == "amd64" or .arch == "x86_64") and .ffmpegClassifier == "windows-x86_64"
   and .requestedBackend == "software" and .expectedEffectiveBackend == "software"
@@ -204,7 +219,9 @@ normalized_system=$(tr -d '\r' < "$evidence_dir/system.txt")
 grep -Eq '^processorArchitecture=AMD64$' <<<"$normalized_system"
 grep -Eq '^peMachine=0x8664$' <<<"$normalized_system"
 sha256sum "$evidence_dir/decoder-benchmark.json" "$evidence_dir/decoder-benchmark.csv" \
-  "$evidence_dir/system.txt" "$evidence_dir/run-id.txt" > "$evidence_dir/output-SHA256SUMS"
+  "$evidence_dir/system.txt" "$evidence_dir/run-id.txt" \
+  "$evidence_dir/input-bundle-manifest.json" "$evidence_dir/bundle-verification.json" \
+  > "$evidence_dir/output-SHA256SUMS"
 python3 "$repo_root/scripts/proxmox-hwtest.py" audit --manifest "$manifest" \
   --password-file "$password_file" > "$evidence_dir/pre-cleanup-audit.json"
 python3 "$repo_root/scripts/proxmox-hwtest.py" cleanup-only \

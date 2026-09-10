@@ -48,15 +48,19 @@ function Resolve-VolumeRoot([string]$Label) {
 try {
     $media = Resolve-VolumeRoot "CINEMARR"
     $evidenceRoot = Resolve-VolumeRoot "CINEVIDENCE"
-    New-Item -ItemType Directory -Path $work -Force | Out-Null
+    $runId = (Get-Content -LiteralPath (Join-Path $media "run-id.txt") -Raw).Trim()
+    if ($runId -notmatch '^\d{8}T\d{6}Z$') { throw "Invalid native-smoke run identity" }
+    $runsRoot = Join-Path $work "runs"
+    New-Item -ItemType Directory -Path $runsRoot -Force | Out-Null
+    $work = Join-Path $runsRoot $runId
+    if (Test-Path -LiteralPath $work) { throw "Native-smoke run directory already exists" }
+    New-Item -ItemType Directory -Path $work | Out-Null
     New-Item -ItemType Directory -Path $persistentRoot -Force | Out-Null
 
-    # The unattended install invokes this script once. Persist the runner and
-    # an at-startup SYSTEM task so later native checks can reuse the installed
-    # guest with a fresh CINEMARR payload and CINEVIDENCE disk.
-    if ($PSCommandPath -ne $persistentRunner) {
-        Copy-Item -LiteralPath $PSCommandPath -Destination $persistentRunner -Force
-    }
+    # Persist only a bootstrap. Every boot loads the current payload's runner,
+    # and every run uses a new directory so Copy-Item cannot nest under stale data.
+    Copy-Item -LiteralPath (Join-Path $media "windows-native-smoke-bootstrap.ps1") `
+        -Destination $persistentRunner -Force
     $taskAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument `
         "-NoProfile -ExecutionPolicy Bypass -File `"$persistentRunner`""
     $taskTrigger = New-ScheduledTaskTrigger -AtStartup
@@ -72,6 +76,20 @@ try {
     if ($null -eq $java) { throw "Windows x64 Java runtime was not found" }
 
     $bundle = Join-Path $work "bundle"
+    $expected = Get-Content -LiteralPath (Join-Path $media "bundle-manifest.json") -Raw | ConvertFrom-Json
+    if ($expected.schema -ne 1 -or $expected.runId -ne $runId) { throw "Invalid payload manifest identity" }
+    $verified = @()
+    foreach ($entry in $expected.files) {
+        if ($entry.path -match '(^[/\\]|(^|/)\.\.(/|$)|:)') { throw "Invalid payload manifest path" }
+        $used = Join-Path $bundle ($entry.path.Replace('/', '\'))
+        $actual = (Get-FileHash -LiteralPath $used -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($actual -ne $entry.sha256) { throw "Used bundle file differs from current payload" }
+        $verified += @{ path = $entry.path; sha256 = $actual }
+    }
+    $proof = @{ schema = 1; runId = $runId; files = $verified; workDirectory = $work }
+    [IO.File]::WriteAllText((Join-Path $work "bundle-verification.json"),
+        ($proof | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
+    Publish-File (Join-Path $work "bundle-verification.json") "bundle-verification.json"
     $classpath = @(
         (Join-Path $bundle "classes"),
         (Join-Path $bundle "lib\core-1.0.0.jar"),

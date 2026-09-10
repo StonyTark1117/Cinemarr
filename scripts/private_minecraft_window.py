@@ -4,12 +4,15 @@ from pathlib import Path
 import re
 import subprocess
 import time
+from png_capture import read_capture
 
 
 class PrivateMinecraftWindow:
-    def __init__(self, log, gate_pid, geometry="640x480x24"):
+    def __init__(self, log, gate_pid, geometry="640x480x24", wait_seconds=0):
         if geometry not in ("640x480x24", "1280x720x24"):
             raise RuntimeError("Unsupported private Minecraft geometry")
+        if not 0 <= wait_seconds <= 10:
+            raise ValueError("Private window wait must be between zero and ten seconds")
         self.geometry = geometry
         self.gate_pid = gate_pid
         self.gate_identity = self.identity(gate_pid)[1]
@@ -24,10 +27,24 @@ class PrivateMinecraftWindow:
         self.env.pop("WAYLAND_DISPLAY", None)
         self.env["DISPLAY"] = self.display
         self.env["XAUTHORITY"] = "/tmp/nonexistent-cinemarr-xauthority"
-        windows = self.run("xdotool", "search", "--onlyvisible", "--name", "Minecraft").splitlines()
-        if len(windows) != 1:
-            raise RuntimeError("Expected exactly one Minecraft window on the private X server")
-        self.window = windows[0]
+        deadline = time.monotonic() + wait_seconds
+        while True:
+            try:
+                windows = self.run("xdotool", "search", "--onlyvisible", "--name", "Minecraft").splitlines()
+            except subprocess.CalledProcessError as error:
+                if error.returncode != 1:
+                    raise
+                windows = []
+            if len(windows) > 1:
+                raise RuntimeError("Expected exactly one Minecraft window on the private X server")
+            if windows:
+                self.window = windows[0]
+                break
+            if time.monotonic() >= deadline:
+                raise RuntimeError("No visible Minecraft window on the private X server")
+            # A disconnect can be logged before the render thread maps the
+            # window. Revalidate the owned X server on every bounded lookup.
+            time.sleep(0.1)
 
     @staticmethod
     def identity(pid):
@@ -61,6 +78,7 @@ class PrivateMinecraftWindow:
 
     def capture(self, path):
         self.run("import", "-window", self.window, str(path))
+        read_capture(path)
 
     def escape(self):
         self.run("xdotool", "key", "--clearmodifiers", "Escape")

@@ -10,6 +10,8 @@ import tempfile
 import threading
 import time
 import unittest
+from private_minecraft_window import PrivateMinecraftWindow
+from png_capture import read_capture
 
 LAUNCHER=Path(__file__).with_name('run-private-xvfb.sh')
 CHILD=r'''
@@ -26,7 +28,7 @@ while not (directory/'release').exists():
 # A real X client with no Minecraft or window manager dependency. The native
 # close protocol is received independently of the sender's Python structures.
 WINDOW_CHILD=r'''
-import ctypes as c,os,pathlib,signal,subprocess,sys
+import ctypes as c,os,pathlib,signal,subprocess,sys,time
 directory=pathlib.Path(sys.argv[1]);mode=sys.argv[2]
 x=c.CDLL('libX11.so.6')
 def signature(name,args,result):
@@ -48,6 +50,12 @@ x.XStoreName(display,window,b'Minecraft shutdown probe')
 delete=x.XInternAtom(display,b'WM_DELETE_WINDOW',False)
 protocols=x.XInternAtom(display,b'WM_PROTOCOLS',False)
 x.XSetWMProtocols(display,window,(word*1)(delete),1)
+if mode=='delayed-map':
+    # The disconnect log and X window creation can precede mapping. A close
+    # request must still target this one window and require its real exit.
+    x.XFlush(display)
+    (directory/'ready').touch()
+    time.sleep(.5)
 x.XMapWindow(display,window);x.XFlush(display)
 (directory/'ready').touch()
 event=(c.c_long*24)()
@@ -73,7 +81,7 @@ x.XCloseDisplay(display)
 class PrivateDisplayTest(unittest.TestCase):
     def test_normal_window_close_and_native_crash_have_distinct_exit_receipts(self):
         for geometry in ('640x480x24','1280x720x24'):
-            for mode,expected in (('normal',0),('segv',139)):
+            for mode,expected in (('normal',0),('delayed-map',0),('segv',139)):
                 with self.subTest(geometry=geometry,mode=mode), tempfile.TemporaryDirectory(prefix='cinemarr-window-exit-') as temp:
                     directory=Path(temp);log=directory/'client.log'
                     with log.open('w') as stream:
@@ -85,6 +93,11 @@ class PrivateDisplayTest(unittest.TestCase):
                                 if process.poll() is not None:self.fail(log.read_text())
                                 if time.monotonic()>deadline:self.fail('X window never became ready')
                                 time.sleep(.02)
+                            window = PrivateMinecraftWindow(log.read_text(), process.pid,
+                                                            geometry=geometry, wait_seconds=10)
+                            screenshot = directory / 'actual-window.png'
+                            window.capture(screenshot)
+                            self.assertEqual(screenshot.read_bytes(), read_capture(screenshot))
                             close=subprocess.run(['python3',str(LAUNCHER.with_name('close-private-minecraft-window.py')),
                                 '--gate-pid',str(process.pid),'--log',str(log)],capture_output=True,text=True,timeout=10)
                             self.assertEqual(0,close.returncode,close.stderr)

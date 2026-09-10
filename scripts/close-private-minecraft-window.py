@@ -82,7 +82,7 @@ def main():
     geometry = re.findall(r'Private Xvfb ready: display=:\d+ pid=\d+ geometry=(\S+)', log)
     if len(geometry) != 1:
         raise RuntimeError('Expected exactly one private display launch')
-    request_close(PrivateMinecraftWindow(log, args.gate_pid, geometry=geometry[0]))
+    request_close(PrivateMinecraftWindow(log, args.gate_pid, geometry=geometry[0], wait_seconds=10))
     print('Requested normal Minecraft window close on verified private X')
 
 
