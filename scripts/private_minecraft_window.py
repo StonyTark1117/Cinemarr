@@ -74,6 +74,15 @@ class PrivateMinecraftWindow:
                     # the display root by its authoritative X11 window ID.
                     try:
                         candidates = self.run("xdotool", "search", "--onlyvisible", "--name", ".*").splitlines()
+                        # LWJGL/Fabric can leave WM_NAME empty while still
+                        # exposing a mapped GL surface. Query the X11 class as
+                        # an independent discovery signal before falling back
+                        # to the raw tree; ownership and geometry checks below
+                        # still reject unrelated/helper windows.
+                        try:
+                            candidates.extend(self.run("xdotool", "search", "--class", ".*").splitlines())
+                        except subprocess.CalledProcessError:
+                            pass
                         tree = self.run("xwininfo", "-root", "-tree")
                         root_line = tree.splitlines()[0]
                         root = int(root_line.split("Window id:", 1)[1].split()[0], 16)
