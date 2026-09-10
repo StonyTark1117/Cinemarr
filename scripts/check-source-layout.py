@@ -205,6 +205,8 @@ def main() -> None:
         if source.name == "LegacyVideoScreen.java":
             continue
         text = source.read_text("utf-8")
+        if '"display-settings"' not in text:
+            raise SystemExit(f"{source.relative_to(ROOT)} lacks the Display Settings entry point")
         body = text[text.index("public final class CinemarrVideoScreen"):
                     text.index("    @Override public boolean keyPressed")]
         body = body.replace("private int acceptanceScreenshotTicks;",
