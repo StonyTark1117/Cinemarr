@@ -40,6 +40,7 @@ class PrivateMinecraftWindow:
                 # builds. Require a non-empty name so the root cannot become
                 # a second apparent Minecraft client.
                 windows = self.run("xdotool", "search", "--name", ".+").splitlines()
+                had_named_window = bool(windows)
                 # Do not capture a native client during the short interval
                 # between XCreateWindow and XMapWindow.  Conversely, accept
                 # clients whose WM metadata omits the EWMH visible hint.
@@ -52,7 +53,7 @@ class PrivateMinecraftWindow:
                     if "Map State:" not in info or "IsViewable" in info:
                         mapped.append(window)
                 windows = mapped
-                if not windows:
+                if not windows and not had_named_window:
                     # Native clients may briefly expose a blank title. In
                     # that case enumerate all visible windows once and remove
                     # the display root by its authoritative X11 window ID.
