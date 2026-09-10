@@ -15,9 +15,9 @@ acceptances preceded those changes; Forge 1.21.1's runtime checks closed but its
 source guard failed, and NeoForge 1.21.1 was interrupted. The 704 reviewed PNGs
 and 38 measured audio pairs, two identical builds, native checks and deployment
 retain their earlier scope and cannot certify the new implementation.
-The current candidate is commit `92f5d21`; hosted verification run
-`34501707710` is the active clean run for that exact SHA. Its manifest check is
-green while the sixteen profile jobs remain in progress, so no runtime
+The latest integrated commit is `57f91c3`; hosted verification run
+`34503363417` is running for that exact SHA. Its manifest check is green, while
+profile jobs and the expanded acceptance remain in progress; no runtime
 acceptance checkbox is closed from it yet.
 
 The authoritative interruption/cleanup record is
