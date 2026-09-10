@@ -210,8 +210,13 @@ final class LegacyClientState implements LegacyNetwork.ClientListener {
         }
     }
 
+    private void inspectAcceptanceVideoControl() {
+        inspectAcceptanceVideoControl(acceptanceControl.poll());
+    }
+
     private void inspectAcceptanceVideoControl(String operation) {
-        if (!ProtocolLimits.videoProbeEnabled() || operation.isEmpty()) return;
+        if (!ProtocolLimits.videoProbeEnabled()) return;
+        if (operation.isEmpty()) return;
         if (operation.length() == 0 || !operation.startsWith("video:")) return;
         VideoPackets.SessionState state = LegacyVideoClientState.INSTANCE.session(acceptanceVideoController);
         if (operation.startsWith("video:browse-pressure:") && ProtocolLimits.browsePressureProbeEnabled()) {
