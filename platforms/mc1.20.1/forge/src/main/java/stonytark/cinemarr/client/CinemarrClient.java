@@ -42,7 +42,12 @@ public final class CinemarrClient {
                 () -> new ConfigScreenHandler.ConfigScreenFactory(
                         (minecraft, parent) -> new CinemarrClientConfigScreen(parent)));
         MinecraftForge.EVENT_BUS.register(INSTANCE);
-        ClientPayloadBridge.install(CinemarrClientState.INSTANCE::accept);
+        ClientPayloadBridge.install(connection -> {
+            var handler = Minecraft.getInstance().getConnection();
+            return handler != null && handler.getConnection() == connection
+                    && handler.getConnection().isConnected()
+                    && INSTANCE.connections.isActive(connection);
+        }, CinemarrClientState.INSTANCE::accept);
     }
 
     private void keys(RegisterKeyMappingsEvent event) { event.register(OPEN); }
@@ -57,6 +62,9 @@ public final class CinemarrClient {
         if (minecraft.screen == null && minecraft.player != null && OPEN.consumeClick()) {
             minecraft.player.displayClientMessage(net.minecraft.network.chat.Component.literal("Cinemarr: use a TV Controller to open its video controls"),false);
         }
+        var handler = minecraft.getConnection();
+        if (!connections.prepareTick(handler != null && handler.getConnection().isConnected()
+                ? handler.getConnection() : null)) return;
         CinemarrClientState.INSTANCE.tick();
         VIDEO.tick(CinemarrVideoClientState.INSTANCE);VIDEO_AUDIO.tick(VIDEO,CinemarrVideoClientState.INSTANCE);
         captureAcceptanceVideo(minecraft);
@@ -103,8 +111,9 @@ public final class CinemarrClient {
         String frame = VIDEO.presentedFrameSha256();
         long pts = VIDEO.presentedFrameTimeUs();
         stonytark.cinemarr.Cinemarr.LOGGER.info("Acceptance video ready: frameSha256={} ptsUs={} audio=true", frame, pts);
-        Screenshot.grab(minecraft.gameDirectory, "cinemarr-video-acceptance.png", minecraft.getMainRenderTarget(),
-                message -> stonytark.cinemarr.Cinemarr.LOGGER.info("Acceptance video screenshot: frameSha256={} ptsUs={} result={}", frame, pts, message.getString()));
+        final stonytark.cinemarr.core.client.AtomicScreenshotFile screenshot = stonytark.cinemarr.core.client.AtomicScreenshotFile.create(minecraft.gameDirectory, "cinemarr-video-acceptance.png");
+        Screenshot.grab(minecraft.gameDirectory, screenshot.fileName(), minecraft.getMainRenderTarget(),
+                message -> stonytark.cinemarr.Cinemarr.LOGGER.info("Acceptance video screenshot: frameSha256={} ptsUs={} result={}", frame, pts, screenshot.publish(message.getString())));
     }
 
     private CinemarrClient() {}

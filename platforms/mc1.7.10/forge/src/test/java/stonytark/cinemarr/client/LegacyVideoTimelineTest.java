@@ -16,6 +16,98 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LegacyVideoTimelineTest {
+
+    @Test void manifestRefreshPreservesInFlightAndDeferredTransfers() throws Exception {
+        for (boolean inFlight : new boolean[] { true, false }) {
+            VideoPackets.SessionState session = state(true, 5_000, 100_000);
+            LegacyVideoClientState.StreamState stream = new LegacyVideoClientState.StreamState(new LegacyVideoClientState.StreamKey(session.sessionId(), session.generation()));
+            stream.session(session);
+            VideoPackets.SegmentManifest original = recoveryManifest(session, 0, 200_000);
+            setTransferField(stream, "manifest", original);
+            setTransferField(stream, "lastCompletedSegment", 9);
+            setTransferField(stream, "requestedSegment", inFlight ? 10 : -1);
+            setTransferField(stream, "deferredSegment", inFlight ? -1 : 10);
+            setTransferField(stream, "requestId", 12L);
+            setTransferField(stream, "currentWindowStart", 8);
+            setTransferField(stream, "totalChunks", 26);
+            seedCompletedSegment(stream, session);
+            stream.manifest(recoveryManifest(session, 8, 200_000));
+            assertEquals(1, ((java.util.Queue<?>) transferField(stream, "ready")).size(), "a same-generation refresh must preserve queued media");
+            assertTrue(transferField(stream, "manifest") == original, "keep the descriptors owning the current transfer");
+            assertEquals(inFlight ? 10 : -1, transferField(stream, "requestedSegment"));
+            assertEquals(inFlight ? -1 : 10, transferField(stream, "deferredSegment"));
+            assertEquals(12L, transferField(stream, "requestId"));
+            assertEquals(8, transferField(stream, "currentWindowStart"));
+            assertEquals(26, transferField(stream, "totalChunks"));
+        }
+    }
+
+    @Test void manifestRecoveryContinuesAfterCompletedPrefetchInsteadOfReplayingIt() throws Exception {
+        VideoPackets.SessionState session = state(true, 5_000, 100_000);
+        LegacyVideoClientState.StreamState stream = new LegacyVideoClientState.StreamState(new LegacyVideoClientState.StreamKey(session.sessionId(), session.generation()));
+        stream.session(session);
+        setTransferField(stream, "lastCompletedSegment", 9);
+        VideoPackets.SegmentManifest manifest = recoveryManifest(session, 0, 0);
+        seedCompletedSegment(stream, session);
+        assertEquals(10, stream.resumeSegment(manifest, 100_000), "completed prefetch is ahead of the paused clock and must not be requested again");
+        stream.manifest(manifest);
+        assertEquals(10, transferField(stream, "deferredSegment"));
+        assertEquals(1, ((java.util.Queue<?>) transferField(stream, "ready")).size());
+        setTransferField(stream, "lastCompletedSegment", 15);
+        assertEquals(16, stream.resumeSegment(manifest, 100_000), "recovery at a page boundary requests the next page");
+    }
+
+    private static VideoPackets.SegmentManifest recoveryManifest(VideoPackets.SessionState session, int first, long offset) {
+        java.util.List<VideoPackets.SegmentDescriptor> segments = new java.util.ArrayList<>();
+        for (int i = first; i < first + 16; i++) segments.add(new VideoPackets.SegmentDescriptor(i, offset + i * 8_000L, 8_000, true, 0, ""));
+        return new VideoPackets.SegmentManifest(session.sessionId(), session.generation(), 256, 144, "mpegts", "h264", "aac", 1_000_000, true, segments);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void seedCompletedSegment(Object stream, VideoPackets.SessionState session) throws Exception {
+        byte[] bytes = new byte[] { 42 };
+        String sha = stonytark.cinemarr.core.network.Hashing.sha256(bytes);
+        stonytark.cinemarr.core.client.VideoSegmentAssembler assembler = new stonytark.cinemarr.core.client.VideoSegmentAssembler();
+        assembler.begin(session.sessionId(), session.generation(), 11, 9, 1, sha, 72_000, true);
+        Object complete = assembler.accept(session.sessionId(), session.generation(), 11, 9, 0, 1, sha, 72_000, true, bytes).get();
+        ((java.util.Queue<Object>) transferField(stream, "ready")).add(complete);
+        setTransferField(stream, "readyBytes", 1L);
+    }
+
+    private static Object transferField(Object stream, String name) throws Exception {
+        java.lang.reflect.Field field = stream.getClass().getDeclaredField(name); field.setAccessible(true); return field.get(stream);
+    }
+    private static void setTransferField(Object stream, String name, Object value) throws Exception {
+        java.lang.reflect.Field field = stream.getClass().getDeclaredField(name); field.setAccessible(true); field.set(stream, value);
+    }
+
+    @Test void timeoutRecoverySelectsCurrentTimelineInsteadOfRewindingTheManifest() throws Exception {
+        LegacyClientState clockState = LegacyClientState.INSTANCE;
+        java.lang.reflect.Field clockField = LegacyClientState.class.getDeclaredField("clock");
+        clockField.setAccessible(true);
+        stonytark.cinemarr.core.client.ClockSynchronizer clock =
+                (stonytark.cinemarr.core.client.ClockSynchronizer) clockField.get(clockState);
+        clock.reset();
+        clock.accept(90_000, 100_000, 90_000);
+        java.util.List<VideoPackets.SegmentDescriptor> segments = new java.util.ArrayList<>();
+        for (int index = 0; index < 8; index++)
+            segments.add(new VideoPackets.SegmentDescriptor(index, index * 8_000L, 8_000, true, 0, ""));
+        VideoPackets.SessionState playing = state(false, 5_000, 100_000);
+        LegacyVideoClientState.StreamState stream = new LegacyVideoClientState.StreamState(
+                new LegacyVideoClientState.StreamKey(playing.sessionId(), playing.generation()));
+        stream.session(playing);
+        VideoPackets.SegmentManifest manifest = new VideoPackets.SegmentManifest(playing.sessionId(),
+                playing.generation(), 256, 144, "mpegts", "h264", "aac", 60_000, true, segments);
+        try {
+            assertEquals(3, stream.resumeSegment(manifest, 115_000),
+                    "25 seconds elapsed on the synchronized clock: resume at 30 seconds, not the original 5 seconds");
+            assertEquals(7, stream.resumeSegment(manifest, 155_000),
+                    "an old manifest must resume at its last available keyframe before fetching the next page");
+            stream.session(state(true, 5_000, 100_000));
+            assertEquals(0, stream.resumeSegment(manifest, 115_000), "paused replacement retains its cursor");
+        } finally { clock.reset(); }
+    }
+
     @Test
     void advancesAgainstServerEpochAndFreezesWhilePaused() {
         VideoPackets.SessionState playing = state(false, 5_000, 100_000);

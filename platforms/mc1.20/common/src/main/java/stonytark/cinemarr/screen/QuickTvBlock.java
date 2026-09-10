@@ -28,6 +28,7 @@ import stonytark.cinemarr.registry.CinemarrBlocks;
 public final class QuickTvBlock extends HorizontalDirectionalBlock {
     private static final int BLOCKS_PER_TICK=256;private static final java.util.Map<ServerLevel,java.util.Map<Long,BuildJob>> JOBS=java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
     private final QuickTvPreset preset;
+    public QuickTvPreset preset() { return preset; }
     public QuickTvBlock(BlockBehaviour.Properties properties, QuickTvPreset preset){super(properties);this.preset=preset;registerDefaultState(stateDefinition.any().setValue(FACING,Direction.NORTH));}
     @Override public BlockState getStateForPlacement(BlockPlaceContext context){return defaultBlockState().setValue(FACING,context.getHorizontalDirection().getOpposite());}
     @Override protected void createBlockStateDefinition(StateDefinition.Builder<net.minecraft.world.level.block.Block,BlockState> builder){builder.add(FACING);}

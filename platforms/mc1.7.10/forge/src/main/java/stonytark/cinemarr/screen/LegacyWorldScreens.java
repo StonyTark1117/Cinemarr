@@ -15,6 +15,10 @@ import stonytark.cinemarr.core.screen.ScreenLimits;
 import stonytark.cinemarr.core.screen.ScreenPixel;
 import stonytark.cinemarr.core.screen.ScreenTopology;
 import stonytark.cinemarr.core.video.PresentationMode;
+import stonytark.cinemarr.core.video.TvDisplaySettings;
+import stonytark.cinemarr.core.video.PixelMapping;
+import stonytark.cinemarr.core.video.ResolutionChoice;
+import stonytark.cinemarr.core.video.DisplaySettingsCodec;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -29,7 +33,7 @@ import java.util.UUID;
 /** Dimension-local pixel and television index for Forge 1.7.10. */
 public final class LegacyWorldScreens extends WorldSavedData {
     public static final String DATA_NAME = "cinemarr_screens";
-    public static final int SCHEMA_VERSION = 3;
+    public static final int SCHEMA_VERSION = 4;
     private final Map<Long, ScreenFacing> pixels = new HashMap<Long, ScreenFacing>();
     private final Map<Long, Television> televisions = new HashMap<Long, Television>();
     private final Map<Long, Set<Long>> quickTvConstructions = new HashMap<Long, Set<Long>>();
@@ -142,6 +146,7 @@ public final class LegacyWorldScreens extends WorldSavedData {
                     geometry.visibilityMask().toByteArray(), geometry.facing(), geometry.minimumU(), geometry.minimumV(),
                     existing == null ? PresentationMode.FIT : existing.presentationMode,
                     existing == null ? "" : existing.sessionName, geometry.width(), geometry.height());
+            television.display = existing == null ? null : existing.displaySettings(); classifyDisplay(television);
             if (TelevisionLifecycle.overlaps(dimensionKey(), connected, televisionId)) {
                 return new Activation(false, "Screen pixels already belong to another TV", null);
             }
@@ -158,7 +163,7 @@ public final class LegacyWorldScreens extends WorldSavedData {
         }
     }
 
-    public Television television(long controller) { return televisions.get(controller); }
+    public Television television(long controller) { Television tv=televisions.get(controller);if(tv!=null)classifyDisplay(tv);return tv; }
     public Television television(UUID id) { for(Television value:televisions.values())if(value.id.equals(id))return value;return null; }
     public Television removeTelevision(UUID id) { Television value=television(id);return value==null?null:removeController(LegacyBlockPos.x(value.controllerPos),LegacyBlockPos.y(value.controllerPos),LegacyBlockPos.z(value.controllerPos)); }
     public List<Television> televisions() { return Collections.unmodifiableList(new ArrayList<Television>(televisions.values())); }
@@ -184,9 +189,25 @@ public final class LegacyWorldScreens extends WorldSavedData {
         }
         return values;
     }
+    private void classifyDisplay(Television tv) {
+        if (tv.display != null && tv.display.origin() != TvDisplaySettings.Origin.UNKNOWN) return;
+        if (world == null || !world.blockExists(LegacyBlockPos.x(tv.controllerPos), LegacyBlockPos.y(tv.controllerPos), LegacyBlockPos.z(tv.controllerPos))) return;
+        net.minecraft.block.Block block = world.getBlock(LegacyBlockPos.x(tv.controllerPos), LegacyBlockPos.y(tv.controllerPos), LegacyBlockPos.z(tv.controllerPos));
+        String preset = block instanceof LegacyQuickTvBlock ? ((LegacyQuickTvBlock) block).preset().id() : null;
+        tv.display = new TvDisplaySettings(preset == null ? TvDisplaySettings.Origin.CUSTOM : TvDisplaySettings.Origin.QUICK,
+                tv.presentationMode, PixelMapping.DETAILED, preset == null ? ResolutionChoice.AUTO : ResolutionChoice.preset(preset), tv.displaySettings().revision());
+        markDirty();
+    }
+    public void updateDisplay(long controller, TvDisplaySettings requested) {
+        Television tv = televisions.get(controller);
+        if (tv == null) throw new IllegalArgumentException("No active TV");
+        classifyDisplay(tv);
+        TvDisplaySettings next = tv.displaySettings().apply(requested.revision(), requested.layout(), requested.mapping(), requested.resolution());
+        tv.display = next; tv.presentationMode = next.layout(); markDirty();
+    }
     public void updatePresentation(long controller, PresentationMode mode) {
         Television value = televisions.get(controller);
-        if (value != null && mode != null) { value.presentationMode = mode; markDirty(); }
+        if (value != null && mode != null) { value.display=value.displaySettings().apply(value.displaySettings().revision(),mode,value.displaySettings().mapping(),value.displaySettings().resolution());value.presentationMode=mode; markDirty(); }
     }
     public void updateSession(long controller, String name) {
         Television value = televisions.get(controller);
@@ -353,6 +374,8 @@ public final class LegacyWorldScreens extends WorldSavedData {
         private final byte[] mask;
         private final ScreenFacing facing;
         private final int minimumU, minimumV;
+        private TvDisplaySettings display;
+        public TvDisplaySettings displaySettings() { return display == null ? DisplaySettingsCodec.load("", presentationMode) : display; }
         private PresentationMode presentationMode;
         private String sessionName;
         private int renditionWidth, renditionHeight;
@@ -384,7 +407,7 @@ public final class LegacyWorldScreens extends WorldSavedData {
         public PresentationMode presentationMode() { return presentationMode; }
         public String sessionName() { return sessionName; }
 
-        void save(NBTTagCompound tag) {
+        void save(NBTTagCompound tag) {tag.setString("displaySettings",DisplaySettingsCodec.encode(displaySettings()));
             tag.setLong("controller", controllerPos); tag.setLong("idMost", id.getMostSignificantBits());
             tag.setLong("idLeast", id.getLeastSignificantBits()); tag.setLong("ownerMost", owner.getMostSignificantBits());
             tag.setLong("ownerLeast", owner.getLeastSignificantBits()); tag.setInteger("width", width); tag.setInteger("height", height);
@@ -396,18 +419,19 @@ public final class LegacyWorldScreens extends WorldSavedData {
             tag.setTag("screenPixels", positions);
         }
 
+        private static Television loaded(Television value, String saved) { value.display = DisplaySettingsCodec.load(saved, value.presentationMode); value.presentationMode=value.display.layout(); return value; }
         static Television load(NBTTagCompound tag) {
             Set<Long> pixels = new HashSet<Long>(); NBTTagList positions = tag.getTagList("screenPixels", 10);
             for (int index = 0; index < positions.tagCount(); index++) pixels.add(positions.getCompoundTagAt(index).getLong("pos"));
             if (pixels.isEmpty()) return null;
             try {
-                return new Television(tag.getLong("controller"), new UUID(tag.getLong("idMost"), tag.getLong("idLeast")),
+                return loaded(new Television(tag.getLong("controller"), new UUID(tag.getLong("idMost"), tag.getLong("idLeast")),
                         new UUID(tag.getLong("ownerMost"), tag.getLong("ownerLeast")), pixels, tag.getInteger("width"),
                         tag.getInteger("height"), tag.getByteArray("mask"), ScreenFacing.valueOf(tag.getString("facing")),
                         tag.getInteger("minimumU"), tag.getInteger("minimumV"),
                         PresentationMode.valueOf(tag.getString("presentationMode")), tag.getString("sessionName"),
                         tag.hasKey("renditionWidth") ? tag.getInteger("renditionWidth") : tag.getInteger("width"),
-                        tag.hasKey("renditionHeight") ? tag.getInteger("renditionHeight") : tag.getInteger("height"));
+                        tag.hasKey("renditionHeight") ? tag.getInteger("renditionHeight") : tag.getInteger("height")), tag.getString("displaySettings"));
             } catch (IllegalArgumentException invalid) { return null; }
         }
     }

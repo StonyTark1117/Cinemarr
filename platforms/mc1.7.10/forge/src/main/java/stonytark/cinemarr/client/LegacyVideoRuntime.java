@@ -44,10 +44,11 @@ final class LegacyVideoRuntime {
         acceptanceVideoScreenshotSaved = true;
         String frame = playback.presentedFrameSha256(); long pts = playback.presentedFrameTimeUs();
         Cinemarr.LOGGER.info("Acceptance video ready: frameSha256={} ptsUs={} audio=true", frame, pts);
-        IChatComponent result = ScreenShotHelper.saveScreenshot(minecraft.mcDataDir, "cinemarr-video-acceptance.png",
+        final stonytark.cinemarr.core.client.AtomicScreenshotFile screenshot = stonytark.cinemarr.core.client.AtomicScreenshotFile.create(minecraft.mcDataDir, "cinemarr-video-acceptance.png");
+        IChatComponent result = ScreenShotHelper.saveScreenshot(minecraft.mcDataDir, screenshot.fileName(),
                 minecraft.displayWidth, minecraft.displayHeight, minecraft.getFramebuffer());
         Cinemarr.LOGGER.info("Acceptance video screenshot: frameSha256={} ptsUs={} result={}",
-                frame, pts, result == null ? "" : result.getUnformattedText());
+                frame, pts, screenshot.publish(result == null ? "" : result.getUnformattedText()));
     }
     private LegacyVideoRuntime() {}
 }

@@ -48,6 +48,7 @@ public final class CinemarrClient implements ClientModInitializer {
         KeyBindingHelper.registerKeyBinding(OPEN);
         ClientPayloadBridge.install(CinemarrClientState.INSTANCE::accept);
         CinemarrNetwork.installClientSender(payload -> {
+            if (!connectionReady(Minecraft.getInstance().getConnection())) return;
             FriendlyByteBuf buffer = PacketByteBufs.create();
             if(VideoPayloads.supports(payload)){VideoPayloads.write(payload,buffer);ClientPlayNetworking.send(VideoPayloads.idOf(payload),buffer);}
             else{CinemarrPayloads.write(payload, buffer);ClientPlayNetworking.send(CinemarrPayloads.idOf(payload), buffer);}
@@ -105,6 +106,9 @@ public final class CinemarrClient implements ClientModInitializer {
         if (minecraft.screen == null && minecraft.player != null && OPEN.consumeClick()) {
             minecraft.player.displayClientMessage(net.minecraft.network.chat.Component.literal("Cinemarr: use a TV Controller to open its video controls"),false);
         }
+        var handler = minecraft.getConnection();
+        if (!connections.prepareTick(handler != null && handler.getConnection().isConnected()
+                ? handler : null)) return;
         CinemarrClientState.INSTANCE.tick();
         VIDEO.tick(CinemarrVideoClientState.INSTANCE);VIDEO_AUDIO.tick(VIDEO,CinemarrVideoClientState.INSTANCE);
         captureAcceptanceVideo(minecraft);
@@ -123,12 +127,18 @@ public final class CinemarrClient implements ClientModInitializer {
         String frame = VIDEO.presentedFrameSha256();
         long pts = VIDEO.presentedFrameTimeUs();
         Cinemarr.LOGGER.info("Acceptance video ready: frameSha256={} ptsUs={} audio=true", frame, pts);
-        Screenshot.grab(minecraft.gameDirectory, "cinemarr-video-acceptance.png", minecraft.getMainRenderTarget(),
+        final stonytark.cinemarr.core.client.AtomicScreenshotFile screenshot = stonytark.cinemarr.core.client.AtomicScreenshotFile.create(minecraft.gameDirectory, "cinemarr-video-acceptance.png");
+        Screenshot.grab(minecraft.gameDirectory, screenshot.fileName(), minecraft.getMainRenderTarget(),
                 message -> Cinemarr.LOGGER.info("Acceptance video screenshot: frameSha256={} ptsUs={} result={}",
-                        frame, pts, message.getString()));
+                        frame, pts, screenshot.publish(message.getString())));
     }
 
-    private static void registerReceivers() {
+    private boolean connectionReady(net.minecraft.client.multiplayer.ClientPacketListener handler) {
+        return handler != null && handler == Minecraft.getInstance().getConnection()
+                && handler.getConnection().isConnected() && connections.isActive(handler);
+    }
+
+    private void registerReceivers() {
         receive(CinemarrPayloads.ServerHello.ID, CinemarrPayloads.ServerHello::read);
         receive(CinemarrPayloads.TimeSyncResponse.ID, CinemarrPayloads.TimeSyncResponse::read);
         receive(CinemarrPayloads.ErrorMessage.ID, CinemarrPayloads.ErrorMessage::read);
@@ -138,11 +148,13 @@ public final class CinemarrClient implements ClientModInitializer {
         receive(VideoPayloads.SegmentManifest.ID,VideoPayloads.SegmentManifest::read);receive(VideoPayloads.SegmentChunk.ID,VideoPayloads.SegmentChunk::read);
     }
 
-    private static <T extends CinemarrMessage> void receive(ResourceLocation id, CinemarrNetwork.Decoder<T> decoder) {
+    private <T extends CinemarrMessage> void receive(ResourceLocation id, CinemarrNetwork.Decoder<T> decoder) {
         ClientPlayNetworking.registerGlobalReceiver(id, (client, handler, buffer, responseSender) -> {
             T payload = decoder.read(buffer);
             if (buffer.readableBytes() != 0) throw new IllegalArgumentException("Trailing bytes in Cinemarr packet");
-            client.execute(() -> ClientPayloadBridge.accept(payload));
+            client.execute(() -> {
+                if (connectionReady(handler)) ClientPayloadBridge.accept(payload);
+            });
         });
     }
 }

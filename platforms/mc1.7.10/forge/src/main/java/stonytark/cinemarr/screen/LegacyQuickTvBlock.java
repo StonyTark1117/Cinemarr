@@ -24,6 +24,7 @@ public final class LegacyQuickTvBlock extends Block {
     private static final java.util.Map<WorldServer, java.util.Map<Long, BuildJob>> JOBS =
             java.util.Collections.synchronizedMap(new java.util.WeakHashMap<WorldServer, java.util.Map<Long, BuildJob>>());
     private final QuickTvPreset preset;
+    public QuickTvPreset preset() { return preset; }
 
     public LegacyQuickTvBlock(QuickTvPreset preset) {
         super(Material.iron);

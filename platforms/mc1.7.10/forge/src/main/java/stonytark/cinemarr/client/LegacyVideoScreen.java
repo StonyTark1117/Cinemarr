@@ -174,7 +174,7 @@ final class LegacyVideoScreen extends GuiScreen {
         if (kind == VideoStreamOption.Kind.SUBTITLE && current < 0) next = options.get(0).id();
         else { int index = -1; for (int value = 0; value < options.size(); value++) if (options.get(value).id() == current) { index = value; break; }
             next = index + 1 < options.size() ? options.get(index + 1).id() : kind == VideoStreamOption.Kind.SUBTITLE ? -1 : options.get(0).id(); }
-        command(VideoPackets.SessionAction.SET_STREAMS, playback.item().key(), position(), playback.presentationMode(), playback.generation(), "",
+        command(VideoPackets.SessionAction.SET_STREAMS, playback.item().key(), position(), playback.presentationMode(), playback.timelineGeneration(), "",
                 kind == VideoStreamOption.Kind.AUDIO ? next : playback.selectedAudioStreamId(), kind == VideoStreamOption.Kind.SUBTITLE ? next : playback.selectedSubtitleStreamId());
     }
     private void command(VideoPackets.SessionAction action, String item, long seek, PresentationMode mode, long generation, String session, int audio, int subtitle) {
@@ -192,7 +192,7 @@ final class LegacyVideoScreen extends GuiScreen {
     private void request() { if (!libraryId.isEmpty()) {state.browse(libraryId, parentKey, query, page);initGui();} }
     private boolean paused() { VideoPackets.SessionState value = state.session(controllerPos); return value != null && value.paused(); }
     private long position() { VideoPackets.SessionState value = state.session(controllerPos); return value == null ? 0 : LegacyVideoPlayback.authoritativePositionMs(value,LegacyClientState.INSTANCE.serverEpoch(System.currentTimeMillis())); }
-    private long generation() { VideoPackets.SessionState value = state.session(controllerPos); return value == null ? 0 : value.generation(); }
+    private long generation() { VideoPackets.SessionState value = state.session(controllerPos); return value == null ? 0 : value.timelineGeneration(); }
     private PresentationMode mode() { VideoPackets.SessionState value = state.session(controllerPos); return value == null ? PresentationMode.FIT : value.presentationMode(); }
     private static String streamLabel(VideoPackets.SessionState playback, VideoStreamOption.Kind kind, int id, String fallback) { for (VideoStreamOption option : playback.streams()) if (option.kind() == kind && option.id() == id) return option.label(); return fallback; }
     void stateChanged() { if (libraryId.isEmpty() && !state.libraries().libraries().isEmpty()) { libraryId = state.libraries().libraries().get(0).id(); request(); } initGui(); }
@@ -237,9 +237,10 @@ final class LegacyVideoScreen extends GuiScreen {
     private void saveAcceptanceScreenshot() {
         if (!acceptanceScreenshotPending || mc == null) return;
         acceptanceScreenshotPending = false;
-        IChatComponent result = ScreenShotHelper.saveScreenshot(mc.mcDataDir, "cinemarr-video-ui-acceptance.png",
+        final stonytark.cinemarr.core.client.AtomicScreenshotFile screenshot = stonytark.cinemarr.core.client.AtomicScreenshotFile.create(mc.mcDataDir, "cinemarr-video-ui-acceptance.png");
+        IChatComponent result = ScreenShotHelper.saveScreenshot(mc.mcDataDir, screenshot.fileName(),
                 mc.displayWidth, mc.displayHeight, mc.getFramebuffer());
-        Cinemarr.LOGGER.info("Acceptance video UI screenshot: {}", result.getUnformattedText());
+        Cinemarr.LOGGER.info("Acceptance video UI screenshot: {}", screenshot.publish(result.getUnformattedText()));
     }
     @Override public void onGuiClosed() { Keyboard.enableRepeatEvents(false); }
     private String trim(String value, int maximum) { if (fontRendererObj.getStringWidth(value) <= maximum) return value; while (value.length() > 1 && fontRendererObj.getStringWidth(value + "...") > maximum) value = value.substring(0, value.length() - 1); return value + "..."; }

@@ -87,7 +87,7 @@ public final class CinemarrNetwork {
             BiConsumer<T, FriendlyByteBuf> encoder, Function<FriendlyByteBuf, T> decoder) {
         required().messageBuilder(type, id, PlayNetworkDirection.PLAY_TO_CLIENT)
                 .encoder((payload, buffer) -> encoder.accept(payload, buffer)).decoder(decoder::apply)
-                .consumerMainThread((payload, context) -> ClientPayloadBridge.accept(payload))
+                .consumerMainThread((payload, context) -> ClientPayloadBridge.accept(context.getNetworkManager(), payload))
                 .add();
     }
 

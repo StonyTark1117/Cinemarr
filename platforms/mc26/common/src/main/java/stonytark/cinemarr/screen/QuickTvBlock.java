@@ -32,6 +32,7 @@ public final class QuickTvBlock extends HorizontalDirectionalBlock {
     private static final java.util.Map<ServerLevel,java.util.Map<Long,BuildJob>> JOBS=java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
     public static final MapCodec<QuickTvBlock> CODEC=RecordCodecBuilder.mapCodec(instance->instance.group(propertiesCodec(),Codec.STRING.fieldOf("preset").forGetter(block->block.preset.id())).apply(instance,(properties,id)->new QuickTvBlock(properties,QuickTvPreset.byId(id))));
     private final QuickTvPreset preset;
+    public QuickTvPreset preset() { return preset; }
     public QuickTvBlock(BlockBehaviour.Properties properties,QuickTvPreset preset){super(properties);this.preset=preset;registerDefaultState(stateDefinition.any().setValue(FACING,Direction.NORTH));}
     @Override protected MapCodec<? extends HorizontalDirectionalBlock> codec(){return CODEC;}
     @Override public BlockState getStateForPlacement(BlockPlaceContext context){return defaultBlockState().setValue(FACING,context.getHorizontalDirection().getOpposite());}

@@ -45,7 +45,7 @@ final class LegacyClientState implements LegacyNetwork.ClientListener {
             if (type == LegacyPacketTypes.VIDEO_SESSION_STATE) {
                 acceptVideoProbe(type, message);
                 VideoPackets.SessionState state = (VideoPackets.SessionState) message;
-                segmentPeer.session(state.sessionId(), state.generation(), state.canControl(), state.status() == VideoPackets.SessionStatus.PLAYING);
+                segmentPeer.session(state.identity(), state.canControl(), state.status() == VideoPackets.SessionStatus.PLAYING);
                 return;
             }
             if (type == LegacyPacketTypes.VIDEO_SEGMENT_CHUNK) { segmentPeer.chunk((VideoPackets.SegmentChunk) message, this::sendSegmentPeer); return; }
@@ -163,12 +163,12 @@ final class LegacyClientState implements LegacyNetwork.ClientListener {
                 acceptanceVideoTuneSent = true;
                 LegacyVideoClientState.INSTANCE.command(new VideoPackets.SessionCommand(VideoPackets.SessionAction.TUNE,
                         state.controllerPos(), "", "", "cinemarr-acceptance", PresentationMode.FIT,
-                        state.generation(), 0L, -1, -1));
+                        state.timelineGeneration(), 0L, -1, -1));
             } else if (state.item() != null && !acceptanceVideoResetSent) {
                 acceptanceVideoResetSent = true;
                 LegacyVideoClientState.INSTANCE.command(new VideoPackets.SessionCommand(VideoPackets.SessionAction.STOP,
                         state.controllerPos(), "", "", "", PresentationMode.FIT,
-                        state.generation(), 0L, -1, -1));
+                        state.timelineGeneration(), 0L, -1, -1));
             } else if (state.item() == null && !acceptanceVideoLibrariesRequested) {
                 acceptanceVideoResetSent = true;
                 acceptanceVideoLibrariesRequested = true; LegacyVideoClientState.INSTANCE.requestLibraries();
@@ -196,7 +196,7 @@ final class LegacyClientState implements LegacyNetwork.ClientListener {
                 acceptanceVideoPlaySent = true;
                 LegacyVideoClientState.INSTANCE.command(new VideoPackets.SessionCommand(VideoPackets.SessionAction.PLAY,
                         acceptanceVideoController, value.libraryId(), value.items().get(0).key(), "",
-                        PresentationMode.FIT, state.generation(), 0L, -1, -1));
+                        PresentationMode.FIT, state.timelineGeneration(), 0L, -1, -1));
             }
         } else if (type == LegacyPacketTypes.VIDEO_MANIFEST) {
             VideoPackets.SegmentManifest value = (VideoPackets.SegmentManifest) payload;
@@ -272,9 +272,9 @@ final class LegacyClientState implements LegacyNetwork.ClientListener {
             return;
         }
         Cinemarr.LOGGER.info("Acceptance video action: {} generation={} positionMs={} targetMs={} audio={} subtitle={}",
-                action, state.generation(), state.positionMs(), seek, audio, subtitle);
+                action, state.timelineGeneration(), state.positionMs(), seek, audio, subtitle);
         LegacyVideoClientState.INSTANCE.command(new VideoPackets.SessionCommand(action, state.controllerPos(),
-                acceptanceVideoLibraryId, state.item() == null ? acceptanceVideoLastItemKey : state.item().key(), "", state.presentationMode(), state.generation(), seek, audio, subtitle));
+                acceptanceVideoLibraryId, state.item() == null ? acceptanceVideoLastItemKey : state.item().key(), "", state.presentationMode(), state.timelineGeneration(), seek, audio, subtitle));
     }
 
     private LegacyClientState() {}

@@ -20,6 +20,10 @@ import stonytark.cinemarr.core.screen.ScreenTopology;
 import stonytark.cinemarr.core.platform.CinemarrSettings;
 import stonytark.cinemarr.core.server.TelevisionLifecycle;
 import stonytark.cinemarr.core.video.PresentationMode;
+import stonytark.cinemarr.core.video.TvDisplaySettings;
+import stonytark.cinemarr.core.video.PixelMapping;
+import stonytark.cinemarr.core.video.ResolutionChoice;
+import stonytark.cinemarr.core.video.DisplaySettingsCodec;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -32,7 +36,7 @@ import java.util.UUID;
 
 /** Dimension-local durable index of pixels and activated televisions. */
 public final class CinemarrWorldScreens extends SavedData {
-    public static final int SCHEMA_VERSION = 3;
+    public static final int SCHEMA_VERSION = 4;
     private static final Codec<CinemarrWorldScreens> CODEC = CompoundTag.CODEC.xmap(CinemarrWorldScreens::load, CinemarrWorldScreens::saveTag);
     public static final SavedDataType<CinemarrWorldScreens> TYPE = new SavedDataType<>(
             Identifier.fromNamespaceAndPath("cinemarr", "cinemarr_screens"),
@@ -107,6 +111,7 @@ public final class CinemarrWorldScreens extends SavedData {
                     geometry.width(), geometry.height(), geometry.visibilityMask().toByteArray(), geometry.facing(),
                     geometry.minimumU(), geometry.minimumV(), existing == null ? PresentationMode.FIT : existing.presentationMode,
                     existing == null ? "" : existing.sessionName, geometry.width(), geometry.height());
+            activated.display = existing == null ? null : existing.displaySettings(); classifyDisplay(activated);
             if (!TelevisionLifecycle.register(registration(activated), CinemarrSettings.maximumScreensPerOwner())) {
                 return new Activation(false, existing == null ? "Maximum screens per owner reached" : "TV registration conflicts with another screen");
             }
@@ -119,7 +124,7 @@ public final class CinemarrWorldScreens extends SavedData {
         }
     }
 
-    public Television television(BlockPos controller) { return televisions.get(controller.asLong()); }
+    public Television television(BlockPos controller) { Television tv=televisions.get(controller.asLong());if(tv!=null)classifyDisplay(tv);return tv; }
     public Television television(UUID id) { for(Television value:televisions.values())if(value.id.equals(id))return value;return null; }
     public Television removeTelevision(UUID id) { Television value=television(id);return value==null?null:removeController(BlockPos.of(value.controllerPos)); }
     public List<Television> televisions(){return java.util.Collections.unmodifiableList(new ArrayList<>(televisions.values()));}
@@ -141,7 +146,24 @@ public final class CinemarrWorldScreens extends SavedData {
         }
         return false;
     }
-    public void updatePresentation(BlockPos controller, PresentationMode mode) { Television value=televisions.get(controller.asLong()); if(value!=null&&mode!=null){value.presentationMode=mode;setDirty();} }
+    private void classifyDisplay(Television tv) {
+        if (tv.display != null && tv.display.origin() != TvDisplaySettings.Origin.UNKNOWN) return;
+        BlockPos pos = BlockPos.of(tv.controllerPos);
+        if (level == null || !level.hasChunkAt(pos)) return;
+        net.minecraft.world.level.block.Block block = level.getBlockState(pos).getBlock();
+        String preset = block instanceof QuickTvBlock ? ((QuickTvBlock) block).preset().id() : null;
+        tv.display = new TvDisplaySettings(preset == null ? TvDisplaySettings.Origin.CUSTOM : TvDisplaySettings.Origin.QUICK,
+                tv.presentationMode, PixelMapping.DETAILED, preset == null ? ResolutionChoice.AUTO : ResolutionChoice.preset(preset), tv.displaySettings().revision());
+        setDirty();
+    }
+    public void updateDisplay(BlockPos controller, TvDisplaySettings requested) {
+        Television tv = televisions.get(controller.asLong());
+        if (tv == null) throw new IllegalArgumentException("No active TV");
+        classifyDisplay(tv);
+        TvDisplaySettings next = tv.displaySettings().apply(requested.revision(), requested.layout(), requested.mapping(), requested.resolution());
+        tv.display = next; tv.presentationMode = next.layout(); setDirty();
+    }
+    public void updatePresentation(BlockPos controller, PresentationMode mode) { Television value=televisions.get(controller.asLong()); if(value!=null&&mode!=null){value.display=value.displaySettings().apply(value.displaySettings().revision(),mode,value.displaySettings().mapping(),value.displaySettings().resolution());value.presentationMode=mode;setDirty();} }
     public void updateSession(BlockPos controller, String name) { Television value=televisions.get(controller.asLong()); if(value!=null){value.sessionName=name==null?"":name.trim();TelevisionLifecycle.session(value.id,value.sessionName);setDirty();} }
     public void updateRendition(BlockPos controller, int width, int height) { Television value=televisions.get(controller.asLong()); if(value!=null&&width>0&&height>0){value.renditionWidth=width;value.renditionHeight=height;setDirty();} }
 
@@ -274,6 +296,8 @@ public final class CinemarrWorldScreens extends SavedData {
         private final ScreenFacing facing;
         private final int minimumU;
         private final int minimumV;
+        private TvDisplaySettings display;
+        public TvDisplaySettings displaySettings() { return display == null ? DisplaySettingsCodec.load("", presentationMode) : display; }
         private PresentationMode presentationMode;
         private String sessionName;
         private int renditionWidth;
@@ -303,7 +327,7 @@ public final class CinemarrWorldScreens extends SavedData {
         }
         public PresentationMode presentationMode() { return presentationMode; }
         public String sessionName() { return sessionName; }
-        void save(CompoundTag tag) {
+        void save(CompoundTag tag) {tag.putString("displaySettings",DisplaySettingsCodec.encode(displaySettings()));
             tag.putString("id", id.toString()); tag.putString("owner", owner.toString()); tag.putInt("width", width); tag.putInt("height", height);
             tag.putInt("renditionWidth",renditionWidth);tag.putInt("renditionHeight",renditionHeight);
             tag.putByteArray("mask",mask);tag.putString("facing",facing.name());tag.putInt("minimumU",minimumU);tag.putInt("minimumV",minimumV);
@@ -311,15 +335,16 @@ public final class CinemarrWorldScreens extends SavedData {
             long[] values = new long[pixels.size()]; int index = 0; for (Long pixel : pixels) values[index++] = pixel; tag.putLongArray("pixels", values);
         }
         private static UUID uuid(CompoundTag tag,String key){String value=tag.getStringOr(key,"");if(!value.isBlank())try{return UUID.fromString(value);}catch(IllegalArgumentException ignored){}int[] legacy=tag.getIntArray(key).orElseGet(()->new int[0]);return legacy.length==4?UUIDUtil.uuidFromIntArray(legacy):null;}
+        private static Television loaded(Television value, String saved) { value.display = DisplaySettingsCodec.load(saved, value.presentationMode); value.presentationMode=value.display.layout(); return value; }
         static Television load(CompoundTag tag, long controllerPos) {
             UUID id=uuid(tag,"id"),owner=uuid(tag,"owner"); if(id==null||owner==null)return null;
             Set<Long> pixels = new HashSet<>(); for (long pixel : tag.getLongArray("pixels").orElseGet(() -> new long[0])) pixels.add(pixel);
             try {
                 ScreenFacing facing=ScreenFacing.valueOf(tag.getStringOr("facing", ""));
                 PresentationMode mode=tag.contains("presentationMode")?PresentationMode.valueOf(tag.getStringOr("presentationMode", "")):PresentationMode.FIT;
-                return new Television(controllerPos, id, owner, pixels, tag.getIntOr("width",0), tag.getIntOr("height",0),
+                return loaded(new Television(controllerPos, id, owner, pixels, tag.getIntOr("width",0), tag.getIntOr("height",0),
                         tag.getByteArray("mask").orElseGet(() -> new byte[0]),facing,tag.getIntOr("minimumU",0),tag.getIntOr("minimumV",0),mode,tag.getStringOr("sessionName",""),
-                        tag.getIntOr("renditionWidth",tag.getIntOr("width",0)),tag.getIntOr("renditionHeight",tag.getIntOr("height",0)));
+                        tag.getIntOr("renditionWidth",tag.getIntOr("width",0)),tag.getIntOr("renditionHeight",tag.getIntOr("height",0))), tag.getStringOr("displaySettings", ""));
             } catch(IllegalArgumentException invalid){return null;}
         }
     }

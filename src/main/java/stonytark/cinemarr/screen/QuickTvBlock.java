@@ -37,6 +37,7 @@ public final class QuickTvBlock extends HorizontalDirectionalBlock {
             propertiesCodec(), Codec.STRING.fieldOf("preset").forGetter(block -> block.preset.id()))
             .apply(instance, (properties, id) -> new QuickTvBlock(properties, QuickTvPreset.byId(id))));
     private final QuickTvPreset preset;
+    public QuickTvPreset preset() { return preset; }
 
     public QuickTvBlock(BlockBehaviour.Properties properties, QuickTvPreset preset) {
         super(properties);

@@ -28,14 +28,14 @@ final class LegacyVideoRenderer {
         GL11.glColor4f(1, 1, 1, 1);
         for (VideoPackets.SessionState television : state.televisions()) {
             if (television.item() == null || television.status() == VideoPackets.SessionStatus.IDLE) continue;
-            LegacyVideoPlayback pipeline = playback.pipeline(new LegacyVideoClientState.StreamKey(television.sessionId(), television.generation()));
+            LegacyVideoPlayback pipeline = playback.pipeline(new LegacyVideoClientState.StreamKey(television.identity()));
             if (pipeline == null || !pipeline.texture().ready()) continue;
-            pipeline.texture().bind(); MeshCache mesh = mesh(television);
-            PresentationTransform transform = PresentationTransform.create(pipeline.texture().width(), pipeline.texture().height(),
-                    television.screenWidth(), television.screenHeight(), television.presentationMode());
+            LegacyVideoTexture displayTexture=pipeline.texture().forDisplay(television);displayTexture.bind(); MeshCache mesh = mesh(television);
+            PresentationTransform transform = PresentationTransform.create(displayTexture.width(), displayTexture.height(),
+                    television.screenWidth(), television.screenHeight(), television.displaySettings().mapping()==stonytark.cinemarr.core.video.PixelMapping.ONE_PIXEL_PER_BLOCK?stonytark.cinemarr.core.video.PresentationMode.STRETCH:television.presentationMode());
             GL11.glBegin(GL11.GL_QUADS);
             for (ScreenMaskMesher.Rectangle rectangle : mesh.rectangles) draw(television, rectangle, transform,
-                    pipeline.texture().width(), pipeline.texture().height());
+                    displayTexture.width(), displayTexture.height());
             GL11.glEnd();
             if (ProtocolLimits.videoProbeEnabled() && !pipeline.lastFrameSha256().equals(
                     acceptanceFrames.put(television.televisionId(), pipeline.lastFrameSha256()))) {

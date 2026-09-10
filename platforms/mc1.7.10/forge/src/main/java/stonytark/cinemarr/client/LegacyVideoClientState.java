@@ -21,8 +21,9 @@ import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 import java.util.UUID;
+import stonytark.cinemarr.core.protocol.VideoStreamIdentity;
 
-/** Visible legacy televisions and one compressed stream per watch-party generation. */
+/** Visible legacy televisions and one compressed stream per TV stream generation. */
 final class LegacyVideoClientState {
     static final LegacyVideoClientState INSTANCE = new LegacyVideoClientState();
     private final Map<Long, VideoPackets.SessionState> televisions = new LinkedHashMap<Long, VideoPackets.SessionState>();
@@ -47,11 +48,11 @@ final class LegacyVideoClientState {
         }
         if (type == LegacyPacketTypes.VIDEO_MANIFEST) {
             VideoPackets.SegmentManifest value = (VideoPackets.SegmentManifest) payload;
-            StreamState stream = streams.get(new StreamKey(value.sessionId(), value.generation())); if (stream != null) stream.manifest(value); return true;
+            StreamState stream = streams.get(new StreamKey(value.identity())); if (stream != null) stream.manifest(value); return true;
         }
         if (type == LegacyPacketTypes.VIDEO_SEGMENT_CHUNK) {
             VideoPackets.SegmentChunk value = (VideoPackets.SegmentChunk) payload;
-            StreamState stream = streams.get(new StreamKey(value.sessionId(), value.generation())); if (stream != null) stream.chunk(value); return true;
+            StreamState stream = streams.get(new StreamKey(value.identity())); if (stream != null) stream.chunk(value); return true;
         }
         return false;
     }
@@ -59,7 +60,7 @@ final class LegacyVideoClientState {
     private void acceptSession(VideoPackets.SessionState value) {
         televisions.put(value.controllerPos(), value);
         if (value.item() != null && !value.sessionId().equals(new UUID(0, 0))) {
-            StreamKey key = new StreamKey(value.sessionId(), value.generation()); StreamState stream = streams.get(key);
+            StreamKey key = new StreamKey(value.identity()); StreamState stream = streams.get(key);
             if (stream == null) { stream = new StreamState(key); streams.put(key, stream); } stream.session(value);
         }
         pruneStreams();
@@ -67,8 +68,10 @@ final class LegacyVideoClientState {
     private void removeTelevision(long controller) { televisions.remove(controller); pruneStreams(); }
     private void pruneStreams() {
         Set<StreamKey> referenced = new HashSet<StreamKey>(); Set<UUID> visibleSessions = new HashSet<UUID>();
-        for (VideoPackets.SessionState state : televisions.values()) if (state.item() != null && !state.sessionId().equals(new UUID(0, 0))) {
-            referenced.add(new StreamKey(state.sessionId(), state.generation())); visibleSessions.add(state.sessionId());
+        for (VideoPackets.SessionState state : televisions.values()) {
+            if (state.item() != null && !state.sessionId().equals(new UUID(0, 0)))
+                referenced.add(new StreamKey(state.identity()));
+            if (!state.timelineId().equals(new UUID(0, 0))) visibleSessions.add(state.timelineId());
         }
         java.util.Iterator<Map.Entry<StreamKey, StreamState>> iterator = streams.entrySet().iterator();
         while (iterator.hasNext()) { Map.Entry<StreamKey, StreamState> entry = iterator.next(); if (!referenced.contains(entry.getKey())) { entry.getValue().reset(); iterator.remove(); } }
@@ -88,7 +91,7 @@ final class LegacyVideoClientState {
     VideoPackets.SessionState session(long controller) { return televisions.get(controller); }
     Collection<VideoPackets.SessionState> televisions() { return new ArrayList<VideoPackets.SessionState>(televisions.values()); }
     List<QueuedVideo> queue(long controller) {
-        VideoPackets.SessionState session = televisions.get(controller); List<QueuedVideo> values = session == null ? null : queues.get(session.sessionId());
+        VideoPackets.SessionState session = televisions.get(controller); List<QueuedVideo> values = session == null ? null : queues.get(session.timelineId());
         return values == null ? Collections.<QueuedVideo>emptyList() : values;
     }
     Collection<StreamState> streamStates() { return new ArrayList<StreamState>(streams.values()); }
@@ -96,7 +99,7 @@ final class LegacyVideoClientState {
     StreamState stream(StreamKey key) { return streams.get(key); }
     List<VideoPackets.SessionState> televisionsForStream(StreamKey key) {
         List<VideoPackets.SessionState> values = new ArrayList<VideoPackets.SessionState>();
-        for (VideoPackets.SessionState state : televisions.values()) if (state.sessionId().equals(key.sessionId) && state.generation() == key.generation) values.add(state);
+        for (VideoPackets.SessionState state : televisions.values()) if (state.identity().equals(key.identity)) values.add(state);
         return values;
     }
     private void screenChanged() {
@@ -106,11 +109,12 @@ final class LegacyVideoClientState {
     }
 
     static final class StreamKey {
+        final VideoStreamIdentity identity;
         final UUID sessionId; final long generation;
-        StreamKey(UUID sessionId, long generation) { this.sessionId = sessionId; this.generation = generation; }
-        @Override public boolean equals(Object value) { if (this == value) return true; if (!(value instanceof StreamKey)) return false;
-            StreamKey other = (StreamKey) value; return generation == other.generation && sessionId.equals(other.sessionId); }
-        @Override public int hashCode() { return 31 * sessionId.hashCode() + (int) (generation ^ generation >>> 32); }
+        StreamKey(UUID sessionId, long generation) { this(new VideoStreamIdentity(sessionId, generation, sessionId, generation)); }
+        StreamKey(VideoStreamIdentity identity) { this.identity=identity; this.sessionId=identity.streamId(); this.generation=identity.streamGeneration(); }
+        @Override public boolean equals(Object value) { return value instanceof StreamKey && identity.equals(((StreamKey) value).identity); }
+        @Override public int hashCode() { return identity.hashCode(); }
     }
 
     static final class StreamState {
@@ -130,25 +134,24 @@ final class LegacyVideoClientState {
         VideoPackets.SessionState session() { return session; }
         StreamKey key() { return key; }
         void manifest(VideoPackets.SegmentManifest value) {
-            if (!key.sessionId.equals(value.sessionId()) || key.generation != value.generation() || session == null) return;
-            if (sameWindow(manifest, value) && requestedSegment >= 0) { manifest = value; return; }
-            boolean continuation = manifest != null && !value.segments().isEmpty() && value.segments().get(0).index() == lastCompletedSegment + 1;
+            if (!key.identity.equals(value.identity()) || session == null) return;
+            // A same-generation refresh does not own the current assembler,
+            // deferred prefetch or queued media. Keep their original page.
+            if (manifest != null && (requestedSegment >= 0 || deferredSegment >= 0 || finalSegmentReceived)) return;
+            int first = resumeSegment(value, System.currentTimeMillis());
+            if (first < 0 || value.segments().isEmpty()
+                    || first > value.segments().get(value.segments().size() - 1).index()) return;
             manifest = value;
-            if (continuation) {
-                int first = value.segments().get(0).index();
-                if (canRequestAnother()) request(first, 0); else deferredSegment = first;
-            } else {
-                clearReady(); deferredSegment = -1;
-                int first = seekSegment(value, session.positionMs()); if (first >= 0) request(first, 0);
-            }
+            if (canRequestAnother()) request(first, 0); else deferredSegment = first;
         }
+
         void chunk(VideoPackets.SegmentChunk value) {
-            if (manifest == null || value.requestId() != requestId
+            if (!key.identity.equals(value.identity()) || manifest == null || value.requestId() != requestId
                     || value.segmentIndex() != requestedSegment || value.totalChunks() < 1) return;
             requestSentAt = System.currentTimeMillis(); requestRetries = 0;
-            if (totalChunks == 0) { totalChunks = value.totalChunks(); assembler.begin(value.sessionId(), value.generation(), value.requestId(),
+            if (totalChunks == 0) { totalChunks = value.totalChunks(); assembler.begin(value.identity(), value.requestId(),
                     value.segmentIndex(), value.totalChunks(), value.segmentSha256(), value.presentationTimeMs(), value.keyframe()); }
-            Optional<VideoSegmentAssembler.CompletedSegment> completed = assembler.accept(value.sessionId(), value.generation(), value.requestId(),
+            Optional<VideoSegmentAssembler.CompletedSegment> completed = assembler.accept(value.identity(), value.requestId(),
                     value.segmentIndex(), value.chunkIndex(), value.totalChunks(), value.segmentSha256(), value.presentationTimeMs(), value.keyframe(), value.data());
             TransferWindowFlow.Decision flow = TransferWindowFlow.afterChunk(
                     value.chunkIndex(), currentWindowStart, 8, totalChunks, completed.isPresent());
@@ -157,7 +160,7 @@ final class LegacyVideoClientState {
                 ready.add(complete); readyBytes += complete.byteLength(); lastCompletedSegment = value.segmentIndex(); requestedSegment = -1;
                 requestSentAt = 0L; requestRetries = 0;
                 LegacyNetwork.sendToServer(LegacyPacketTypes.VIDEO_SEGMENT_ACKNOWLEDGEMENT,
-                        new VideoPackets.SegmentAcknowledgement(value.sessionId(), value.generation(), value.requestId(),
+                        new VideoPackets.SegmentAcknowledgement(value.identity(), value.requestId(),
                                 value.segmentIndex(), flow.receivedThroughChunk(), bufferedMs()));
                 int local = descriptorIndex(value.segmentIndex());
                 if (local >= 0 && local + 1 < manifest.segments().size()) {
@@ -165,11 +168,11 @@ final class LegacyVideoClientState {
                     if (canRequestAnother()) request(next, 0); else deferredSegment = next;
                 }
                 else if (manifest.hasMore()) LegacyNetwork.sendToServer(LegacyPacketTypes.VIDEO_MANIFEST_REQUEST,
-                        new VideoPackets.SegmentManifestRequest(key.sessionId, key.generation, value.segmentIndex() + 1));
+                        new VideoPackets.SegmentManifestRequest(key.identity, value.segmentIndex() + 1));
                 else finalSegmentReceived = true;
             } else if (flow.continuesSegment()) {
                 LegacyNetwork.sendToServer(LegacyPacketTypes.VIDEO_SEGMENT_ACKNOWLEDGEMENT,
-                        new VideoPackets.SegmentAcknowledgement(value.sessionId(), value.generation(), value.requestId(),
+                        new VideoPackets.SegmentAcknowledgement(value.identity(), value.requestId(),
                                 value.segmentIndex(), flow.receivedThroughChunk(), bufferedMs()));
                 request(value.segmentIndex(), flow.nextWindowStart());
             }
@@ -187,34 +190,32 @@ final class LegacyVideoClientState {
             if (firstChunk == 0) { totalChunks = 0; requestId++; }
             requestSentAt = System.currentTimeMillis();
             LegacyNetwork.sendToServer(LegacyPacketTypes.VIDEO_SEGMENT_REQUEST,
-                    new VideoPackets.SegmentRequest(key.sessionId, key.generation, requestId, segment, firstChunk, 8));
+                    new VideoPackets.SegmentRequest(key.identity, requestId, segment, firstChunk, 8));
         }
         void tick(long now) {
             if (requestedSegment < 0 || requestSentAt == 0L || now - requestSentAt < 1_500L) return;
             if (requestRetries++ < 3) {
                 requestSentAt = now;
                 LegacyNetwork.sendToServer(LegacyPacketTypes.VIDEO_SEGMENT_REQUEST,
-                        new VideoPackets.SegmentRequest(key.sessionId, key.generation, requestId,
+                        new VideoPackets.SegmentRequest(key.identity, requestId,
                                 requestedSegment, currentWindowStart, 8));
                 return;
             }
             assembler.reset(); requestedSegment = -1; requestSentAt = 0L; requestRetries = 0;
             if (manifest != null && !manifest.segments().isEmpty()) {
                 LegacyNetwork.sendToServer(LegacyPacketTypes.VIDEO_MANIFEST_REQUEST,
-                        new VideoPackets.SegmentManifestRequest(key.sessionId, key.generation,
-                                manifest.segments().get(0).index()));
+                        new VideoPackets.SegmentManifestRequest(key.identity,
+                                resumeSegment(manifest, now)));
             }
         }
         static boolean withinPrefetchLead(long segmentPresentationTimeMs, long playbackPositionMs) {
             return segmentPresentationTimeMs <= playbackPositionMs + ProtocolLimits.CLIENT_VIDEO_PREFETCH_LEAD_MS;
         }
         private int descriptorIndex(int segment) { if (manifest == null) return -1; for (int index = 0; index < manifest.segments().size(); index++) if (manifest.segments().get(index).index() == segment) return index; return -1; }
-        private static boolean sameWindow(VideoPackets.SegmentManifest left, VideoPackets.SegmentManifest right) {
-            if (left == null || right == null || left.segments().size() != right.segments().size()) return false;
-            if (left.segments().isEmpty()) return true;
-            return left.segments().get(0).index() == right.segments().get(0).index()
-                    && left.segments().get(left.segments().size() - 1).index()
-                    == right.segments().get(right.segments().size() - 1).index();
+        int resumeSegment(VideoPackets.SegmentManifest manifest, long localNow) {
+            int first = seekSegment(manifest, LegacyVideoPlayback.authoritativePositionMs(session,
+                    LegacyClientState.INSTANCE.serverEpoch(localNow)));
+            return first < 0 ? -1 : Math.max(first, lastCompletedSegment + 1);
         }
         private static int seekSegment(VideoPackets.SegmentManifest manifest, long position) {
             int result = manifest.segments().isEmpty() ? -1 : manifest.segments().get(0).index();
