@@ -17,10 +17,12 @@ and 38 measured audio pairs, two identical builds, native checks and deployment
 retain their earlier scope and cannot certify the new implementation.
 The latest integrated code candidate is `bece7eb`; hosted verification run
 `34532830768` is still in progress after manifest validation. Its runtime
-profile conclusions are not available yet, so no final runtime box is closed. Manifest validation passed; nine profiles
-completed successfully and seven failed (five Fabric runtime/observer cases,
-Forge 1.7.10 terminal lifecycle, and NeoForge 1.21.1 terminal lifecycle).
-No runtime acceptance checkbox is closed from this run.
+profile conclusions are not available yet, so no final runtime box is closed.
+The preceding candidate `9075937` and run `34530641372` remain historical
+failure evidence: nine profiles completed successfully and seven failed (five
+Fabric runtime/observer cases, Forge 1.7.10 terminal lifecycle, and NeoForge
+1.21.1 terminal lifecycle). No runtime acceptance checkbox is closed for the
+current candidate.
 The downloaded 1.7.10 diagnostic nevertheless records an 8-second physical audio pair with zero lag and 0.998006 correlation; its terminal/lifecycle assertion still failed, so that evidence does not close the profile.
 
 The authoritative interruption/cleanup record is
