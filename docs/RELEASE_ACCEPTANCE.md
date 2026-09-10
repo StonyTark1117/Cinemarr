@@ -20,6 +20,7 @@ The latest integrated code candidate is `9075937`; hosted verification run
 completed successfully and seven failed (five Fabric runtime/observer cases,
 Forge 1.7.10 terminal lifecycle, and NeoForge 1.21.1 terminal lifecycle).
 No runtime acceptance checkbox is closed from this run.
+The downloaded 1.7.10 diagnostic nevertheless records an 8-second physical audio pair with zero lag and 0.998006 correlation; its terminal/lifecycle assertion still failed, so that evidence does not close the profile.
 
 The authoritative interruption/cleanup record is
 `build/release-resume-20260909/plex-session-lifecycle/source-change-interruption-review.json`.
