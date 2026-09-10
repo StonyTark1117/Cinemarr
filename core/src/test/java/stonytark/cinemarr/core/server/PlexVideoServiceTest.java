@@ -47,6 +47,10 @@ class PlexVideoServiceTest {
         server.createContext("/library/metadata/12", exchange -> json(exchange, metadataWithSelected("false")));
         server.createContext("/library/metadata/13", exchange -> json(exchange, metadataWithSelected("0")));
         server.createContext("/library/metadata/99/allLeaves",exchange->json(exchange,"{\"MediaContainer\":{\"Metadata\":[{\"type\":\"episode\",\"ratingKey\":\"21\",\"title\":\"Second\",\"grandparentTitle\":\"Show\",\"grandparentRatingKey\":\"99\",\"parentIndex\":1,\"index\":2,\"duration\":30000},{\"type\":\"episode\",\"ratingKey\":\"20\",\"title\":\"First\",\"grandparentTitle\":\"Show\",\"grandparentRatingKey\":\"99\",\"parentIndex\":1,\"index\":1,\"duration\":30000}]}}"));
+        server.createContext("/video/:/transcode/universal/decision", exchange -> {
+            assertEquals("secret-token", requestParameters(exchange).get("X-Plex-Token"));
+            bytes(exchange, "{}".getBytes(StandardCharsets.UTF_8));
+        });
         server.createContext("/video/:/transcode/universal/start.m3u8", exchange -> {transcodeQuery.set(exchange.getRequestURI().getRawQuery());bytes(exchange,
                 transcodePlaylist.get().getBytes(StandardCharsets.UTF_8));});
         server.createContext("/video/:/transcode/universal/segment0.ts", exchange -> {
@@ -70,6 +74,108 @@ class PlexVideoServiceTest {
     }
 
     @AfterEach void stop() { server.stop(0); }
+
+    @Test void independentPlaybackResourcesSurviveAnotherStreamStartingAndStopping() throws Exception {
+        java.util.Map<String, String> resourceSessions = new java.util.concurrent.ConcurrentHashMap<>();
+        java.util.Map<String, String> transcodeResources = new java.util.concurrent.ConcurrentHashMap<>();
+        server.removeContext("/video/:/transcode/universal/start.m3u8");
+        server.removeContext("/video/:/transcode/universal/stop");
+        server.createContext("/video/:/transcode/universal/start.m3u8", exchange -> {
+            java.util.Map<String, String> query = requestParameters(exchange);
+            String transcode = query.get("session");
+            String resource = query.getOrDefault("X-Plex-Session-Identifier", query.get("X-Plex-Client-Identifier"));
+            resourceSessions.put(resource, transcode);
+            transcodeResources.put(transcode, resource);
+            bytes(exchange, ("#EXTM3U\n#EXTINF:8,\nsession/" + transcode + "/segment.ts\n")
+                    .getBytes(StandardCharsets.UTF_8));
+        });
+        server.createContext("/video/:/transcode/universal/session/", exchange -> {
+            String transcode = exchange.getRequestURI().getPath().split("/")[6];
+            if (!transcode.equals(resourceSessions.get(transcodeResources.get(transcode)))) {
+                exchange.sendResponseHeaders(404, -1); exchange.close(); return;
+            }
+            bytes(exchange, new byte[]{1, 2, 3});
+        });
+        server.createContext("/video/:/transcode/universal/stop", exchange -> {
+            String transcode = requestParameters(exchange).get("session");
+            resourceSessions.remove(transcodeResources.get(transcode), transcode);
+            bytes(exchange, new byte[0]);
+        });
+        PlexVideoService service = new PlexVideoService(baseUrl, "secret-token");
+        VideoMediaItem item = service.metadata("10");
+        RenditionPolicy.Dimensions dimensions = RenditionPolicy.choose(320, 180, 1920, 1080, 640, 360);
+        PlexVideoService.VideoSession first = service.start(item, dimensions, 0, null, null);
+        PlexVideoService.VideoSession second = service.start(item, dimensions, 0, null, null);
+        assertArrayEquals(new byte[]{1, 2, 3}, service.fetch(first, "session/" + first.id() + "/segment.ts"),
+                "Starting another TV must not replace this playback resource");
+        service.stop(second);
+        assertArrayEquals(new byte[]{1, 2, 3}, service.fetch(first, "session/" + first.id() + "/segment.ts"),
+                "Stopping another TV must not retire this playback resource");
+        service.stop(first);
+        assertTrue(resourceSessions.isEmpty());
+    }
+
+    private static java.util.Map<String, String> requestParameters(HttpExchange exchange) throws IOException {
+        java.util.Map<String, String> values = new java.util.HashMap<>();
+        String query = exchange.getRequestURI().getRawQuery();
+        if (query != null) for (String part : query.split("&")) {
+            String[] pair = part.split("=", 2);
+            values.put(java.net.URLDecoder.decode(pair[0], "UTF-8"),
+                    pair.length == 2 ? java.net.URLDecoder.decode(pair[1], "UTF-8") : "");
+        }
+        return values;
+    }
+
+    @Test void reportsSessionTimelineAndStopsBeforeAnyLateHeartbeat() throws Exception {
+        java.util.List<java.util.Map<String, String>> reports = new java.util.ArrayList<>();
+        AtomicReference<String> identity = new AtomicReference<>();
+        server.createContext("/:/timeline", exchange -> {
+            assertEquals("POST", exchange.getRequestMethod());
+            assertEquals("secret-token", exchange.getRequestHeaders().getFirst("X-Plex-Token"));
+            assertEquals(identity.get(), exchange.getRequestHeaders().getFirst("X-Plex-Session-Identifier"));
+            reports.add(requestParameters(exchange));
+            bytes(exchange, "{}".getBytes(StandardCharsets.UTF_8));
+        });
+        PlexVideoService service = new PlexVideoService(baseUrl, "secret-token");
+        PlexVideoService.VideoSession session = service.start(service.metadata("10"),
+                RenditionPolicy.choose(320, 180, 1920, 1080, 640, 360), 0, null, null);
+        identity.set(session.id().toString());
+        service.timeline(session, 2_000, false);
+        service.timeline(session, Long.MAX_VALUE, true);
+        service.stop(session);
+        service.timeline(session, 4_000, false);
+        assertEquals(3, reports.size());
+        assertEquals("playing", reports.get(0).get("state"));
+        assertEquals("2000", reports.get(0).get("time"));
+        assertEquals("/library/metadata/10", reports.get(0).get("key"));
+        assertEquals("paused", reports.get(1).get("state"));
+        assertEquals("60000", reports.get(1).get("time"));
+        assertEquals("stopped", reports.get(2).get("state"));
+        assertEquals("60000", reports.get(2).get("time"));
+        assertTrue(stopped.get(), "A late heartbeat must not revive the stopped transcode");
+    }
+
+    @Test void malformedStartResponseReleasesItsAllocatedTranscode() throws Exception {
+        transcodePlaylist.set("not an HLS playlist");
+        PlexVideoService service = new PlexVideoService(baseUrl, "secret-token");
+        assertThrows(PlexException.class, () -> service.start(service.metadata("10"),
+                RenditionPolicy.choose(320, 180, 1920, 1080, 640, 360), 0, null, null));
+        assertTrue(stopped.get(), "A failed start must release the resource the caller never received");
+    }
+
+    @Test void failedFinalTimelineStillStopsTheTranscoder() throws Exception {
+        server.createContext("/:/timeline", exchange -> {
+            if ("stopped".equals(requestParameters(exchange).get("state"))) {
+                exchange.sendResponseHeaders(503, -1); exchange.close();
+            } else bytes(exchange, "{}".getBytes(StandardCharsets.UTF_8));
+        });
+        PlexVideoService service = new PlexVideoService(baseUrl, "secret-token");
+        PlexVideoService.VideoSession session = service.start(service.metadata("10"),
+                RenditionPolicy.choose(320, 180, 1920, 1080, 640, 360), 0, null, null);
+        service.timeline(session, 2_000, false);
+        assertThrows(PlexException.class, () -> service.stop(session));
+        assertTrue(stopped.get(), "Timeline failure must not leak a live transcoder");
+    }
 
     @Test void resolvesAllowlistFiltersRatingsAndRelaysSegmentsWithoutExposingCredentials() throws Exception {
         PlexVideoService service = new PlexVideoService(baseUrl, "secret-token");

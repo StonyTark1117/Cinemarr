@@ -129,6 +129,7 @@ public final class PlexVideoService {
         parameter(query, "mediaIndex", "0");
         parameter(query, "partIndex", "0");
         parameter(query, "session", sessionId);
+        parameter(query, "X-Plex-Session-Identifier", sessionId);
         parameter(query, "protocol", "hls");
         parameter(query, "directPlay", "0");
         parameter(query, "directStream", "0");
@@ -151,11 +152,21 @@ public final class PlexVideoService {
         if (subtitleStreamId != null) parameter(query, "subtitleStreamID", Integer.toString(subtitleStreamId));
         parameter(query, "X-Plex-Token", token);
         URL playlist = new URL(baseUrl + "/video/:/transcode/universal/start.m3u8?" + query);
-        byte[] manifest = bounded("GET", playlist, Collections.<String, String>emptyMap(), MAX_PLAYLIST_BYTES,
-                "Plex video playlist exceeds the safety limit");
-        String text = new String(manifest, StandardCharsets.UTF_8);
-        if (!text.startsWith("#EXTM3U")) throw new PlexException(PlexException.Kind.INVALID_RESPONSE, "Plex returned a malformed video playlist");
-        return new VideoSession(UUID.fromString(sessionId), playlist, text, item.durationMs());
+        VideoSession pending = new VideoSession(UUID.fromString(sessionId), playlist, "", item.durationMs(), item.key(), Math.max(0, offsetMs));
+        try {
+            // A device client identifier alone merges concurrent TVs inside Plex.
+            bounded("GET", new URL(baseUrl + "/video/:/transcode/universal/decision?" + query),
+                    Collections.<String, String>emptyMap(), MAX_METADATA_BYTES,
+                    "Plex transcode decision exceeds the safety limit");
+            byte[] manifest = bounded("GET", playlist, Collections.<String, String>emptyMap(), MAX_PLAYLIST_BYTES,
+                    "Plex video playlist exceeds the safety limit");
+            String text = new String(manifest, StandardCharsets.UTF_8);
+            if (!text.startsWith("#EXTM3U")) throw new PlexException(PlexException.Kind.INVALID_RESPONSE, "Plex returned a malformed video playlist");
+            return new VideoSession(pending.id(), playlist, text, item.durationMs(), item.key(), Math.max(0, offsetMs));
+        } catch (IOException | RuntimeException failure) {
+            try { stop(pending); } catch (IOException cleanup) { failure.addSuppressed(cleanup); }
+            throw failure;
+        }
     }
 
     public byte[] fetch(VideoSession session, String reference) throws IOException {
@@ -163,7 +174,7 @@ public final class PlexVideoService {
         URL resolved = new URL(session.playlistUrl, reference);
         if (!sameOrigin(session.playlistUrl, resolved)) throw new PlexException(PlexException.Kind.INVALID_RESPONSE,
                 "Plex playlist referenced a different origin");
-        return bounded("GET", resolved, Collections.<String, String>emptyMap(), MAX_SEGMENT_BYTES,
+        return bounded("GET", resolved, sessionHeaders(session), MAX_SEGMENT_BYTES,
                 "Plex video segment exceeds the safety limit");
     }
 
@@ -197,7 +208,7 @@ public final class PlexVideoService {
                         "Plex returned an HLS playlist without a playable media variant", malformed);
             }
             currentUrl = sameOriginUrl(session.playlistUrl, currentUrl, reference);
-            byte[] bytes = bounded("GET", currentUrl, Collections.<String, String>emptyMap(), MAX_PLAYLIST_BYTES,
+            byte[] bytes = bounded("GET", currentUrl, sessionHeaders(session), MAX_PLAYLIST_BYTES,
                     "Plex video playlist exceeds the safety limit");
             current = new String(bytes, StandardCharsets.UTF_8);
             if (!current.startsWith("#EXTM3U")) throw new PlexException(PlexException.Kind.INVALID_RESPONSE,
@@ -211,7 +222,7 @@ public final class PlexVideoService {
         if (session == null || playlist == null || segment == null || !session.id.equals(playlist.sessionId)
                 || !playlist.segments.contains(segment)) throw new IllegalArgumentException("Resolved session segment required");
         URL resolved = sameOriginUrl(session.playlistUrl, playlist.playlistUrl, segment.uri());
-        return bounded("GET", resolved, Collections.<String, String>emptyMap(), MAX_SEGMENT_BYTES,
+        return bounded("GET", resolved, sessionHeaders(session), MAX_SEGMENT_BYTES,
                 "Plex video segment exceeds the safety limit");
     }
 
@@ -222,17 +233,57 @@ public final class PlexVideoService {
         URL resolved = new URL(parent, childReference);
         if (!sameOrigin(session.playlistUrl, resolved)) throw new PlexException(PlexException.Kind.INVALID_RESPONSE,
                 "Plex playlist referenced a different origin");
-        return bounded("GET", resolved, Collections.<String, String>emptyMap(), MAX_SEGMENT_BYTES,
+        return bounded("GET", resolved, sessionHeaders(session), MAX_SEGMENT_BYTES,
                 "Plex video segment exceeds the safety limit");
+    }
+
+    /** Called by bounded background workers, never the Minecraft server tick. */
+    public void timeline(VideoSession session, long positionMs, boolean paused) throws IOException {
+        if (session == null) throw new IllegalArgumentException("Session required");
+        synchronized (session) {
+            if (session.closed) return;
+            reportTimeline(session, positionMs, paused ? "paused" : "playing");
+            session.timelineReported = true;
+        }
+    }
+
+    private void reportTimeline(VideoSession session, long positionMs, String state) throws IOException {
+        long boundedPosition = Math.max(0, positionMs);
+        if (session.durationMs > 0) boundedPosition = Math.min(session.durationMs, boundedPosition);
+        session.lastPositionMs = boundedPosition;
+        StringBuilder query = new StringBuilder();
+        parameter(query, "key", "/library/metadata/" + session.itemKey);
+        parameter(query, "ratingKey", session.itemKey);
+        parameter(query, "state", state);
+        parameter(query, "time", Long.toString(boundedPosition));
+        parameter(query, "duration", Long.toString(session.durationMs));
+        bounded("POST", new URL(baseUrl + "/:/timeline?" + query), sessionHeaders(session),
+                MAX_METADATA_BYTES, "Plex timeline response exceeds the safety limit");
     }
 
     public void stop(VideoSession session) throws IOException {
         if (session == null) return;
-        String query = "session=" + encode(session.id().toString()) + "&X-Plex-Token=" + encode(token);
-        HttpTransport.Response response = open("GET", new URL(baseUrl + "/video/:/transcode/universal/stop?" + query),
-                Collections.<String, String>emptyMap());
-        try { if (response.statusCode() / 100 != 2 && response.statusCode() != 404) throw status(response.statusCode(), "stop"); }
-        finally { response.close(); }
+        synchronized (session) {
+            // Serialize the final report with any in-flight heartbeat. A queued
+            // heartbeat cannot resurrect playback after this point.
+            session.closed = true;
+            IOException failure = null;
+            if (session.timelineReported) {
+                try { reportTimeline(session, session.lastPositionMs, "stopped"); }
+                catch (IOException error) { failure = error; }
+                session.timelineReported = false;
+            }
+            String query = "session=" + encode(session.id().toString()) + "&X-Plex-Token=" + encode(token);
+            try {
+                HttpTransport.Response response = open("GET", new URL(baseUrl + "/video/:/transcode/universal/stop?" + query),
+                        sessionHeaders(session));
+                try { if (response.statusCode() / 100 != 2 && response.statusCode() != 404) throw status(response.statusCode(), "stop"); }
+                finally { response.close(); }
+            } catch (IOException error) {
+                if (failure == null) failure = error; else failure.addSuppressed(error);
+            }
+            if (failure != null) throw failure;
+        }
     }
 
     private JsonObject json(String method, String path, String query) throws IOException {
@@ -264,6 +315,11 @@ public final class PlexVideoService {
         if (!requestHeaders.containsKey("X-Plex-Token")
                 && (query == null || !query.contains("X-Plex-Token="))) requestHeaders.putAll(headers());
         return http.open(method, url, requestHeaders, timeoutMs, timeoutMs);
+    }
+    private Map<String, String> sessionHeaders(VideoSession session) {
+        Map<String, String> values = headers();
+        values.put("X-Plex-Session-Identifier", session.id().toString());
+        return values;
     }
     private Map<String, String> headers() {
         Map<String, String> headers = new LinkedHashMap<String, String>();
@@ -416,8 +472,15 @@ public final class PlexVideoService {
         private final URL playlistUrl;
         private final String playlist;
         private final long durationMs;
+        private final String itemKey;
+        private long lastPositionMs;
+        private boolean closed, timelineReported;
         VideoSession(UUID id, URL playlistUrl, String playlist, long durationMs) {
+            this(id, playlistUrl, playlist, durationMs, "", 0);
+        }
+        VideoSession(UUID id, URL playlistUrl, String playlist, long durationMs, String itemKey, long offsetMs) {
             this.id = id; this.playlistUrl = playlistUrl; this.playlist = playlist; this.durationMs = durationMs;
+            this.itemKey = itemKey; this.lastPositionMs = offsetMs;
         }
         public UUID id() { return id; }
         public String playlist() { return playlist; }

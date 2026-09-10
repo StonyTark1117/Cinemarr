@@ -19,6 +19,16 @@ public final class RenditionPolicy {
         return choose(screenWidth, screenHeight, sourceWidth, sourceHeight, widthLimit, heightLimit);
     }
 
+    /** Explicit custom requests bypass the Auto-only tiny-screen optimization. */
+    public static Dimensions chooseForDisplay(int screenWidth, int screenHeight, ResolutionChoice request,
+                                              int sourceWidth, int sourceHeight, int maximumWidth, int maximumHeight) {
+        if (request == null) throw new IllegalArgumentException("Resolution is required");
+        if (request.kind() == ResolutionChoice.Kind.AUTO)
+            return choose(screenWidth, screenHeight, sourceWidth, sourceHeight, maximumWidth, maximumHeight);
+        return choose(17, 17, sourceWidth, sourceHeight,
+                Math.min(maximumWidth, request.width()), Math.min(maximumHeight, request.height()));
+    }
+
     public static Dimensions choose(int screenWidth, int screenHeight, int sourceWidth, int sourceHeight,
                                     int maximumWidth, int maximumHeight) {
         if (screenWidth < 1 || screenHeight < 1 || sourceWidth < 1 || sourceHeight < 1

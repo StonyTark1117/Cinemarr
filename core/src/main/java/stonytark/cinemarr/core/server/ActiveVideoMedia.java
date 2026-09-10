@@ -21,6 +21,11 @@ public final class ActiveVideoMedia {
     public final List<VideoStreamOption> options;
     public final int audioId, subtitleId;
     private volatile long fetchRetries, fetchFailures;
+    private final Object timelineState = new Object();
+    private boolean timelineClosed, timelinePending;
+    private Boolean lastTimelinePaused;
+    private long lastTimelineAttemptMs, timelineNowMs, timelinePositionMs;
+    private boolean timelinePaused;
     private final BoundedByteCache<Integer, SegmentData> cache =
             new BoundedByteCache<>(16, 64L * 1024L * 1024L, value -> value.bytes.length);
 
@@ -45,9 +50,47 @@ public final class ActiveVideoMedia {
     public int segmentCount() { return segments.size(); }
     public int cachedSegments() { return cache.size(); }
     public long cachedBytes() { return cache.retainedBytes(); }
+    /** A retry never waits on the download monitor or starts another fetch. */
+    public SegmentData cachedSegment(int index) { return cache.get(index); }
     public long fetchRetries() { return fetchRetries; }
     public long fetchFailures() { return fetchFailures; }
     public long presentationTime(int index) { return segments.get(index).pts; }
+
+    /** Coalesces the latest authoritative state without taking the download monitor. */
+    public void updateTimeline(long nowMs, long positionMs, boolean paused, VideoWorkQueues workers,
+                               java.util.function.Consumer<Throwable> failureHandler) {
+        synchronized (timelineState) {
+            if (timelineClosed) return;
+            timelineNowMs = nowMs; timelinePositionMs = positionMs; timelinePaused = paused;
+            if (timelinePending || (lastTimelinePaused != null && lastTimelinePaused == paused
+                    && nowMs - lastTimelineAttemptMs < 10_000L)) return;
+            timelinePending = true; lastTimelinePaused = paused; lastTimelineAttemptMs = nowMs;
+        }
+        workers.timeline(() -> {
+            final long latestPosition;
+            final boolean latestPaused;
+            synchronized (timelineState) {
+                if (timelineClosed) return null;
+                latestPosition = timelinePositionMs; latestPaused = timelinePaused;
+                lastTimelinePaused = latestPaused; lastTimelineAttemptMs = timelineNowMs;
+            }
+            try { plex.timeline(session, latestPosition, latestPaused); }
+            catch (IOException error) { throw new java.util.concurrent.CompletionException(error); }
+            return null;
+        }).whenComplete((ignored, failure) -> {
+            final boolean reportFailure;
+            synchronized (timelineState) {
+                timelinePending = false;
+                reportFailure = failure != null && !timelineClosed;
+            }
+            if (reportFailure) failureHandler.accept(failure);
+        });
+    }
+
+    public void close() throws IOException {
+        synchronized (timelineState) { timelineClosed = true; }
+        plex.stop(session);
+    }
 
     public int segmentAt(long position) {
         int first = 0;

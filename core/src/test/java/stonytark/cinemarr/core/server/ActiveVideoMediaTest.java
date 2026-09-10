@@ -25,6 +25,103 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 
 class ActiveVideoMediaTest {
+    private static ActiveVideoMedia timelineMedia(List<String> requests) throws Exception {
+        HttpTransport http = (method, url, headers, connectTimeout, readTimeout) -> {
+            requests.add(method + " " + url.getPath() + "?" + url.getQuery());
+            return new HttpTransport.Response() {
+                public int statusCode() { return 200; }
+                public long contentLength() { return 2; }
+                public InputStream body() { return new ByteArrayInputStream(new byte[]{'{', '}'}); }
+                public void close() { }
+            };
+        };
+        PlexVideoService plex = new PlexVideoService("http://plex.example.invalid", "test-token", http, 1_000);
+        PlexVideoService.VideoSession session = new PlexVideoService.VideoSession(UUID.randomUUID(),
+                new URL("http://plex.example.invalid/start.m3u8"), "#EXTM3U\n#EXTINF:8,\nsegment.ts\n", 60_000, "10", 0);
+        return new ActiveVideoMedia(plex, session, null, segments(), null, 60_000,
+                Collections.emptyList(), -1, -1);
+    }
+
+    private static void drainTimelines(VideoWorkQueues workers) throws Exception {
+        workers.timeline(() -> null).get(5, TimeUnit.SECONDS);
+    }
+
+    @Test void timelineUsesLatestQueuedStateAndReportsEveryTenSecondsOrOnPause() throws Exception {
+        List<String> requests = Collections.synchronizedList(new ArrayList<>());
+        ActiveVideoMedia media = timelineMedia(requests);
+        CountDownLatch occupied = new CountDownLatch(1), release = new CountDownLatch(1);
+        AtomicInteger failures = new AtomicInteger();
+        try (VideoWorkQueues workers = new VideoWorkQueues("timeline-test ")) {
+            workers.timeline(() -> {
+                occupied.countDown();
+                try { release.await(5, TimeUnit.SECONDS); }
+                catch (InterruptedException error) { Thread.currentThread().interrupt(); }
+                return null;
+            });
+            assertTrue(occupied.await(5, TimeUnit.SECONDS));
+            media.updateTimeline(1_000, 1_000, false, workers, failure -> failures.incrementAndGet());
+            for (int index = 0; index < 100; index++) {
+                media.updateTimeline(2_000, 2_000, true, workers, failure -> failures.incrementAndGet());
+            }
+            assertEquals(1, workers.timelineQueuedTasks(), "Coalescing must bound each stream to one pending report");
+            assertTrue(requests.isEmpty(), "Updating state must not perform HTTP on the caller");
+            release.countDown(); drainTimelines(workers);
+            assertEquals(1, requests.size());
+            assertTrue(requests.get(0).contains("state=paused&time=2000"));
+            media.updateTimeline(11_999, 2_000, true, workers, failure -> failures.incrementAndGet());
+            drainTimelines(workers); assertEquals(1, requests.size());
+            media.updateTimeline(12_000, 2_000, true, workers, failure -> failures.incrementAndGet());
+            drainTimelines(workers); assertEquals(2, requests.size());
+            media.updateTimeline(12_001, 2_001, false, workers, failure -> failures.incrementAndGet());
+            drainTimelines(workers); assertEquals(3, requests.size());
+            assertTrue(requests.get(2).contains("state=playing&time=2001"));
+            media.close();
+            assertTrue(requests.get(3).contains("state=stopped"));
+            assertTrue(requests.get(4).contains("/transcode/universal/stop"));
+            assertEquals(0, failures.get());
+        } finally { release.countDown(); }
+    }
+
+    @Test void closingBeforeQueuedHeartbeatPreventsAnyPlaybackReportAfterStop() throws Exception {
+        List<String> requests = Collections.synchronizedList(new ArrayList<>());
+        ActiveVideoMedia media = timelineMedia(requests);
+        CountDownLatch occupied = new CountDownLatch(1), release = new CountDownLatch(1);
+        try (VideoWorkQueues workers = new VideoWorkQueues("timeline-close-test ")) {
+            workers.timeline(() -> {
+                occupied.countDown();
+                try { release.await(5, TimeUnit.SECONDS); }
+                catch (InterruptedException error) { Thread.currentThread().interrupt(); }
+                return null;
+            });
+            assertTrue(occupied.await(5, TimeUnit.SECONDS));
+            media.updateTimeline(1_000, 1_000, false, workers, failure -> { });
+            media.close();
+            release.countDown(); drainTimelines(workers);
+            media.updateTimeline(100_000, 20_000, false, workers, failure -> { });
+            drainTimelines(workers);
+            assertEquals(1, requests.size());
+            assertTrue(requests.get(0).startsWith("GET /video/:/transcode/universal/stop"));
+        } finally { release.countDown(); }
+    }
+
+    @Test void rejectedTimelineAdmissionRetriesWithoutRetainingAPendingReport() throws Exception {
+        List<String> requests = Collections.synchronizedList(new ArrayList<>());
+        ActiveVideoMedia media = timelineMedia(requests);
+        AtomicInteger failures = new AtomicInteger();
+        VideoWorkQueues closed = new VideoWorkQueues("timeline-rejected-test ");
+        closed.close();
+        media.updateTimeline(1_000, 1_000, false, closed, failure -> failures.incrementAndGet());
+        assertEquals(1, failures.get());
+        try (VideoWorkQueues healthy = new VideoWorkQueues("timeline-retry-test ")) {
+            media.updateTimeline(11_000, 11_000, false, healthy, failure -> failures.incrementAndGet());
+            drainTimelines(healthy);
+            assertEquals(1, requests.size());
+            assertTrue(requests.get(0).contains("state=playing&time=11000"));
+            assertEquals(1, failures.get());
+            media.close();
+        }
+    }
+
     private static List<ActiveVideoMedia.SegmentReference> segments() {
         return new ArrayList<>(Collections.singletonList(new ActiveVideoMedia.SegmentReference(
                 HlsPlaylist.mediaSegments("#EXTM3U\n#EXTINF:8,\nsegment.ts\n", 0).get(0))));
@@ -60,6 +157,7 @@ class ActiveVideoMediaTest {
                 assertEquals(1, media.descriptors(0, 16).size());
                 assertEquals(0, media.cachedSegments());
                 assertEquals(0, media.cachedBytes());
+                assertEquals(null, media.cachedSegment(0));
                 assertEquals(0, media.fetchRetries());
                 assertEquals(0, media.fetchFailures());
             });
@@ -139,6 +237,7 @@ class ActiveVideoMediaTest {
                 assertEquals(0, media.cachedSegments());
                 assertEquals(0, media.cachedBytes());
                 assertEquals(2, media.fetchRetries());
+                assertEquals(null, media.cachedSegment(0), "pending retries must not start or wait for another fetch");
                 assertEquals(0, media.fetchFailures());
             }).get(2, TimeUnit.SECONDS);
             releaseFetch.countDown();
@@ -146,6 +245,7 @@ class ActiveVideoMediaTest {
             assertArrayEquals(payload, data.bytes);
             assertEquals(Hashing.sha256(payload), data.sha);
             assertSame(data, media.segment(0));
+            assertSame(data, media.cachedSegment(0), "window replay uses the already fetched segment");
             assertEquals(3, requests.get());
             assertEquals(3, responsesClosed.get());
             assertEquals(1, media.cachedSegments());
