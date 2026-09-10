@@ -15,11 +15,13 @@ acceptances preceded those changes; Forge 1.21.1's runtime checks closed but its
 source guard failed, and NeoForge 1.21.1 was interrupted. The 704 reviewed PNGs
 and 38 measured audio pairs, two identical builds, native checks and deployment
 retain their earlier scope and cannot certify the new implementation.
-The latest integrated code candidate is `780c1a4`; hosted verification run
-`34533843282` completed with 9 of 17 profile jobs passing and 8 failing. The
-failing jobs are five Fabric private-window/controller-observer cases and
-terminal-phase timeouts on Forge 1.7.10 and NeoForge 1.21.1; no final runtime
-box is closed.
+The latest completed hosted candidate run is `34536028642` for commit
+`cd5501b`; 8 of 16 profile jobs passed and 8 failed. The failures are five
+Fabric private-window/controller-observer cases, terminal-phase timeouts on
+Forge 1.7.10 and NeoForge 1.21.1, and a Forge 26.2 runtime failure; no final
+runtime box is closed. The follow-up discovery fix is commit `7308440`, but
+its hosted run `34536882598` was invalidated by runner dependency-install
+failures before product checks.
 The preceding candidate `9075937` and run `34530641372` remain historical
 failure evidence: nine profiles completed successfully and seven failed (five
 Fabric runtime/observer cases, Forge 1.7.10 terminal lifecycle, and NeoForge
