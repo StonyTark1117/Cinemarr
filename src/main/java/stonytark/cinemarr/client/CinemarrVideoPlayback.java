@@ -2,6 +2,7 @@ package stonytark.cinemarr.client;
 
 import stonytark.cinemarr.Cinemarr;
 import stonytark.cinemarr.core.client.VideoSegmentAssembler;
+import stonytark.cinemarr.core.client.DecodeCompletionGuard;
 import stonytark.cinemarr.core.network.Hashing;
 import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.core.protocol.ProtocolCapabilities;
@@ -17,6 +18,7 @@ import java.util.List;
 import java.util.PriorityQueue;
 import java.util.Queue;
 import java.util.UUID;
+import stonytark.cinemarr.core.protocol.VideoStreamIdentity;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -45,9 +47,12 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
             new PriorityQueue<>(Comparator.comparingLong(DecodedAudioFrame::presentationTimeUs));
     private final AtomicInteger pendingAudio = new AtomicInteger();
     private final AtomicInteger pendingVideo = new AtomicInteger();
+    private final DecodeCompletionGuard completions = new DecodeCompletionGuard();
     private final AtomicBoolean decoderSelectionLogged = new AtomicBoolean();
     private final AtomicBoolean decoderFallbackLogged = new AtomicBoolean();
     private CinemarrVideoTexture texture = new CinemarrVideoTexture();
+    private VideoStreamIdentity identity;
+    private UUID televisionId;
     private UUID sessionId;
     private String itemKey = "";
     private long generation = -1;
@@ -68,20 +73,21 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
             return;
         }
         itemKey = session.item() == null ? "" : session.item().key();
-        if (!session.sessionId().equals(sessionId) || session.generation() != generation) {
+        televisionId = session.televisionId();
+        if (!session.identity().equals(identity)) {
             resetQueues();
-            sessionId = session.sessionId();
+            identity = session.identity(); sessionId = session.sessionId();
             generation = session.generation();
         }
         for (AudioBatch batch; (batch = decodedAudio.poll()) != null; ) {
-            if (!batch.sessionId.equals(sessionId) || batch.generation != generation) continue;
+            if (!batch.identity.equals(identity)) continue;
             audio.addAll(batch.audio);
-            compressedVideo.add(new PendingVideoSegment(batch.sessionId, batch.generation, batch.segmentIndex,
+            compressedVideo.add(new PendingVideoSegment(batch.identity, batch.segmentIndex,
                     batch.presentationTimeUs, batch.sourceFirstTimestampUs, batch.mpegTs));
             queuedCompressedVideoBytes += batch.mpegTs.length;
         }
         for (VideoBatch batch; canBufferAnotherVideoBatch() && (batch = decodedVideo.poll()) != null; ) {
-            if (!batch.sessionId.equals(sessionId) || batch.generation != generation) continue;
+            if (!batch.identity.equals(identity)) continue;
             if (!batch.video.isEmpty()) {
                 videoBatches.add(batch.video);
                 queuedVideoBytes += videoBytes(batch.video);
@@ -119,7 +125,7 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
     boolean retainPausedFrameFrom(CinemarrVideoPlayback previous, VideoPackets.SessionState next) {
         if (texture.ready() || !previous.texture.ready()
                 || !stonytark.cinemarr.core.client.PausedFrameRetention.permits(
-                        previous.sessionId, previous.generation, previous.itemKey, next)) return false;
+                        previous.identity, previous.itemKey, next)) return false;
         // Move only the GPU texture. The old pipeline still owns its jobs and
         // audio queues and is closed normally when its last stream disappears.
         texture.close();
@@ -133,7 +139,20 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
         return true;
     }
 
+    boolean retainReplacementFrameFrom(CinemarrVideoPlayback previous, VideoPackets.SessionState next) {
+        if (texture.ready() || !previous.texture.ready() || next == null || previous.televisionId == null
+                || !previous.televisionId.equals(next.televisionId()) || previous.itemKey == null
+                || next.item() == null || !previous.itemKey.equals(next.item().key()) || previous.identity == null
+                || !previous.identity.timelineId().equals(next.timelineId())
+                || previous.identity.timelineGeneration() != next.timelineGeneration()) return false;
+        texture.close(); texture = previous.texture; previous.texture = new CinemarrVideoTexture();
+        lastPresentedUs = previous.lastPresentedUs; lastFrameSha256 = previous.lastFrameSha256;
+        return true;
+    }
+
     private void submitAudio(VideoSegmentAssembler.CompletedSegment segment) {
+        if (!segment.identity().equals(identity)) return;
+        long epoch = completions.epoch();
         pendingAudio.incrementAndGet();
         audioDecoderExecutor.run(() -> {
             try {
@@ -143,30 +162,37 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
                 long offsetUs = segment.presentationTimeMs() * 1_000L - Math.max(0, firstUs);
                 List<DecodedAudioFrame> shiftedAudio = decoded.stream().map(value -> new DecodedAudioFrame(
                         Math.max(0, value.presentationTimeUs() + offsetUs), value.sampleRate(), value.channels(), value.pcmView())).toList();
-                decodedAudio.add(new AudioBatch(segment.sessionId(), segment.generation(), segment.segmentIndex(),
-                        segment.presentationTimeMs() * 1_000L, firstUs, mpegTs, shiftedAudio));
+                completions.publish(epoch, () -> decodedAudio.add(new AudioBatch(segment.identity(), segment.segmentIndex(),
+                        segment.presentationTimeMs() * 1_000L, firstUs, mpegTs, shiftedAudio)));
             } catch (Throwable error) {
-                decoderRecoveries.incrementAndGet();
-                Cinemarr.LOGGER.warn("Cinemarr rejected video segment {} audio: {}", segment.segmentIndex(), error.toString());
+                completions.publish(epoch, () -> {
+                    decoderRecoveries.incrementAndGet();
+                    Cinemarr.LOGGER.warn("Cinemarr rejected video segment {} audio: {}", segment.segmentIndex(), error.toString());
+                });
             }
         }).whenComplete((unused, failure) -> pendingAudio.decrementAndGet());
     }
 
     private void submitVideo(PendingVideoSegment segment) {
+        long epoch = completions.epoch();
         pendingVideo.incrementAndGet();
         videoDecoderExecutor.run(() -> {
             try {
                 FfmpegVideoDecoder.VideoDecodeResult result = decoder.decodeVideoBounded(segment.mpegTs);
-                logDecoderSelection();
                 long videoFirstUs = result.video().isEmpty() ? 0L : result.video().get(0).presentationTimeUs();
                 long sourceFirstUs = segment.sourceFirstTimestampUs >= 0 ? segment.sourceFirstTimestampUs : videoFirstUs;
                 long offsetUs = segment.presentationTimeUs - sourceFirstUs;
                 List<DecodedVideoFrame> shifted = result.video().stream().map(value -> new DecodedVideoFrame(
                         Math.max(0, value.presentationTimeUs() + offsetUs), value.width(), value.height(), value.rgbaView())).toList();
-                decodedVideo.add(new VideoBatch(segment.sessionId, segment.generation, shifted, result.droppedFrames()));
+                completions.publish(epoch, () -> {
+                    logDecoderSelection();
+                    decodedVideo.add(new VideoBatch(segment.identity, shifted, result.droppedFrames()));
+                });
             } catch (Throwable error) {
-                decoderRecoveries.incrementAndGet();
-                Cinemarr.LOGGER.warn("Cinemarr rejected video segment {} video: {}", segment.segmentIndex, error.toString());
+                completions.publish(epoch, () -> {
+                    decoderRecoveries.incrementAndGet();
+                    Cinemarr.LOGGER.warn("Cinemarr rejected video segment {} video: {}", segment.segmentIndex, error.toString());
+                });
             }
         }).whenComplete((unused, failure) -> pendingVideo.decrementAndGet());
     }
@@ -190,8 +216,12 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
     }
 
     static long authoritativePositionMsLocal(VideoPackets.SessionState session) {
+        return authoritativePositionMsLocal(session, System.currentTimeMillis());
+    }
+
+    static long authoritativePositionMsLocal(VideoPackets.SessionState session, long localNow) {
         long localEpoch = CinemarrClientState.INSTANCE.serverToLocalEpoch(session.serverEpochMs());
-        long estimatedServerNow = session.serverEpochMs() + Math.max(0, System.currentTimeMillis() - localEpoch);
+        long estimatedServerNow = session.serverEpochMs() + Math.max(0, localNow - localEpoch);
         return authoritativePositionMs(session, estimatedServerNow);
     }
 
@@ -232,8 +262,7 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
                 video.stream().mapToLong(DecodedVideoFrame::presentationTimeUs).max().orElse(lastPresentedUs));
         long bufferedMs = Math.max(0, (lastQueuedUs - targetUs) / 1_000L);
         long driftMs = lastPresentedUs == 0 ? 0 : Math.max(-30_000, Math.min(30_000, (lastPresentedUs - targetUs) / 1_000L));
-        CinemarrNetwork.sendToServer(new VideoPayloads.ClientHealth(new VideoPackets.ClientHealth(session.sessionId(),
-                session.generation(), texture.ready() ? "PLAYING" : "BUFFERING", decoderRecoveries.get(), videoDrops,
+        CinemarrNetwork.sendToServer(new VideoPayloads.ClientHealth(new VideoPackets.ClientHealth(session.identity(), texture.ready() ? "PLAYING" : "BUFFERING", decoderRecoveries.get(), videoDrops,
                 audioUnderruns, Math.min(60_000, bufferedMs), driftMs)));
         if (ProtocolLimits.videoProbeEnabled()) {
             FfmpegVideoDecoder.DecoderDiagnostics metrics = decoder.diagnostics();
@@ -249,7 +278,7 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
     }
 
     public void reset() {
-        sessionId = null; itemKey = "";
+        identity = null; televisionId = null; sessionId = null; itemKey = "";
         generation = -1;
         lastPresentedUs = 0;
         lastFrameSha256 = "";
@@ -261,6 +290,10 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
     }
 
     private void resetQueues() {
+        completions.reset(this::clearQueues);
+    }
+
+    private void clearQueues() {
         decodedAudio.clear();
         decodedVideo.clear();
         compressedVideo.clear();
@@ -272,14 +305,18 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
     }
 
     @Override public void close() {
+        // Retire publication before interrupting workers. An obsolete decode's
+        // cancellation is not a failure of the replacement stream, and a late
+        // successful native return must not repopulate these retired queues.
+        completions.close(this::clearQueues);
         reset();
         audioDecoderExecutor.close();
         videoDecoderExecutor.close();
     }
 
-    private record AudioBatch(UUID sessionId, long generation, int segmentIndex, long presentationTimeUs,
+    private record AudioBatch(VideoStreamIdentity identity, int segmentIndex, long presentationTimeUs,
                               long sourceFirstTimestampUs, byte[] mpegTs, List<DecodedAudioFrame> audio) {}
-    private record PendingVideoSegment(UUID sessionId, long generation, int segmentIndex, long presentationTimeUs,
+    private record PendingVideoSegment(VideoStreamIdentity identity, int segmentIndex, long presentationTimeUs,
                                        long sourceFirstTimestampUs, byte[] mpegTs) {}
-    private record VideoBatch(UUID sessionId, long generation, List<DecodedVideoFrame> video, int droppedFrames) {}
+    private record VideoBatch(VideoStreamIdentity identity, List<DecodedVideoFrame> video, int droppedFrames) {}
 }

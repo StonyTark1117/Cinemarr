@@ -16,6 +16,35 @@ SOURCES = (
 
 
 class PlaybackPublicationLayoutTest(unittest.TestCase):
+    def test_all_families_bind_transport_to_both_identities(self):
+        for path in SOURCES:
+            with self.subTest(path=path):
+                layout.verify_stream_identity_transport((ROOT / path).read_text(), path)
+
+    def test_transport_guards_reject_dropped_timeline_or_stream_ownership(self):
+        for path in SOURCES:
+            source = (ROOT / path).read_text()
+            for before, after in (
+                ("identity.timelineGeneration()", "identity.streamGeneration()"),
+                ("tvStreams.isViewer(identity, viewer)", "true"),
+                ("isCurrentViewer(request.identity(),", "oldViewer(request.identity(),"),
+                ("isCurrentViewer(value.identity(),", "oldViewer(value.identity(),"),
+                ("new VideoPackets.SegmentChunk(request.identity(),", "new VideoPackets.SegmentChunk(request.sessionId(), request.generation(),"),
+                ("new VideoPackets.SegmentManifest(identity,", "new VideoPackets.SegmentManifest(session, generation,"),
+                ("transferGrants.expireWindows(now)", "transferGrants.expire(now)"),
+                ("egress.removeMatching(client,", "egress.remove(client,"),
+                ("this::sendCurrentSegment", "CinemarrNetwork::sendToPlayer"),
+                ("tickTelevisionStreams(now);pruneRetiredTransfers();", "tickTelevisionStreams(now);"),
+                ("clientHealth.retain(playerId, trackedStreams)", "clientHealth.remove(playerId)"),
+                ("clientHealth.prune(now,this::isCurrentViewer)", "clientHealth.prune(now,(identity,viewer)->true)"),
+                ("clientHealth.currentReports(now,this::isCurrentViewer)", "clientHealth.currentReports(now,(identity,viewer)->true)"),
+                ("System.currentTimeMillis(), this::isCurrentViewer", "System.currentTimeMillis(), (identity,viewer)->true"),
+            ):
+                with self.subTest(path=path, mutation=before):
+                    self.assertIn(before, source)
+                    with self.assertRaises(SystemExit):
+                        layout.verify_stream_identity_transport(source.replace(before, after), path)
+
     def test_all_families_use_current_playback_publication(self):
         for path in SOURCES:
             with self.subTest(path=path):

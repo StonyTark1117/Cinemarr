@@ -53,6 +53,43 @@ def verify_playback_publication(text: str, label: str) -> None:
             raise SystemExit(f"{label} must preserve state-aware contextual playback feedback: {message}")
 
 
+def verify_stream_identity_transport(text: str, label: str) -> None:
+    compact = re.sub(r"\s+", "", text)
+    required = (
+        "sessions.snapshotIfPresent(identity.timelineId(),identity.timelineGeneration(),System.currentTimeMillis())!=null",
+        "tvStreams.isViewer(identity,viewer)",
+        "newVideoPackets.SegmentChunk(request.identity(),",
+        "newVideoPackets.SegmentManifest(identity,",
+        "newTransferGrantRegistry(30_000L,CinemarrSettings.maximumConcurrentStreams())",
+        "transferGrants.expireWindows(now)",
+        "transferGrants.releaseExcept(playerId,trackedStreams)",
+        "egress.removeMatching(client,",
+        "this::sendCurrentSegment",
+        "tickTelevisionStreams(now);pruneRetiredTransfers();",
+        "newVideoHealthRegistry(30_000L,CinemarrSettings.maximumConcurrentStreams())",
+        "clientHealth.retain(playerId,trackedStreams)",
+        "clientHealth.prune(now,this::isCurrentViewer)",
+        "clientHealth.currentReports(now,this::isCurrentViewer)",
+    )
+    for contract in required:
+        if contract not in compact:
+            raise SystemExit(f"{label} lacks shared-timeline/TV-stream transport ownership: {contract}")
+    health = compact[compact.index("publicvoidhealth("):compact.index("publicStringstatus(")]
+    if not re.search(r"clientHealth\.record\(player\.get(?:UUID|UniqueID)\(\),value,System\.currentTimeMillis\(\),this::isCurrentViewer\)", health):
+        raise SystemExit(f"{label} must validate health against both identities before recording")
+    segments = compact[compact.index("publicvoidsegments("):compact.index("publicvoidmanifest(")]
+    completion = segments[segments.index(".whenComplete("):]
+    guard = "!isCurrentViewer(request.identity(),"
+    if guard not in completion or completion.index(guard) > completion.index("if(failure!=null)"):
+        raise SystemExit(f"{label} must reject obsolete media completion before reporting failures")
+    acknowledgement = compact[compact.index("publicvoidacknowledge("):compact.index("privatebooleanisCurrentViewer(")]
+    guard = "!isCurrentViewer(value.identity(),"
+    if guard not in acknowledgement or acknowledgement.index(guard) > acknowledgement.index("transferGrants.acknowledge("):
+        raise SystemExit(f"{label} must validate both identities before releasing an acknowledged window")
+    if "tvStreams.isSupersededViewer(" not in compact or "privatevoidtransportError(" not in compact:
+        raise SystemExit(f"{label} must distinguish stale transport feedback from ownership errors")
+
+
 def main() -> None:
     for path in ("src/main/java/stonytark/cinemarr/server/ServerVideoManager.java",
                  "platforms/mc26/common/src/main/java/stonytark/cinemarr/server/ServerVideoManager.java",
@@ -145,11 +182,24 @@ def main() -> None:
     modern_body = None
     for prefix, base in (("Cinemarr", ROOT / "src/main/java/stonytark/cinemarr/client"),
                          ("Legacy", ROOT / "platforms/mc1.7.10/forge/src/main/java/stonytark/cinemarr/client")):
+        audio = re.sub(r"\s+", "", (base / (prefix + "VideoAudio.java")).read_text("utf-8"))
+        for contract in ("privateVideoStreamIdentityidentity;", "bindIdentity(session.identity());",
+                         "if(!next.equals(identity)){reset();identity=next;}", "pending.clear();identity=null;"):
+            if contract not in audio:
+                raise SystemExit(f"{prefix} audio must bind and reset the full timeline/stream identity: {contract}")
+        if prefix == "Cinemarr" and ("VideoStreamIdentityexpectedIdentity=identity;" not in audio
+                                    or "!expectedIdentity.equals(identity)" not in audio):
+            raise SystemExit("Modern asynchronous audio start must validate the full stream identity")
         playback = (base / (prefix + "VideoPlayback.java")).read_text("utf-8")
         manager = (base / (prefix + "VideoPlaybackManager.java")).read_text("utf-8")
-        if "PausedFrameRetention.permits(" not in playback or "previous.texture = new " not in playback:
+        if "PausedFrameRetention.permits(previous.identity,previous.itemKey,next)" not in re.sub(r"\s+", "", playback) or "previous.texture = new " not in playback:
             raise SystemExit(f"{prefix} paused frame must have a single, policy-guarded texture owner")
         if "state.stream(previous.getKey())" not in manager or "retainPausedFrameFrom(" not in manager:
+            raise SystemExit(f"{prefix} paused frame transfer must not steal a still-referenced texture")
+        if "retainReplacementFrameFrom(" not in manager:
+            raise SystemExit(f"{prefix} quality replacement must retain the last frame for the same TV")
+        if "previous.televisionId" not in playback or "previous.identity.timelineGeneration()" not in playback:
+            raise SystemExit(f"{prefix} replacement retention must be scoped to the TV and shared timeline")
             raise SystemExit(f"{prefix} paused frame transfer must not steal a still-referenced texture")
     for source in ACCEPTANCE_VIDEO_SCREENS:
         if source.name == "LegacyVideoScreen.java":
@@ -182,12 +232,7 @@ def main() -> None:
             raise SystemExit(f"{source.relative_to(ROOT)} must not retain Buffering after completed play/seek")
         if "sessions.reconfigure(tuned.name()," not in text or "playbackOptions.get(state.id())" not in text:
             raise SystemExit(f"{source.relative_to(ROOT)} must preserve the server cursor and paused stream metadata")
-        if text.count("sessions.isSupersededViewer(") != 2 or "private void transportError(" not in text:
-            raise SystemExit(f"{source.relative_to(ROOT)} must distinguish obsolete viewer traffic from ownership errors")
-        segments = text[text.index("    public void segments("):text.index("    public void manifest(")]
-        completion = segments[segments.index(".whenComplete("):].replace(" ", "")
-        if completion.index("!sessions.isViewer(") > completion.index("if(failure!=null)"):
-            raise SystemExit(f"{source.relative_to(ROOT)} must discard obsolete media completion failures before notifying players")
+        verify_stream_identity_transport(text, str(source.relative_to(ROOT)))
         if source.name == "ServerVideoManager.java":
             if "java.util.function.Predicate<UUID> handshakeComplete" not in text:
                 raise SystemExit(f"{source.relative_to(ROOT)} must receive the actual adapter handshake gate")
@@ -199,10 +244,13 @@ def main() -> None:
                 raise SystemExit(f"{source.relative_to(ROOT)} must synchronize accepted players on late Plex installation")
         if "new ActiveVideoMedia(" not in text or "class ActiveMedia" in text or "class ActiveVideoMedia" in text:
             raise SystemExit(f"{source.relative_to(ROOT)} must use the core segment-fetch/cache implementation")
-        if "VideoHealthPolicy.classify(" not in text or "VideoHealthPolicy.Decision.IGNORE_STALE" not in text:
-            raise SystemExit(f"{source.relative_to(ROOT)} must discard stale health reports through the core policy")
-        if "this::startMedia, true)" not in text:
-            raise SystemExit(f"{source.relative_to(ROOT)} must use bounded asynchronous media retirement")
+        if "VideoHealthRegistry.Result.INVALID" not in text or "clientHealth.put(" in text:
+            raise SystemExit(f"{source.relative_to(ROOT)} must validate and retain health through the bounded stream registry")
+        normalized = re.sub(r"\s+", "", text)
+        if "newTelevisionStreamPool(CinemarrSettings.maximumConcurrentStreams()," not in normalized:
+            raise SystemExit(f"{source.relative_to(ROOT)} must apply the configured stream cap to TV media ownership")
+        if "this::startTelevisionMedia,operation->workers.supply(operation)" not in normalized:
+            raise SystemExit(f"{source.relative_to(ROOT)} must submit TV starts through the bounded work queue")
         verify_playback_publication(text, str(source.relative_to(ROOT)))
         if "tuned.generation()+1" in text.replace(" ", ""):
             raise SystemExit(f"{source.relative_to(ROOT)} must use the actual completed seek generation")

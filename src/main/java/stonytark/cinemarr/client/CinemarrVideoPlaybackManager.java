@@ -18,6 +18,10 @@ public final class CinemarrVideoPlaybackManager implements AutoCloseable {
                 for(var previous:pipelines.entrySet())if(state.stream(previous.getKey())==null
                         &&pipeline.retainPausedFrameFrom(previous.getValue(),stream.session()))break;
             }
+            if(stream.session()!=null&&!pipeline.texture().ready()){
+                for(var previous:pipelines.entrySet())if(state.stream(previous.getKey())==null
+                        &&pipeline.retainReplacementFrameFrom(previous.getValue(),stream.session()))break;
+            }
             pipeline.tick(stream);
         }
         for(CinemarrVideoClientState.StreamKey key:new ArrayList<>(pipelines.keySet()))if(!current.contains(key)){pipelines.remove(key).close();}
