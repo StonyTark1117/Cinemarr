@@ -50,7 +50,11 @@ class PrivateMinecraftWindow:
                         info = self.run("xwininfo", "-id", window)
                     except (subprocess.CalledProcessError, StopIteration):
                         info = ""
-                    if "Map State:" not in info or "IsViewable" in info:
+                    # Xvfb clients without a window manager can report
+                    # IsUnviewable even after mapping. Reject only the
+                    # explicit pre-map state; the private display and owner
+                    # checks still prevent unrelated windows from matching.
+                    if "Map State:" not in info or "IsUnmapped" not in info:
                         mapped.append(window)
                 windows = mapped
                 if not windows and not had_named_window:
