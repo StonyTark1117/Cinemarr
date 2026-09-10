@@ -210,7 +210,7 @@ def main() -> None:
         body = body.replace("private int acceptanceScreenshotTicks;",
                             "private boolean acceptanceScreenshotPending;")
         body = body.replace("acceptanceScreenshotTicks=2;", "acceptanceScreenshotPending=true;")
-        body = body.replace('widget("display-settings",Button.builder(Component.literal("Display"),b->minecraft.setScreen(new DisplaySettingsScreen(controllerPos,state,this))).bounds(layout.left(),6,68,20).build());', "")
+        body = re.sub(r'widget\("display-settings",Button\.builder\(Component\.literal\("Display"\).*?build\(\)\);', "", body)
         body = re.sub(r"\s+", "", body)
         # Minecraft GUI signatures differ by version; normalize those narrow
         # adapter shims before comparing shared browse/control behavior.

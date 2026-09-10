@@ -111,7 +111,7 @@ public final class CinemarrVideoScreen extends Screen {
     private void addQueueRows(int left,int top,int panel){java.util.List<QueuedVideo> queue=state.queue(controllerPos);int rows=layout.rows(true);rowOffset=Math.max(0,Math.min(rowOffset,Math.max(0,queue.size()-rows)));for(int row=0;row<rows&&row+rowOffset<queue.size();row++){int index=row+rowOffset;QueuedVideo entry=queue.get(index);String label=(index+1)+". "+entry.item().title()+(entry.item().parentTitle().isEmpty()?"":" — "+entry.item().parentTitle());int y=top+row*22;widget("queued:"+index,Button.builder(Component.literal(trim(label,panel-70)),b->{}).bounds(left,y,panel-64,20).build()).active=false;widget("remove:"+index,Button.builder(Component.literal("Remove"),b->removeQueue(index)).bounds(left+panel-60,y,60,20).build());}}
 
     private void addControls(){
-        VideoPackets.SessionState playback=state.session(controllerPos);long generation=playback==null?0:playback.generation();
+        VideoPackets.SessionState playback=state.session(controllerPos);long generation=playback==null?0:playback.timelineGeneration();
         boolean paused=playback!=null&&playback.paused();
         control(Slot.PAUSE,Component.translatable(paused?"cinemarr.screen.resume":"cinemarr.screen.pause"),b->command(paused?VideoPackets.SessionAction.RESUME:VideoPackets.SessionAction.PAUSE,"",playback==null?0:CinemarrVideoPlayback.authoritativePositionMsLocal(playback),mode(),generation));
         control(Slot.SEEK_BACK,Component.literal("-30s"),b->seek(-30_000));
@@ -121,6 +121,7 @@ public final class CinemarrVideoScreen extends Screen {
         PresentationMode current=mode();
         for(PresentationMode candidate:PresentationMode.values())control(Slot.valueOf(candidate.name()),Component.literal(candidate.name().toLowerCase(java.util.Locale.ROOT)),b->command(VideoPackets.SessionAction.SET_PRESENTATION,"",0,candidate,generation)).active=candidate!=current;
         control(Slot.SCREEN,Component.literal(CinemarrSettings.enabled()?"Screen on":"Screen off"),b->{CinemarrSettings.enabled(!CinemarrSettings.enabled());CinemarrSettings.saveEnabled();rebuildWidgets();});
+        widget("display-settings",Button.builder(Component.literal("Display"),b->{try{minecraft.getClass().getMethod("setScreen",Screen.class).invoke(minecraft,new Mc26DisplaySettingsScreen(controllerPos,state,this));}catch(Exception ignored){}}).bounds(layout.left(),6,68,20).build());
         if(playback!=null&&playback.item()!=null){
             control(Slot.AUDIO,Component.literal("Audio: "+streamLabel(playback,VideoStreamOption.Kind.AUDIO,playback.selectedAudioStreamId(),"default")),b->cycleStream(playback,VideoStreamOption.Kind.AUDIO)).active=playback.streams().stream().anyMatch(value->value.kind()==VideoStreamOption.Kind.AUDIO);
             control(Slot.SUBTITLES,Component.literal("Subs: "+streamLabel(playback,VideoStreamOption.Kind.SUBTITLE,playback.selectedSubtitleStreamId(),"off")),b->cycleStream(playback,VideoStreamOption.Kind.SUBTITLE)).active=playback.streams().stream().anyMatch(value->value.kind()==VideoStreamOption.Kind.SUBTITLE);
@@ -135,22 +136,22 @@ public final class CinemarrVideoScreen extends Screen {
 
     private void activate(VideoMediaItem item){
         if(item.kind()==MediaKind.SHOW||item.kind()==MediaKind.SEASON){parents.push(parentKey);parentKey=item.key();query="";if(search!=null)search.setValue(query);page=rowOffset=0;request();return;}
-        VideoPackets.SessionState playback=state.session(controllerPos);command(VideoPackets.SessionAction.PLAY,item.key(),0,mode(),playback==null?0:playback.generation(),"","Play requested: "+item.title());
+        VideoPackets.SessionState playback=state.session(controllerPos);command(VideoPackets.SessionAction.PLAY,item.key(),0,mode(),playback==null?0:playback.timelineGeneration(),"","Play requested: "+item.title());
     }
-    private void queue(VideoMediaItem item){VideoPackets.SessionState playback=state.session(controllerPos);command(VideoPackets.SessionAction.QUEUE,item.key(),0,mode(),playback==null?0:playback.generation(),"","Queue requested: "+item.title());}
-    private void removeQueue(int index){VideoPackets.SessionState playback=state.session(controllerPos);if(playback!=null)command(VideoPackets.SessionAction.REMOVE_QUEUE,"",index,mode(),playback.generation());}
-    private void clearQueue(){VideoPackets.SessionState playback=state.session(controllerPos);if(playback!=null)command(VideoPackets.SessionAction.CLEAR_QUEUE,"",0,mode(),playback.generation());}
+    private void queue(VideoMediaItem item){VideoPackets.SessionState playback=state.session(controllerPos);command(VideoPackets.SessionAction.QUEUE,item.key(),0,mode(),playback==null?0:playback.timelineGeneration(),"","Queue requested: "+item.title());}
+    private void removeQueue(int index){VideoPackets.SessionState playback=state.session(controllerPos);if(playback!=null)command(VideoPackets.SessionAction.REMOVE_QUEUE,"",index,mode(),playback.timelineGeneration());}
+    private void clearQueue(){VideoPackets.SessionState playback=state.session(controllerPos);if(playback!=null)command(VideoPackets.SessionAction.CLEAR_QUEUE,"",0,mode(),playback.timelineGeneration());}
     private void volume(double delta){CinemarrSettings.volume(Math.max(0,Math.min(1,CinemarrSettings.volume()+delta)));CinemarrSettings.saveVolume();rebuildWidgets();}
     private void back(){if(parents.isEmpty())return;parentKey=parents.pop();query="";if(search!=null)search.setValue(query);page=rowOffset=0;request();}
     private void selectLibrary(String id){libraryId=id;parents.clear();parentKey="";query="";if(search!=null)search.setValue(query);page=rowOffset=0;request();}
     private void request(){if(!libraryId.isEmpty()){state.browse(libraryId,parentKey,query,page);rebuildWidgets();}}
-    private void seek(long delta){VideoPackets.SessionState value=state.session(controllerPos);if(value==null)return;command(VideoPackets.SessionAction.SEEK,"",Math.max(0,CinemarrVideoPlayback.authoritativePositionMsLocal(value)+delta),mode(),value.generation());}
+    private void seek(long delta){VideoPackets.SessionState value=state.session(controllerPos);if(value==null)return;command(VideoPackets.SessionAction.SEEK,"",Math.max(0,CinemarrVideoPlayback.authoritativePositionMsLocal(value)+delta),mode(),value.timelineGeneration());}
     private void command(VideoPackets.SessionAction action,String item,long seek,PresentationMode mode,long generation){command(action,item,seek,mode,generation,"");}
     private void command(VideoPackets.SessionAction action,String item,long seek,PresentationMode mode,long generation,String session){command(action,item,seek,mode,generation,session,"");}
     private void command(VideoPackets.SessionAction action,String item,long seek,PresentationMode mode,long generation,String session,String pending){
         if(send(new VideoPackets.SessionCommand(action,controllerPos,libraryId,item,session,mode,generation,seek,-1,-1),pending)&&action==VideoPackets.SessionAction.TUNE)sessionDraft=session;
     }
-    private void commandStreams(VideoPackets.SessionState playback,int audio,int subtitle){send(new VideoPackets.SessionCommand(VideoPackets.SessionAction.SET_STREAMS,controllerPos,libraryId,playback.item().key(),"",playback.presentationMode(),playback.generation(),CinemarrVideoPlayback.authoritativePositionMsLocal(playback),audio,subtitle),"");}
+    private void commandStreams(VideoPackets.SessionState playback,int audio,int subtitle){send(new VideoPackets.SessionCommand(VideoPackets.SessionAction.SET_STREAMS,controllerPos,libraryId,playback.item().key(),"",playback.presentationMode(),playback.timelineGeneration(),CinemarrVideoPlayback.authoritativePositionMsLocal(playback),audio,subtitle),"");}
     private boolean send(VideoPackets.SessionCommand command,String pending){
         VideoPackets.SessionState current=state.session(controllerPos);boolean canControl=current==null||current.canControl();
         boolean dispatched=feedback.request(canControl,command.action()==VideoPackets.SessionAction.TUNE,pending,()->state.command(command));

@@ -1,0 +1,20 @@
+package stonytark.cinemarr.client;
+
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
+import stonytark.cinemarr.core.protocol.VideoPackets;
+import stonytark.cinemarr.core.video.*;
+
+/** Display settings page for the 26.x extractor GUI API. */
+final class Mc26DisplaySettingsScreen extends Screen {
+    private final long pos; private final CinemarrVideoClientState state; private final CinemarrVideoScreen parent; private DisplaySettingsDraft draft; private EditBox w,h; private String error="";
+    Mc26DisplaySettingsScreen(long pos,CinemarrVideoClientState state,CinemarrVideoScreen parent){super(Component.literal("Display Settings"));this.pos=pos;this.state=state;this.parent=parent;}
+    private void back(){try{minecraft.getClass().getMethod("setScreen",Screen.class).invoke(minecraft,parent);}catch(Exception ignored){}}
+    @Override protected void init(){VideoPackets.SessionState c=state.session(pos);TvDisplaySettings s=c==null?TvDisplaySettings.defaults(PresentationMode.FIT):c.displaySettings();draft=new DisplaySettingsDraft(s);int x=Math.max(4,(width-312)/2),y=28;for(PresentationMode m:PresentationMode.values())addRenderableWidget(Button.builder(Component.literal(m.name()),b->draft.layout(m)).bounds(x+m.ordinal()*72,y,68,20).build());for(PixelMapping m:PixelMapping.values()){Button b=Button.builder(Component.literal(m==PixelMapping.DETAILED?"Detailed":"One/block"),v->draft.mapping(m)).bounds(x+m.ordinal()*100,y+26,96,20).build();b.active=s.origin()!=TvDisplaySettings.Origin.QUICK;addRenderableWidget(b);}Button a=Button.builder(Component.literal("Auto"),b->draft.resolution(ResolutionChoice.AUTO)).bounds(x,y+52,70,20).build();a.active=s.origin()!=TvDisplaySettings.Origin.QUICK;addRenderableWidget(a);Button p=Button.builder(Component.literal("1080p"),b->draft.resolution(ResolutionChoice.preset("1080p"))).bounds(x+74,y+52,70,20).build();p.active=s.origin()!=TvDisplaySettings.Origin.QUICK;addRenderableWidget(p);w=new EditBox(font,x+148,y+52,72,20,Component.literal("Width"));h=new EditBox(font,x+224,y+52,72,20,Component.literal("Height"));w.setMaxLength(4);h.setMaxLength(4);addRenderableWidget(w);addRenderableWidget(h);Button custom=Button.builder(Component.literal("Custom"),b->custom()).bounds(x+148,y+76,72,20).build();custom.active=s.origin()!=TvDisplaySettings.Origin.QUICK;addRenderableWidget(custom);addRenderableWidget(Button.builder(Component.literal("Apply"),b->apply()).bounds(x+140,205,72,20).build());addRenderableWidget(Button.builder(Component.literal("Cancel"),b->back()).bounds(x+216,205,72,20).build());}
+    private void custom(){try{draft.resolution(ResolutionChoice.custom(Integer.parseInt(w.getValue().trim()),Integer.parseInt(h.getValue().trim())));error=draft.error();}catch(RuntimeException e){error=e.getMessage()==null?"Invalid resolution":e.getMessage();}}
+    private void apply(){try{TvDisplaySettings n=draft.apply();VideoPackets.SessionState c=state.session(pos);if(c==null){error="TV state is unavailable";return;}state.command(new VideoPackets.SessionCommand(VideoPackets.SessionAction.SET_DISPLAY,pos,"",c.item()==null?"":c.item().key(),"",c.presentationMode(),c.timelineGeneration(),CinemarrVideoPlayback.authoritativePositionMsLocal(c),c.selectedAudioStreamId(),c.selectedSubtitleStreamId()).withDisplay(n));back();}catch(RuntimeException e){error=e.getMessage()==null?"Unable to apply settings":e.getMessage();}}
+    @Override public void extractRenderState(GuiGraphicsExtractor g,int mx,int my,float partial){super.extractRenderState(g,mx,my,partial);g.centeredText(font,title,width/2,8,0xffffffff);VideoPackets.SessionState v=state.session(pos);String e=v==null?"Actual: unavailable":"Actual: "+v.effectiveWidth()+"x"+v.effectiveHeight()+"  Screen: "+v.screenWidth()+"x"+v.screenHeight();g.centeredText(font,e,width/2,156,0xffa0d8ff);if(!error.isEmpty())g.centeredText(font,error,width/2,180,0xffff8080);}
+}
