@@ -85,7 +85,11 @@ def main():
                     transitioned = latest["positionMs"] != previous["positionMs"]
                 elif action == "SET_STREAMS":
                     _, selected, _ = stream_control(args.stream_kind)
-                    transitioned = latest[selected] != previous[selected]
+                    # A cyclic stream control may wrap to the current ID when
+                    # the fixture has only one alternate. The authoritative
+                    # generation change still proves a fresh reconfiguration.
+                    transitioned = (latest[selected] != previous[selected]
+                                    or latest["generation"] != previous["generation"])
                 else:
                     transitioned = latest != previous
             if marker in value and current and current[-1]["status"] == status and transitioned:
