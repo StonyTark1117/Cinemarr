@@ -147,6 +147,7 @@ sourceSets {
             exclude 'stonytark/cinemarr/client/CinemarrClientConfigScreen.java'
             exclude 'stonytark/cinemarr/client/CinemarrClientUi.java'
             exclude 'stonytark/cinemarr/client/CinemarrScreen.java'
+            exclude 'stonytark/cinemarr/client/DisplaySettingsScreen.java'
             exclude 'stonytark/cinemarr/client/CinemarrVideoScreen.java'
             exclude 'stonytark/cinemarr/client/CinemarrVideoAudio.java'
             exclude 'stonytark/cinemarr/client/CinemarrVideoAudioManager.java'
