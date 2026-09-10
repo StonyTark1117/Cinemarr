@@ -11,8 +11,8 @@ class PrivateMinecraftWindow:
     def __init__(self, log, gate_pid, geometry="640x480x24", wait_seconds=0):
         if geometry not in ("640x480x24", "1280x720x24"):
             raise RuntimeError("Unsupported private Minecraft geometry")
-        if not 0 <= wait_seconds <= 60:
-            raise ValueError("Private window wait must be between zero and sixty seconds")
+        if not 0 <= wait_seconds <= 180:
+            raise ValueError("Private window wait must be between zero and one hundred eighty seconds")
         self.geometry = geometry
         self.gate_pid = gate_pid
         self.gate_identity = self.identity(gate_pid)[1]
