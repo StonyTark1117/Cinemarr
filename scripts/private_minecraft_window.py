@@ -153,7 +153,12 @@ class PrivateMinecraftWindow:
         # input focus. Activate the verified window before dispatching a
         # coordinate so widget acceptance probes reach the game window rather
         # than an unfocused X client.
-        self.run("xdotool", "windowactivate", "--sync", self.window)
+        try:
+            self.run("xdotool", "windowactivate", "--sync", self.window)
+        except subprocess.CalledProcessError:
+            # A bare Xvfb display has no window manager, so activation may
+            # return nonzero even though coordinate input remains usable.
+            pass
         self.run("xdotool", "mousemove", "--window", self.window, str(x), str(y), "click", "1")
 
     def capture(self, path):
