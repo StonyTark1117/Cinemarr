@@ -34,7 +34,10 @@ class PrivateMinecraftWindow:
                 # the client is first mapping). The private X server is owned
                 # exclusively by this gate, so enumerate visible windows and
                 # retain the exact-one invariant instead of assuming a title.
-                windows = self.run("xdotool", "search", "--onlyvisible", "--name", ".*").splitlines()
+                # `.*` also matches the private X root window on some xdotool
+                # builds. Require a non-empty name so the root cannot become
+                # a second apparent Minecraft client.
+                windows = self.run("xdotool", "search", "--onlyvisible", "--name", ".+").splitlines()
                 if len(windows) > 1:
                     # CI runners can expose transient helper windows on the
                     # same display. Keep only X clients descended from this
