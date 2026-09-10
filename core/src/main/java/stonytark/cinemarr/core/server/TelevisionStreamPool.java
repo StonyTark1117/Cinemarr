@@ -145,7 +145,15 @@ public final class TelevisionStreamPool implements AutoCloseable {
                         latest=target.desired;
                     }
                     starting.set(new StartContext(target, latest));
-                    streams.play(tv.toString(),latest.timeline.item(),latest.timeline.positionMs(),latest.timeline.serverEpochMs(),current.generation());
+                    // The coordinator generation can advance between the
+                    // server-thread admission and this worker running (for
+                    // example when the initial PLAY publication races stream
+                    // preparation). Capture the authoritative snapshot at
+                    // execution time so a valid start is not rejected as
+                    // stale before the Plex request is made.
+                    VideoSessionCoordinator.Snapshot execution = streams.snapshot(tv.toString(), System.currentTimeMillis());
+                    streams.play(tv.toString(), latest.timeline.item(), latest.timeline.positionMs(),
+                            latest.timeline.serverEpochMs(), execution.generation());
                     synchronized(TelevisionStreamPool.this){if(entries.get(tv)==target){target.applied=latest;target.error="";}}
                     return null;
                 } catch(IOException error){throw new java.util.concurrent.CompletionException(error);}
