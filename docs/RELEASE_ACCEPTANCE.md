@@ -35,6 +35,11 @@ documentation files (1,186 payloads; 5,495,997 bytes) completed with zero
 configured-value findings and zero audit errors. Generated platform build
 archives remain under the separate artifact-inspection gate.
 
+After correcting the stale protocol value, `indexReleaseArtifacts` regenerated
+the canonical bundle and `inspect-release-artifacts.py` inspected all 16 JARs
+successfully. This packaging evidence does not replace two-build parity or
+final-commit certification.
+
 Freeze the integrated implementation in an isolated checkout before fresh
 certification. Retain all existing 37 local cases, add the feature smoke across
 all 21 profiles, and inventory additional capacity/failure/raster supplements
