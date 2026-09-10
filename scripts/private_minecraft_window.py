@@ -75,6 +75,21 @@ class PrivateMinecraftWindow:
                         root_line = tree.splitlines()[0]
                         root = int(root_line.split("Window id:", 1)[1].split()[0], 16)
                         windows = [value for value in candidates if int(value) != root]
+                        if not windows:
+                            # Some Fabric clients expose no EWMH-visible name
+                            # even after mapping. Inspect the X tree directly,
+                            # but retain the mapped-only rule so delayed-map
+                            # probes cannot select an unmapped child.
+                            for value in re.findall(r"0x[0-9a-fA-F]+", tree):
+                                window = str(int(value, 16))
+                                if window == str(root):
+                                    continue
+                                try:
+                                    info = self.run("xwininfo", "-id", window)
+                                except subprocess.CalledProcessError:
+                                    continue
+                                if "IsViewable" in info:
+                                    windows.append(window)
                     except (IndexError, ValueError, subprocess.CalledProcessError):
                         windows = []
                 if len(windows) > 1:
