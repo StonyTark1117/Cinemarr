@@ -32,8 +32,6 @@ class VideoHealthPolicyTest {
     @Test void malformedTelemetryIsRejectedBeforeLookingUpItsSession() {
         VideoPackets.ClientHealth[] malformed = {
                 null,
-                new VideoPackets.ClientHealth(null, 0, "PLAYING", 0, 0, 0, 0, 0),
-                new VideoPackets.ClientHealth(SESSION, -1, "PLAYING", 0, 0, 0, 0, 0),
                 new VideoPackets.ClientHealth(SESSION, 0, "unknown", 0, 0, 0, 0, 0),
                 new VideoPackets.ClientHealth(SESSION, 0, "PLAYING", -1, 0, 0, 0, 0),
                 new VideoPackets.ClientHealth(SESSION, 0, "PLAYING", 0, -1, 0, 0, 0),

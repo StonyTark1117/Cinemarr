@@ -22,7 +22,7 @@ def fixture() -> dict:
         "schemaVersion": 1,
         "product": "Cinemarr",
         "productVersion": "1.0.0",
-        "protocolVersion": 10,
+        "protocolVersion": 11,
         "runtimeDefaults": {"clientTask": "runClient", "serverTask": "runServer",
                             "disableConfigurationCache": False},
         "expected": {"artifacts": 1, "runtimes": 2},

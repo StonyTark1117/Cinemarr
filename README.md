@@ -12,9 +12,9 @@ streams are now required 1.0 work across the **16-artifact / 21-runtime** matrix
 See the [full feature specification](docs/1.0_CUSTOM_TV_DISPLAY_PLAN.md) and
 [release hardening plan](docs/1.0_RELEASE_HARDENING_PLAN.md).
 
-The earlier V11 candidate used protocol 10 and screen-data schema 3. The new
-feature requires deliberate protocol and saved-data migrations; the integrated
-versions and all adapters must be verified together before certification.
+The earlier V11 candidate used protocol 10 and screen-data schema 3. Integrated
+development now uses protocol 11; saved-data migration and verification of all
+adapters remain required before certification.
 New custom TVs must default to Fit, Detailed, Auto, while Quick TV construction
 sizes and preset resolutions remain intact. Implementation is in progress.
 

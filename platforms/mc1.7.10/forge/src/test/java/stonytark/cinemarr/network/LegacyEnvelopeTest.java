@@ -7,6 +7,7 @@ import stonytark.cinemarr.Cinemarr;
 import stonytark.cinemarr.core.protocol.ProtocolException;
 import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.core.protocol.VideoPackets;
+import stonytark.cinemarr.core.protocol.VideoStreamIdentity;
 
 import java.util.UUID;
 
@@ -15,32 +16,34 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class LegacyEnvelopeTest {
-    @Test void advertisesAndCarriesProtocolTenCapabilities() {
+    @Test void advertisesAndCarriesProtocolElevenCapabilities() {
         assertEquals(ProtocolLimits.VERSION, Cinemarr.PROTOCOL);
         LegacyEnvelope outgoing = LegacyEnvelope.encode(LegacyPacketTypes.CLIENT_HELLO,
-                new LegacyPacketTypes.ClientHello(10));
+                new LegacyPacketTypes.ClientHello(11));
         ByteBuf buffer = Unpooled.buffer(); outgoing.toBytes(buffer);
         LegacyEnvelope incoming = new LegacyEnvelope(); incoming.fromBytes(buffer);
         LegacyPacketTypes.ClientHello decoded = (LegacyPacketTypes.ClientHello) incoming.decode(LegacyPacketTypes.Direction.SERVERBOUND);
         assertEquals(LegacyPacketTypes.CLIENT_HELLO.id(), incoming.messageId());
-        assertEquals("0a000000000000000380800108e807", hex(incoming.payload()));
-        assertEquals(10, decoded.protocolVersion());
+        assertEquals("0b000000000000000380800108e807", hex(incoming.payload()));
+        assertEquals(11, decoded.protocolVersion());
         assertEquals(0, buffer.readableBytes());
     }
 
     @Test void preservesBoundedVideoChunkFields() {
         UUID session = UUID.fromString("12345678-1234-5678-9abc-def012345678");
-        VideoPackets.SegmentChunk outgoing = new VideoPackets.SegmentChunk(session, 3, 11, 4, 1, 2,
+        VideoStreamIdentity identity = new VideoStreamIdentity(UUID.randomUUID(), 41, session, 3);
+        VideoPackets.SegmentChunk outgoing = new VideoPackets.SegmentChunk(identity, 11, 4, 1, 2,
                 9_000, true, "abcd", new byte[] { 5, 6, 7 });
         LegacyEnvelope envelope = LegacyEnvelope.encode(LegacyPacketTypes.VIDEO_SEGMENT_CHUNK, outgoing);
         VideoPackets.SegmentChunk decoded = (VideoPackets.SegmentChunk) envelope.decode(LegacyPacketTypes.Direction.CLIENTBOUND);
+        assertEquals(identity, decoded.identity());
         assertEquals(session, decoded.sessionId()); assertEquals(3, decoded.generation()); assertEquals(11, decoded.requestId());
         assertEquals(4, decoded.segmentIndex()); assertEquals(1, decoded.chunkIndex()); assertEquals(2, decoded.totalChunks());
         assertEquals(9_000, decoded.presentationTimeMs()); assertArrayEquals(new byte[] { 5, 6, 7 }, decoded.data());
     }
 
     @Test void rejectsWrongDirectionUnknownIdsAndTrailingBytes() {
-        LegacyEnvelope hello = LegacyEnvelope.encode(LegacyPacketTypes.CLIENT_HELLO, new LegacyPacketTypes.ClientHello(10));
+        LegacyEnvelope hello = LegacyEnvelope.encode(LegacyPacketTypes.CLIENT_HELLO, new LegacyPacketTypes.ClientHello(11));
         assertThrows(ProtocolException.class, () -> hello.decode(LegacyPacketTypes.Direction.CLIENTBOUND));
         ByteBuf unknown = Unpooled.buffer();
         cpw.mods.fml.common.network.ByteBufUtils.writeVarInt(unknown, 127, 5);

@@ -7,15 +7,27 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import stonytark.cinemarr.core.protocol.VideoPackets;
+import stonytark.cinemarr.core.protocol.VideoStreamIdentity;
 
 /** Owns the single in-flight segment window permitted for each connected client. */
 public final class TransferGrantRegistry {
+    public enum RequestDecision { FETCH, REPLAY, REJECT }
     private final long timeoutMs;
     private final ConcurrentMap<UUID, Grant> grants = new ConcurrentHashMap<UUID, Grant>();
 
     public TransferGrantRegistry(long timeoutMs) {
         if (timeoutMs < 1) throw new IllegalArgumentException("timeoutMs must be positive");
         this.timeoutMs = timeoutMs;
+    }
+
+    /**
+     * An identical retry may replay cached bytes, but must not enqueue another
+     * download or extend the original grant's lifetime. Other windows still
+     * require acknowledgement of the current window.
+     */
+    public RequestDecision request(UUID client, VideoPackets.SegmentRequest request, long nowMs) {
+        if (tryAcquire(client, request, nowMs)) return RequestDecision.FETCH;
+        return owns(client, request, nowMs) ? RequestDecision.REPLAY : RequestDecision.REJECT;
     }
 
     public boolean tryAcquire(UUID client, VideoPackets.SegmentRequest request, long nowMs) {
@@ -67,6 +79,17 @@ public final class TransferGrantRegistry {
         return expired.isEmpty() ? Collections.<UUID>emptyList() : expired;
     }
 
+    /** A validated manifest request abandons only this stream's old window. */
+    public boolean restartManifest(UUID client, UUID session, long generation) {
+        return restartManifest(client, new VideoStreamIdentity(session, generation, session, generation));
+    }
+    public boolean restartManifest(UUID client, VideoStreamIdentity identity) {
+        if (client == null || identity == null) throw new IllegalArgumentException("client and stream identity are required");
+        Grant grant = grants.get(client);
+        return grant != null && grant.identity.equals(identity)
+                && grants.remove(client, grant);
+    }
+
     public void remove(UUID client) { grants.remove(client); }
     /** Preserve a window only while at least one of its screens stays visible. */
     public boolean releaseUntracked(UUID client, java.util.Map<UUID, UUID> screenSessions,
@@ -94,6 +117,7 @@ public final class TransferGrantRegistry {
     }
 
     private static final class Grant {
+        private final VideoStreamIdentity identity;
         private final UUID session;
         private final long generation;
         private final long requestId;
@@ -103,22 +127,23 @@ public final class TransferGrantRegistry {
         private final long createdAtMs;
 
         private Grant(VideoPackets.SegmentRequest value, long createdAtMs) {
-            session = value.sessionId(); generation = value.generation(); requestId = value.requestId();
+            identity = value.identity(); session = value.sessionId(); generation = value.generation(); requestId = value.requestId();
             segment = value.segmentIndex(); firstChunk = value.firstChunk();
             lastRequestedChunk = firstChunk + value.chunkCount() - 1; this.createdAtMs = createdAtMs;
         }
 
         private boolean expired(long nowMs, long timeoutMs) { return nowMs - createdAtMs >= timeoutMs; }
         private boolean supersededBy(VideoPackets.SegmentRequest value) {
-            return session.equals(value.sessionId()) && value.generation() > generation;
+            return session.equals(value.sessionId()) && (value.generation() > generation
+                    || identity.timelineId().equals(value.timelineId()) && value.timelineGeneration() > identity.timelineGeneration());
         }
         private boolean matches(VideoPackets.SegmentRequest value) {
-            return session.equals(value.sessionId()) && generation == value.generation()
+            return identity.equals(value.identity())
                     && requestId == value.requestId() && segment == value.segmentIndex()
                     && firstChunk == value.firstChunk() && lastRequestedChunk == firstChunk + value.chunkCount() - 1;
         }
         private boolean matches(VideoPackets.SegmentAcknowledgement value) {
-            return session.equals(value.sessionId()) && generation == value.generation()
+            return identity.equals(value.identity())
                     && requestId == value.requestId() && segment == value.segmentIndex()
                     && value.receivedThroughChunk() >= firstChunk
                     && value.receivedThroughChunk() <= lastRequestedChunk;

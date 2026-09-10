@@ -230,4 +230,25 @@ class TelevisionStreamPoolTest {
             }
         }
     }
+
+    @Test void aChangedSharedTimelineCannotAuthorizeTheOldOrRelabelledStream() throws Exception {
+        try (Fixture f = new Fixture(1)) {
+            UUID tv = UUID.randomUUID(); f.start(tv);
+            VideoSessionCoordinator.Snapshot stream = f.pool.snapshot(tv, 1000);
+            stonytark.cinemarr.core.protocol.VideoStreamIdentity identity = f.pool.identity(stream.id(), stream.generation());
+            assertNotNull(identity); assertTrue(f.pool.isViewer(identity, VIEWER));
+            f.timeline.seek("party", 90_000, 1200);
+            f.update(tv, DEFAULTS, 1200, VIEWER);
+            assertFalse(f.pool.isViewer(identity, VIEWER));
+            VideoSessionCoordinator.Snapshot timeline = f.timeline.snapshot("party", 1200);
+            assertFalse(f.pool.isViewer(new stonytark.cinemarr.core.protocol.VideoStreamIdentity(
+                    timeline.id(), timeline.generation(), stream.id(), stream.generation()), VIEWER));
+            f.pool.tick(1200); f.work.next();
+            VideoSessionCoordinator.Snapshot replacement = f.pool.snapshot(tv, 1200);
+            stonytark.cinemarr.core.protocol.VideoStreamIdentity next = f.pool.identity(replacement.id(), replacement.generation());
+            assertNotNull(next); assertTrue(f.pool.isViewer(next, VIEWER));
+            assertEquals(timeline.id(), next.timelineId());
+            assertEquals(timeline.generation(), next.timelineGeneration());
+        }
+    }
 }

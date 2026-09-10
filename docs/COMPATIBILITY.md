@@ -1,6 +1,6 @@
 # Compatibility
 
-Cinemarr 1.0.0 requires the mod on both the server and every client. The earlier candidate used protocol 10; the required display/stream feature advances the protocol, with the final version and every adapter verified together before certification. Cross-version or cross-loader networking is not supported.
+Cinemarr 1.0.0 requires the mod on both the server and every client. The integrated development tree uses protocol 11 for display settings and separate watch-party/TV stream identities. Protocol 10 clients are incompatible. Every adapter still requires fresh integrated-candidate verification before certification. Cross-version or cross-loader networking is not supported.
 
 | Minecraft | Loaders / runtime profiles | Java |
 | --- | --- | ---: |

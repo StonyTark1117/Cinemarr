@@ -23,7 +23,7 @@ import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import java.util.HashMap;
 import java.util.Map;
 
-/** Forge 1.7.10 SimpleNetworkWrapper adapter for the television-only protocol 10. */
+/** Forge 1.7.10 SimpleNetworkWrapper adapter for the television-only protocol 11. */
 public final class LegacyNetwork {
     public interface ServerListener {
         void accept(EntityPlayerMP player, LegacyPacketTypes.Type<?> type, Object message);

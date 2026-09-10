@@ -19,8 +19,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class VideoPacketCodecTest {
     @Test void sessionStateRoundTripsExactScreenAndTimelineState() {
         UUID tv=UUID.randomUUID(), session=UUID.randomUUID(); byte[] mask={1,2,3};
-        VideoPackets.SessionState value=new VideoPackets.SessionState(tv,99L,session,9,VideoPackets.SessionStatus.PLAYING,item(),1234,90000,false,PresentationMode.FILL,17,11,mask,ScreenFacing.EAST,22,-3,7,Arrays.asList(new VideoStreamOption(VideoStreamOption.Kind.AUDIO,12,"English","eng","aac",true)),12,-1,4567,true,"ok");
+        VideoPackets.SessionState value=new VideoPackets.SessionState(tv,99L,session,9,VideoPackets.SessionStatus.PLAYING,item(),1234,90000,false,PresentationMode.FILL,17,11,mask,ScreenFacing.EAST,22,-3,7,Arrays.asList(new VideoStreamOption(VideoStreamOption.Kind.AUDIO,12,"English","eng","aac",true)),12,-1,4567,true,"ok").withTimeline(UUID.randomUUID(), 27);
         VideoPackets.SessionState decoded=roundTrip(VideoPackets.SESSION_STATE,value);
+        assertEquals(value.identity(), decoded.identity()); assertEquals(27, decoded.timelineGeneration());
         assertEquals(tv,decoded.televisionId()); assertEquals(session,decoded.sessionId()); assertEquals(9,decoded.generation());
         assertEquals(17,decoded.screenWidth()); assertEquals(11,decoded.screenHeight()); assertArrayEquals(mask,decoded.visibilityMask());
         assertEquals("Movie",decoded.item().title()); assertEquals(PresentationMode.FILL,decoded.presentationMode());
@@ -43,7 +44,7 @@ class VideoPacketCodecTest {
     @Test void oversizedCollectionsAndChunksAreRejectedDuringDecode() {
         ByteArrayWireOutput libraries=new ByteArrayWireOutput(); libraries.writeVarInt(ProtocolLimits.MAX_VIDEO_LIBRARIES+1);
         assertThrows(ProtocolException.class,()->VideoPackets.LIBRARY_LIST.decode(new ByteArrayWireInput(libraries.toByteArray())));
-        ByteArrayWireOutput chunk=new ByteArrayWireOutput(); chunk.writeUuid(UUID.randomUUID()); chunk.writeVarLong(1); chunk.writeVarLong(1);
+        ByteArrayWireOutput chunk=new ByteArrayWireOutput(); VideoPackets.STREAM_IDENTITY.encode(chunk, new VideoStreamIdentity(UUID.randomUUID(), 2, UUID.randomUUID(), 1)); chunk.writeVarLong(1);
         chunk.writeVarInt(0); chunk.writeVarInt(0); chunk.writeVarInt(1); chunk.writeVarLong(0); chunk.writeBoolean(true); chunk.writeUtf(repeat('a',64),64);
         chunk.writeByteArray(new byte[ProtocolLimits.MAX_VIDEO_CHUNK_BYTES+1],ProtocolLimits.MAX_VIDEO_CHUNK_BYTES+1);
         assertThrows(ProtocolException.class,()->VideoPackets.SEGMENT_CHUNK.decode(new ByteArrayWireInput(chunk.toByteArray())));

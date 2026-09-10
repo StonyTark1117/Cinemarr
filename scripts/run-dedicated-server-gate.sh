@@ -498,7 +498,7 @@ run_wrong_protocol_client() {
   # same console/world paths and could silently replace a loader failure.
   run_acceptance_client "$label" "$target_dir" "$java_home" "$port" "$server_console" \
     wrong-protocol-client CinemarrMismatch \
-    '-Dcinemarr.acceptance.enabled=true -Dcinemarr.acceptance.clientProtocol=4 -Dorg.lwjgl.opengl.Display.allowSoftwareOpenGL=true' \
+    '-Dcinemarr.acceptance.enabled=true -Dcinemarr.acceptance.clientProtocol=10 -Dorg.lwjgl.opengl.Display.allowSoftwareOpenGL=true' \
     'Cinemarr protocol mismatch: server requires' true
 }
 
@@ -3225,7 +3225,7 @@ run_target() {
     result=1
   fi
   if [[ "$label" == "1.7.10-forge" ]]; then
-    if ! grep -q 'Initializing Cinemarr 1.0.0 for Forge 1.7.10 protocol 10' "$run_dir/logs/fml-server-latest.log"; then
+    if ! grep -q 'Initializing Cinemarr 1.0.0 for Forge 1.7.10 protocol 11' "$run_dir/logs/fml-server-latest.log"; then
       echo "$label: FML log does not prove Cinemarr initialized" >&2
       result=1
     fi

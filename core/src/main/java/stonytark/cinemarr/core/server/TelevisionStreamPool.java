@@ -1,6 +1,7 @@
 package stonytark.cinemarr.core.server;
 
 import stonytark.cinemarr.core.video.TvDisplaySettings;
+import stonytark.cinemarr.core.protocol.VideoStreamIdentity;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -175,6 +176,21 @@ public final class TelevisionStreamPool implements AutoCloseable {
     public long closeFailures(){return streams.closeFailures();}
     public VideoSessionCoordinator.Snapshot snapshotIfPresent(UUID id,long generation,long now){return streams.snapshotIfPresent(id,generation,now);}
     public boolean isViewer(UUID id,long generation,UUID viewer){return streams.isViewer(id,generation,viewer);}
+    /** Only published media for the current desired timeline can authorize transport. */
+    public synchronized VideoStreamIdentity identity(UUID id, long generation) {
+        VideoSessionCoordinator.Snapshot stream = streams.snapshotIfPresent(id, generation, 0);
+        if (stream == null || !stream.transcoding()) return null;
+        for (UUID television : stream.televisions()) {
+            Entry entry = entries.get(television);
+            if (entry != null && entry.applied != null && entry.desired.sameTimeline(entry.applied))
+                return new VideoStreamIdentity(entry.applied.timeline.id(), entry.applied.timeline.generation(), id, generation);
+        }
+        return null;
+    }
+    public synchronized boolean isViewer(VideoStreamIdentity identity, UUID viewer) {
+        return identity != null && identity.equals(identity(identity.streamId(), identity.streamGeneration()))
+                && streams.isViewer(identity.streamId(), identity.streamGeneration(), viewer);
+    }
     public boolean isSupersededViewer(UUID id,long generation,UUID viewer){return streams.isSupersededViewer(id,generation,viewer);}
     @Override public void close() throws IOException {
         synchronized(this){closed=true;waiting.clear();entries.clear();}

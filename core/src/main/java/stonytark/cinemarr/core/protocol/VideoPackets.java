@@ -6,16 +6,37 @@ import stonytark.cinemarr.core.library.VideoStreamOption;
 import stonytark.cinemarr.core.library.QueuedVideo;
 import stonytark.cinemarr.core.screen.ScreenFacing;
 import stonytark.cinemarr.core.video.PresentationMode;
+import stonytark.cinemarr.core.video.TvDisplaySettings;
+import stonytark.cinemarr.core.video.DisplaySettingsCodec;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
-/** Java-8-compatible protocol-10 models for Cinemarr video browsing, control, queueing, and media relay. */
+/** Java-8-compatible protocol-11 models for Cinemarr video browsing, control, queueing, and media relay. */
 public final class VideoPackets {
-    public enum SessionAction { TUNE, PLAY, PAUSE, RESUME, SEEK, STOP, SET_PRESENTATION, SET_STREAMS, QUEUE, REMOVE_QUEUE, CLEAR_QUEUE, SKIP, CONTINUE_EPISODE }
+    public enum SessionAction { TUNE, PLAY, PAUSE, RESUME, SEEK, STOP, SET_PRESENTATION, SET_STREAMS, QUEUE, REMOVE_QUEUE, CLEAR_QUEUE, SKIP, CONTINUE_EPISODE, SET_DISPLAY }
     public enum SessionStatus { IDLE, PREPARING, BUFFERING, PLAYING, PAUSED, PLEX_OFFLINE, ERROR }
+
+    public interface StreamMessage extends CinemarrMessage {
+        VideoStreamIdentity identity();
+        default UUID sessionId() { return identity().streamId(); }
+        default long generation() { return identity().streamGeneration(); }
+        default UUID timelineId() { return identity().timelineId(); }
+        default long timelineGeneration() { return identity().timelineGeneration(); }
+    }
+
+    public static final WireCodec<VideoStreamIdentity> STREAM_IDENTITY = new WireCodec<VideoStreamIdentity>() {
+        @Override public VideoStreamIdentity decode(WireInput in) {
+            try { return new VideoStreamIdentity(in.readUuid(), in.readVarLong(), in.readUuid(), in.readVarLong()); }
+            catch (IllegalArgumentException invalid) { throw new ProtocolException("Invalid video stream identity", invalid); }
+        }
+        @Override public void encode(WireOutput out, VideoStreamIdentity value) {
+            out.writeUuid(value.timelineId()); out.writeVarLong(value.timelineGeneration());
+            out.writeUuid(value.streamId()); out.writeVarLong(value.streamGeneration());
+        }
+    };
 
     public static final WireCodec<LibrarySummary> LIBRARY_SUMMARY = new WireCodec<LibrarySummary>() {
         @Override public LibrarySummary decode(WireInput in) {
@@ -76,15 +97,20 @@ public final class VideoPackets {
 
     public static final WireCodec<SessionCommand> SESSION_COMMAND = new WireCodec<SessionCommand>() {
         @Override public SessionCommand decode(WireInput in) {
-            return new SessionCommand(readEnum(in, SessionAction.class), in.readLong(), in.readUtf(64), in.readUtf(256),
+            SessionCommand value = new SessionCommand(readEnum(in, SessionAction.class), in.readLong(), in.readUtf(64), in.readUtf(256),
                     in.readUtf(64), readEnum(in, PresentationMode.class), in.readVarLong(), in.readVarLong(),
                     in.readVarInt(), in.readVarInt());
+            if (in.readBoolean()) value = value.withDisplay(DisplaySettingsCodec.decode(in.readUtf(DisplaySettingsCodec.MAX_LENGTH)));
+            if (value.action() == SessionAction.SET_DISPLAY && value.displaySettings() == null) throw new IllegalArgumentException("Missing display settings");
+            return value;
         }
         @Override public void encode(WireOutput out, SessionCommand value) {
             writeEnum(out, value.action()); out.writeLong(value.controllerPos()); out.writeUtf(value.libraryId(), 64);
             out.writeUtf(value.itemKey(), 256); out.writeUtf(value.sessionName(), 64); writeEnum(out, value.presentationMode());
             out.writeVarLong(value.expectedGeneration()); out.writeVarLong(value.seekPositionMs());
             out.writeVarInt(value.audioStreamId()); out.writeVarInt(value.subtitleStreamId());
+            out.writeBoolean(value.displaySettings() != null);
+            if (value.displaySettings() != null) out.writeUtf(DisplaySettingsCodec.encode(value.displaySettings()), DisplaySettingsCodec.MAX_LENGTH);
         }
     };
 
@@ -101,7 +127,7 @@ public final class VideoPackets {
             long epoch = in.readLong(); boolean control = in.readBoolean();
             String message = in.readUtf(256);
             return new SessionState(tv, controllerPos, session, generation, status, item, position, duration, paused, mode, width, height, mask,
-                    facing, plane, minimumU, minimumV, streams, selectedAudio, selectedSubtitle, epoch, control, message);
+                    facing, plane, minimumU, minimumV, streams, selectedAudio, selectedSubtitle, epoch, control, message).withDisplay(DisplaySettingsCodec.decode(in.readUtf(DisplaySettingsCodec.MAX_LENGTH)), in.readVarInt(), in.readVarInt()).withTimeline(in.readUuid(),in.readVarLong());
         }
         @Override public void encode(WireOutput out, SessionState value) {
             out.writeUuid(value.televisionId()); out.writeLong(value.controllerPos()); out.writeUuid(value.sessionId()); out.writeVarLong(value.generation()); writeEnum(out, value.status());
@@ -111,6 +137,9 @@ public final class VideoPackets {
             out.writeByteArray(value.visibilityMask(), ProtocolLimits.MAX_SCREEN_MASK_BYTES); writeEnum(out, value.screenFacing());
             out.writeVarInt(value.screenPlane()); out.writeVarInt(value.minimumU()); out.writeVarInt(value.minimumV());int streamCount=Math.min(value.streams().size(),ProtocolLimits.MAX_VIDEO_STREAM_OPTIONS);out.writeVarInt(streamCount);for(int index=0;index<streamCount;index++)VIDEO_STREAM_OPTION.encode(out,value.streams().get(index));out.writeVarInt(value.selectedAudioStreamId());out.writeVarInt(value.selectedSubtitleStreamId());out.writeLong(value.serverEpochMs());
             out.writeBoolean(value.canControl()); out.writeUtf(value.message(), 256);
+            out.writeUtf(DisplaySettingsCodec.encode(value.displaySettings()), DisplaySettingsCodec.MAX_LENGTH);
+            out.writeVarInt(value.effectiveWidth()); out.writeVarInt(value.effectiveHeight());
+            out.writeUuid(value.timelineId());out.writeVarLong(value.timelineGeneration());
         }
     };
 
@@ -126,15 +155,15 @@ public final class VideoPackets {
 
     public static final WireCodec<SegmentManifest> SEGMENT_MANIFEST = new WireCodec<SegmentManifest>() {
         @Override public SegmentManifest decode(WireInput in) {
-            UUID session = in.readUuid(); long generation = in.readVarLong(); int width = in.readVarInt(), height = in.readVarInt();
+            VideoStreamIdentity identity = STREAM_IDENTITY.decode(in); int width = in.readVarInt(), height = in.readVarInt();
             String container = in.readUtf(32), video = in.readUtf(32), audio = in.readUtf(32); long duration = in.readVarLong();
             boolean hasMore = in.readBoolean(); int count = count(in, ProtocolLimits.MAX_VIDEO_SEGMENTS_PER_MANIFEST, "video segments");
             List<SegmentDescriptor> segments = new ArrayList<SegmentDescriptor>(count);
             for (int index = 0; index < count; index++) segments.add(readDescriptor(in));
-            return new SegmentManifest(session, generation, width, height, container, video, audio, duration, hasMore, segments);
+            return new SegmentManifest(identity, width, height, container, video, audio, duration, hasMore, segments);
         }
         @Override public void encode(WireOutput out, SegmentManifest value) {
-            out.writeUuid(value.sessionId()); out.writeVarLong(value.generation()); out.writeVarInt(value.width()); out.writeVarInt(value.height());
+            STREAM_IDENTITY.encode(out, value.identity()); out.writeVarInt(value.width()); out.writeVarInt(value.height());
             out.writeUtf(value.container(), 32); out.writeUtf(value.videoCodec(), 32); out.writeUtf(value.audioCodec(), 32); out.writeVarLong(value.durationMs()); out.writeBoolean(value.hasMore());
             int count = Math.min(value.segments().size(), ProtocolLimits.MAX_VIDEO_SEGMENTS_PER_MANIFEST); out.writeVarInt(count);
             for (int index = 0; index < count; index++) writeDescriptor(out, value.segments().get(index));
@@ -142,25 +171,25 @@ public final class VideoPackets {
     };
 
     public static final WireCodec<SegmentManifestRequest> SEGMENT_MANIFEST_REQUEST = new WireCodec<SegmentManifestRequest>() {
-        @Override public SegmentManifestRequest decode(WireInput in) { return new SegmentManifestRequest(in.readUuid(), in.readVarLong(), in.readVarInt()); }
-        @Override public void encode(WireOutput out, SegmentManifestRequest value) { out.writeUuid(value.sessionId()); out.writeVarLong(value.generation()); out.writeVarInt(value.firstSegmentIndex()); }
+        @Override public SegmentManifestRequest decode(WireInput in) { return new SegmentManifestRequest(STREAM_IDENTITY.decode(in), in.readVarInt()); }
+        @Override public void encode(WireOutput out, SegmentManifestRequest value) { STREAM_IDENTITY.encode(out, value.identity()); out.writeVarInt(value.firstSegmentIndex()); }
     };
 
     public static final WireCodec<SegmentRequest> SEGMENT_REQUEST = new WireCodec<SegmentRequest>() {
-        @Override public SegmentRequest decode(WireInput in) { return new SegmentRequest(in.readUuid(), in.readVarLong(), in.readVarLong(), in.readVarInt(), in.readVarInt(), in.readVarInt()); }
+        @Override public SegmentRequest decode(WireInput in) { return new SegmentRequest(STREAM_IDENTITY.decode(in), in.readVarLong(), in.readVarInt(), in.readVarInt(), in.readVarInt()); }
         @Override public void encode(WireOutput out, SegmentRequest value) {
-            out.writeUuid(value.sessionId()); out.writeVarLong(value.generation()); out.writeVarLong(value.requestId());
+            STREAM_IDENTITY.encode(out, value.identity()); out.writeVarLong(value.requestId());
             out.writeVarInt(value.segmentIndex()); out.writeVarInt(value.firstChunk()); out.writeVarInt(value.chunkCount());
         }
     };
 
     public static final WireCodec<SegmentChunk> SEGMENT_CHUNK = new WireCodec<SegmentChunk>() {
         @Override public SegmentChunk decode(WireInput in) {
-            return new SegmentChunk(in.readUuid(), in.readVarLong(), in.readVarLong(), in.readVarInt(), in.readVarInt(),
+            return new SegmentChunk(STREAM_IDENTITY.decode(in), in.readVarLong(), in.readVarInt(), in.readVarInt(),
                     in.readVarInt(), in.readVarLong(), in.readBoolean(), in.readUtf(64), in.readByteArray(ProtocolLimits.MAX_VIDEO_CHUNK_BYTES));
         }
         @Override public void encode(WireOutput out, SegmentChunk value) {
-            out.writeUuid(value.sessionId()); out.writeVarLong(value.generation()); out.writeVarLong(value.requestId());
+            STREAM_IDENTITY.encode(out, value.identity()); out.writeVarLong(value.requestId());
             out.writeVarInt(value.segmentIndex()); out.writeVarInt(value.chunkIndex()); out.writeVarInt(value.totalChunks());
             out.writeVarLong(value.presentationTimeMs()); out.writeBoolean(value.keyframe()); out.writeUtf(value.segmentSha256(), 64);
             out.writeByteArray(value.data(), ProtocolLimits.MAX_VIDEO_CHUNK_BYTES);
@@ -169,20 +198,20 @@ public final class VideoPackets {
 
     public static final WireCodec<SegmentAcknowledgement> SEGMENT_ACKNOWLEDGEMENT = new WireCodec<SegmentAcknowledgement>() {
         @Override public SegmentAcknowledgement decode(WireInput in) {
-            return new SegmentAcknowledgement(in.readUuid(), in.readVarLong(), in.readVarLong(), in.readVarInt(), in.readVarInt(), in.readVarLong());
+            return new SegmentAcknowledgement(STREAM_IDENTITY.decode(in), in.readVarLong(), in.readVarInt(), in.readVarInt(), in.readVarLong());
         }
         @Override public void encode(WireOutput out, SegmentAcknowledgement value) {
-            out.writeUuid(value.sessionId()); out.writeVarLong(value.generation()); out.writeVarLong(value.requestId());
+            STREAM_IDENTITY.encode(out, value.identity()); out.writeVarLong(value.requestId());
             out.writeVarInt(value.segmentIndex()); out.writeVarInt(value.receivedThroughChunk()); out.writeVarLong(value.bufferedMs());
         }
     };
 
     public static final WireCodec<ClientHealth> CLIENT_HEALTH = new WireCodec<ClientHealth>() {
         @Override public ClientHealth decode(WireInput in) {
-            return new ClientHealth(in.readUuid(), in.readVarLong(), in.readUtf(32), in.readVarInt(), in.readVarInt(), in.readVarInt(), in.readVarLong(), in.readVarLong());
+            return new ClientHealth(STREAM_IDENTITY.decode(in), in.readUtf(32), in.readVarInt(), in.readVarInt(), in.readVarInt(), in.readVarLong(), in.readVarLong());
         }
         @Override public void encode(WireOutput out, ClientHealth value) {
-            out.writeUuid(value.sessionId()); out.writeVarLong(value.generation()); out.writeUtf(value.state(), 32);
+            STREAM_IDENTITY.encode(out, value.identity()); out.writeUtf(value.state(), 32);
             out.writeVarInt(value.decoderRecoveries()); out.writeVarInt(value.videoDrops()); out.writeVarInt(value.audioUnderruns());
             out.writeVarLong(value.bufferedMs()); out.writeVarLong(value.driftMs());
         }
@@ -236,12 +265,39 @@ public final class VideoPackets {
         public String libraryId(){return libraryId;} public String parentKey(){return parentKey;} public String query(){return query;} public int page(){return page;} public boolean hasMore(){return hasMore;} public List<VideoMediaItem> items(){return items;}
     }
     public static final class SessionCommand implements CinemarrMessage {
+        private TvDisplaySettings display;
+        public TvDisplaySettings displaySettings() { return display; }
+        public SessionCommand withDisplay(TvDisplaySettings settings) {
+            SessionCommand copy = new SessionCommand(action,controllerPos,libraryId,itemKey,sessionName,mode,expectedGeneration,seekPositionMs,audioStreamId,subtitleStreamId);
+            copy.display = settings; return copy;
+        }
         private final SessionAction action; private final long controllerPos; private final String libraryId,itemKey,sessionName; private final PresentationMode mode;
         private final long expectedGeneration,seekPositionMs; private final int audioStreamId,subtitleStreamId;
         public SessionCommand(SessionAction action,long controllerPos,String libraryId,String itemKey,String sessionName,PresentationMode mode,long expectedGeneration,long seekPositionMs,int audioStreamId,int subtitleStreamId){this.action=action;this.controllerPos=controllerPos;this.libraryId=safe(libraryId);this.itemKey=safe(itemKey);this.sessionName=safe(sessionName);this.mode=mode;this.expectedGeneration=expectedGeneration;this.seekPositionMs=seekPositionMs;this.audioStreamId=audioStreamId;this.subtitleStreamId=subtitleStreamId;}
         public SessionAction action(){return action;} public long controllerPos(){return controllerPos;} public String libraryId(){return libraryId;} public String itemKey(){return itemKey;} public String sessionName(){return sessionName;} public PresentationMode presentationMode(){return mode;} public long expectedGeneration(){return expectedGeneration;} public long seekPositionMs(){return seekPositionMs;} public int audioStreamId(){return audioStreamId;} public int subtitleStreamId(){return subtitleStreamId;}
     }
-    public static final class SessionState implements CinemarrMessage {
+    public static final class SessionState implements StreamMessage {
+        @Override public VideoStreamIdentity identity() { return new VideoStreamIdentity(timelineId(), timelineGeneration(), sessionId, generation); }
+        private TvDisplaySettings display;
+        private UUID timelineId;
+        private long timelineGeneration;
+        public UUID timelineId() { return timelineId == null ? sessionId : timelineId; }
+        public long timelineGeneration() { return timelineId == null ? generation : timelineGeneration; }
+        public SessionState withTimeline(UUID id, long revision) {
+            if(id==null||revision<0)throw new IllegalArgumentException("Invalid timeline identity");
+            SessionState copy=withDisplay(displaySettings(),effectiveWidth,effectiveHeight);copy.timelineId=id;copy.timelineGeneration=revision;return copy;
+        }
+        private int effectiveWidth, effectiveHeight;
+        public TvDisplaySettings displaySettings() { return display == null ? TvDisplaySettings.defaults(mode) : display; }
+        public int effectiveWidth() { return effectiveWidth; }
+        public int effectiveHeight() { return effectiveHeight; }
+        public SessionState withDisplay(TvDisplaySettings settings, int effectiveWidth, int effectiveHeight) {
+            if (settings == null || effectiveWidth < 0 || effectiveHeight < 0 || (effectiveWidth == 0) != (effectiveHeight == 0))
+                throw new IllegalArgumentException("Invalid display state");
+            if (effectiveWidth > 0) stonytark.cinemarr.core.client.DecodedBufferBudget.rgbaBytes(effectiveWidth,effectiveHeight);
+            SessionState copy = new SessionState(televisionId,controllerPos,sessionId,generation,status,item,positionMs,durationMs,paused,settings.layout(),width,height,mask,facing,plane,minimumU,minimumV,streams,selectedAudioStreamId,selectedSubtitleStreamId,serverEpochMs,canControl,message);
+            copy.timelineId=timelineId;copy.timelineGeneration=timelineGeneration;copy.display = settings; copy.effectiveWidth=effectiveWidth; copy.effectiveHeight=effectiveHeight; return copy;
+        }
         private final UUID televisionId,sessionId; private final long controllerPos,generation; private final SessionStatus status; private final VideoMediaItem item;
         private final long positionMs,durationMs; private final boolean paused; private final PresentationMode mode; private final int width,height; private final byte[] mask;
         private final ScreenFacing facing; private final int plane,minimumU,minimumV; private final long serverEpochMs; private final boolean canControl; private final String message;
@@ -264,15 +320,164 @@ public final class VideoPackets {
         public SegmentDescriptor(int index,long pts,long duration,boolean keyframe,int bytes,String sha){this.index=index;this.pts=pts;this.duration=duration;this.keyframe=keyframe;this.byteLength=bytes;this.sha=safe(sha);}
         public int index(){return index;} public long presentationTimeMs(){return pts;} public long durationMs(){return duration;} public boolean keyframe(){return keyframe;} public int byteLength(){return byteLength;} public String sha256(){return sha;}
     }
-    public static final class SegmentManifest implements CinemarrMessage {
-        private final UUID session; private final long generation,duration; private final int width,height; private final String container,video,audio; private final boolean hasMore; private final List<SegmentDescriptor> segments;
-        public SegmentManifest(UUID session,long generation,int width,int height,String container,String video,String audio,long duration,boolean hasMore,List<SegmentDescriptor> segments){this.session=session;this.generation=generation;this.width=width;this.height=height;this.container=safe(container);this.video=safe(video);this.audio=safe(audio);this.duration=duration;this.hasMore=hasMore;this.segments=immutable(segments);}
-        public UUID sessionId(){return session;} public long generation(){return generation;} public int width(){return width;} public int height(){return height;} public String container(){return container;} public String videoCodec(){return video;} public String audioCodec(){return audio;} public long durationMs(){return duration;} public boolean hasMore(){return hasMore;} public List<SegmentDescriptor> segments(){return segments;}
+    public static final class SegmentManifest implements StreamMessage {
+        private final VideoStreamIdentity identity;
+        private final int width;
+        private final int height;
+        private final String container;
+        private final String video;
+        private final String audio;
+        private final long duration;
+        private final boolean hasMore;
+        private final List<SegmentDescriptor> segments;
+        public SegmentManifest(UUID session, long generation, int width, int height, String container, String video, String audio, long duration, boolean hasMore, List<SegmentDescriptor> segments) {
+            this(new VideoStreamIdentity(session, generation, session, generation), width, height, container, video, audio, duration, hasMore, segments);
+        }
+        public SegmentManifest(VideoStreamIdentity identity, int width, int height, String container, String video, String audio, long duration, boolean hasMore, List<SegmentDescriptor> segments) {
+            if (identity == null) throw new IllegalArgumentException("Video identity is required");
+            this.identity = identity;
+            this.width = width;
+            this.height = height;
+            this.container = safe(container);
+            this.video = safe(video);
+            this.audio = safe(audio);
+            this.duration = duration;
+            this.hasMore = hasMore;
+            this.segments = immutable(segments);
+        }
+        @Override public VideoStreamIdentity identity() { return identity; }
+        public int width() { return width; }
+        public int height() { return height; }
+        public String container() { return container; }
+        public String videoCodec() { return video; }
+        public String audioCodec() { return audio; }
+        public long durationMs() { return duration; }
+        public boolean hasMore() { return hasMore; }
+        public List<SegmentDescriptor> segments() { return segments; }
     }
-    public static final class SegmentManifestRequest implements CinemarrMessage { private final UUID session;private final long generation;private final int first;public SegmentManifestRequest(UUID session,long generation,int first){this.session=session;this.generation=generation;this.first=first;}public UUID sessionId(){return session;}public long generation(){return generation;}public int firstSegmentIndex(){return first;} }
-    public static final class SegmentRequest implements CinemarrMessage { private final UUID session; private final long generation,request; private final int segment,first,count; public SegmentRequest(UUID s,long g,long r,int seg,int first,int count){session=s;generation=g;request=r;segment=seg;this.first=first;this.count=count;} public UUID sessionId(){return session;} public long generation(){return generation;} public long requestId(){return request;} public int segmentIndex(){return segment;} public int firstChunk(){return first;} public int chunkCount(){return count;} }
-    public static final class SegmentChunk implements CinemarrMessage { private final UUID session; private final long generation,request,pts; private final int segment,chunk,total; private final boolean keyframe; private final String sha; private final byte[] data; public SegmentChunk(UUID s,long g,long r,int seg,int chunk,int total,long pts,boolean key,String sha,byte[] data){session=s;generation=g;request=r;segment=seg;this.chunk=chunk;this.total=total;this.pts=pts;keyframe=key;this.sha=safe(sha);this.data=data==null?new byte[0]:data.clone();} public UUID sessionId(){return session;} public long generation(){return generation;} public long requestId(){return request;} public int segmentIndex(){return segment;} public int chunkIndex(){return chunk;} public int totalChunks(){return total;} public long presentationTimeMs(){return pts;} public boolean keyframe(){return keyframe;} public String segmentSha256(){return sha;} public byte[] data(){return data.clone();} }
-    public static final class SegmentAcknowledgement implements CinemarrMessage { private final UUID session; private final long generation,request,buffered; private final int segment,through; public SegmentAcknowledgement(UUID s,long g,long r,int seg,int through,long buffered){session=s;generation=g;request=r;segment=seg;this.through=through;this.buffered=buffered;} public UUID sessionId(){return session;} public long generation(){return generation;} public long requestId(){return request;} public int segmentIndex(){return segment;} public int receivedThroughChunk(){return through;} public long bufferedMs(){return buffered;} }
-    public static final class ClientHealth implements CinemarrMessage { private final UUID session; private final long generation,buffered,drift; private final String state; private final int recoveries,drops,underruns; public ClientHealth(UUID s,long g,String state,int recoveries,int drops,int underruns,long buffered,long drift){session=s;generation=g;this.state=safe(state);this.recoveries=recoveries;this.drops=drops;this.underruns=underruns;this.buffered=buffered;this.drift=drift;} public UUID sessionId(){return session;} public long generation(){return generation;} public String state(){return state;} public int decoderRecoveries(){return recoveries;} public int videoDrops(){return drops;} public int audioUnderruns(){return underruns;} public long bufferedMs(){return buffered;} public long driftMs(){return drift;} }
+    public static final class SegmentManifestRequest implements StreamMessage {
+        private final VideoStreamIdentity identity;
+        private final int first;
+        public SegmentManifestRequest(UUID session, long generation, int first) {
+            this(new VideoStreamIdentity(session, generation, session, generation), first);
+        }
+        public SegmentManifestRequest(VideoStreamIdentity identity, int first) {
+            if (identity == null) throw new IllegalArgumentException("Video identity is required");
+            this.identity = identity;
+            this.first = first;
+        }
+        @Override public VideoStreamIdentity identity() { return identity; }
+        public int firstSegmentIndex() { return first; }
+    }
+    public static final class SegmentRequest implements StreamMessage {
+        private final VideoStreamIdentity identity;
+        private final long request;
+        private final int segment;
+        private final int first;
+        private final int count;
+        public SegmentRequest(UUID session, long generation, long request, int segment, int first, int count) {
+            this(new VideoStreamIdentity(session, generation, session, generation), request, segment, first, count);
+        }
+        public SegmentRequest(VideoStreamIdentity identity, long request, int segment, int first, int count) {
+            if (identity == null) throw new IllegalArgumentException("Video identity is required");
+            this.identity = identity;
+            this.request = request;
+            this.segment = segment;
+            this.first = first;
+            this.count = count;
+        }
+        @Override public VideoStreamIdentity identity() { return identity; }
+        public long requestId() { return request; }
+        public int segmentIndex() { return segment; }
+        public int firstChunk() { return first; }
+        public int chunkCount() { return count; }
+    }
+    public static final class SegmentChunk implements StreamMessage {
+        private final VideoStreamIdentity identity;
+        private final long request;
+        private final int segment;
+        private final int chunk;
+        private final int total;
+        private final long pts;
+        private final boolean keyframe;
+        private final String sha;
+        private final byte[] data;
+        public SegmentChunk(UUID session, long generation, long request, int segment, int chunk, int total, long pts, boolean keyframe, String sha, byte[] data) {
+            this(new VideoStreamIdentity(session, generation, session, generation), request, segment, chunk, total, pts, keyframe, sha, data);
+        }
+        public SegmentChunk(VideoStreamIdentity identity, long request, int segment, int chunk, int total, long pts, boolean keyframe, String sha, byte[] data) {
+            if (identity == null) throw new IllegalArgumentException("Video identity is required");
+            this.identity = identity;
+            this.request = request;
+            this.segment = segment;
+            this.chunk = chunk;
+            this.total = total;
+            this.pts = pts;
+            this.keyframe = keyframe;
+            this.sha = safe(sha);
+            this.data = data == null ? new byte[0] : data.clone();
+        }
+        @Override public VideoStreamIdentity identity() { return identity; }
+        public long requestId() { return request; }
+        public int segmentIndex() { return segment; }
+        public int chunkIndex() { return chunk; }
+        public int totalChunks() { return total; }
+        public long presentationTimeMs() { return pts; }
+        public boolean keyframe() { return keyframe; }
+        public String segmentSha256() { return sha; }
+        public byte[] data() { return data.clone(); }
+    }
+    public static final class SegmentAcknowledgement implements StreamMessage {
+        private final VideoStreamIdentity identity;
+        private final long request;
+        private final int segment;
+        private final int through;
+        private final long buffered;
+        public SegmentAcknowledgement(UUID session, long generation, long request, int segment, int through, long buffered) {
+            this(new VideoStreamIdentity(session, generation, session, generation), request, segment, through, buffered);
+        }
+        public SegmentAcknowledgement(VideoStreamIdentity identity, long request, int segment, int through, long buffered) {
+            if (identity == null) throw new IllegalArgumentException("Video identity is required");
+            this.identity = identity;
+            this.request = request;
+            this.segment = segment;
+            this.through = through;
+            this.buffered = buffered;
+        }
+        @Override public VideoStreamIdentity identity() { return identity; }
+        public long requestId() { return request; }
+        public int segmentIndex() { return segment; }
+        public int receivedThroughChunk() { return through; }
+        public long bufferedMs() { return buffered; }
+    }
+    public static final class ClientHealth implements StreamMessage {
+        private final VideoStreamIdentity identity;
+        private final String state;
+        private final int recoveries;
+        private final int drops;
+        private final int underruns;
+        private final long buffered;
+        private final long drift;
+        public ClientHealth(UUID session, long generation, String state, int recoveries, int drops, int underruns, long buffered, long drift) {
+            this(new VideoStreamIdentity(session, generation, session, generation), state, recoveries, drops, underruns, buffered, drift);
+        }
+        public ClientHealth(VideoStreamIdentity identity, String state, int recoveries, int drops, int underruns, long buffered, long drift) {
+            if (identity == null) throw new IllegalArgumentException("Video identity is required");
+            this.identity = identity;
+            this.state = safe(state);
+            this.recoveries = recoveries;
+            this.drops = drops;
+            this.underruns = underruns;
+            this.buffered = buffered;
+            this.drift = drift;
+        }
+        @Override public VideoStreamIdentity identity() { return identity; }
+        public String state() { return state; }
+        public int decoderRecoveries() { return recoveries; }
+        public int videoDrops() { return drops; }
+        public int audioUnderruns() { return underruns; }
+        public long bufferedMs() { return buffered; }
+        public long driftMs() { return drift; }
+    }
     private VideoPackets() {}
 }

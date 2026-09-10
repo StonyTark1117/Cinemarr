@@ -10,7 +10,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/** Stable protocol-10 identifiers for connection management and television playback. */
+/** Stable protocol-11 identifiers for connection management and television playback. */
 public final class LegacyPacketTypes {
     public enum Direction { CLIENTBOUND, SERVERBOUND }
 

@@ -184,7 +184,7 @@ public final class Cinemarr {
     @NetworkCheckHandler
     public boolean requireMatchingClient(Map<String, String> remoteVersions, Side remoteSide) {
         if (remoteSide == Side.CLIENT) {
-            // Let an absent/older client reach LegacyNetwork's explicit protocol-10 hello gate so
+            // Let an absent/older client reach LegacyNetwork's explicit protocol-11 hello gate so
             // it receives Cinemarr's clear timeout/mismatch text instead of FML's generic timeout.
             return true;
         }
