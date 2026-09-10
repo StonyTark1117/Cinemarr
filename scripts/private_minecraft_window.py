@@ -31,13 +31,15 @@ class PrivateMinecraftWindow:
         while True:
             try:
                 # The title varies by loader/version (and may be blank while
-                # the client is first mapping). The private X server is owned
-                # exclusively by this gate, so enumerate visible windows and
-                # retain the exact-one invariant instead of assuming a title.
+                # the client is first mapping). Some headless WMs leave a
+                # continuously rendered GL window out of _NET_WM_STATE's
+                # visible set, so use the private display's named clients as
+                # the primary discovery source and retain the exact-one
+                # invariant instead of assuming a title or WM hint.
                 # `.*` also matches the private X root window on some xdotool
                 # builds. Require a non-empty name so the root cannot become
                 # a second apparent Minecraft client.
-                windows = self.run("xdotool", "search", "--onlyvisible", "--name", ".+").splitlines()
+                windows = self.run("xdotool", "search", "--name", ".+").splitlines()
                 if not windows:
                     # Native clients may briefly expose a blank title. In
                     # that case enumerate all visible windows once and remove
