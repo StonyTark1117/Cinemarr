@@ -23,10 +23,12 @@ video frames, so no runtime acceptance checkbox is closed from this run.
 The authoritative interruption/cleanup record is
 `build/release-resume-20260909/plex-session-lifecycle/source-change-interruption-review.json`.
 It overrides the earlier in-progress summaries. The original 843-input source
-snapshot and prior receipts remain historical evidence. Designated Proxmox,
-DiscPanel, Plex and native guest access works; access is not the blocker. The
-retained `codex-minecraft-dev` guest (`qemu/143`) was rechecked on 2026-09-10
-through the Proxmox guest agent: it provides `/usr/bin/Xvfb` and
+snapshot and prior receipts remain historical evidence. The Proxmox control plane,
+DiscPanel and Plex endpoints are reachable, and existing server credentials can
+be reused. The retained `codex-minecraft-dev` guest (`qemu/143`) is
+inventory-visible, but its guest agent did not answer execution requests in this
+checkout; retained-guest staging and checks remain open. Earlier evidence
+recorded that it provides `/usr/bin/Xvfb` and
 `/usr/bin/xvfb-run`, and its private `/opt/cinemarr/java8` Temurin 8 runtime
 was restored for the legacy gate. The guest was powered off after inspection;
 the candidate runtime bundle still must be staged there before real-Plex
