@@ -8,7 +8,7 @@ Cinemarr is a required client-and-server Minecraft mod for server-authoritative 
 
 This checkout targets **Cinemarr 1.0.0**. It is a prerelease development build,
 **not a release candidate**. Custom TV display controls and independent per-TV
-streams are now required 1.0 work across all **16 artifacts / 21 runtimes**.
+streams are now required 1.0 work across the **16-artifact / 21-runtime** matrix.
 See the [full feature specification](docs/1.0_CUSTOM_TV_DISPLAY_PLAN.md) and
 [release hardening plan](docs/1.0_RELEASE_HARDENING_PLAN.md).
 
