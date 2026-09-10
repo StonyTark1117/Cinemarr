@@ -49,7 +49,7 @@ def main():
         raise RuntimeError("No verified owner controller at the required logical size")
     # Controller reopening can briefly unmap the native window while widgets
     # are rebuilt; tolerate that bounded transition before failing visibility.
-    desktop = PrivateMinecraftWindow(initial, args.gate_pid, wait_seconds=10)
+    desktop = PrivateMinecraftWindow(initial, args.gate_pid, wait_seconds=30)
     args.output.mkdir(parents=True)
     captures, actions = [], []
     control = args.log.with_name(args.log.name.removesuffix(".console.log") + ".control")

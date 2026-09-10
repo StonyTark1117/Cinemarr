@@ -31,7 +31,7 @@ def main():
     # The client may unmap/remap its native window while the controller page
     # is being rebuilt. Use the helper's bounded wait instead of treating that
     # transition as a missing display.
-    desktop = PrivateMinecraftWindow(initial, args.gate_pid, wait_seconds=10)
+    desktop = PrivateMinecraftWindow(initial, args.gate_pid, wait_seconds=30)
     args.output.mkdir(parents=True)
     captures = []
     actions = []
