@@ -43,7 +43,12 @@ class PrivateMinecraftWindow:
                     for window in windows:
                         try:
                             owner = int(self.run("xdotool", "getwindowpid", window))
-                        except (ValueError, KeyError, subprocess.CalledProcessError, StopIteration) as error:
+                        except subprocess.CalledProcessError:
+                            # A window can disappear between search and PID
+                            # lookup (notably during delayed mapping); retry
+                            # the bounded discovery loop.
+                            continue
+                        except (ValueError, KeyError, StopIteration) as error:
                             raise RuntimeError("Unable to identify private Minecraft window owner") from error
                         if self.owned(owner):
                             owned_windows.append(window)
