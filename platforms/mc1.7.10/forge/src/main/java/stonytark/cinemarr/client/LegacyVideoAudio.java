@@ -21,7 +21,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayDeque;
 import java.util.List;
 import java.util.Queue;
-import java.util.UUID;
+import stonytark.cinemarr.core.protocol.VideoStreamIdentity;
 
 /** Timeline-gated positional PCM fed through Minecraft's existing OpenAL context. */
 final class LegacyVideoAudio {
@@ -49,8 +49,7 @@ final class LegacyVideoAudio {
     private static final int MAX_PENDING_FRAMES = 768;
     private final Queue<LegacyDecodedAudioFrame> pending = new ArrayDeque<LegacyDecodedAudioFrame>();
     private final Queue<OpenAlBuffer> backendBuffers = new ArrayDeque<OpenAlBuffer>();
-    private UUID sessionId;
-    private long generation = -1;
+    private VideoStreamIdentity identity;
     private SoundSystem soundSystem;
     private AudioFormat format;
     private int source;
@@ -73,11 +72,13 @@ final class LegacyVideoAudio {
     private int stableTicks;
     private long lastAcceptanceLogMs;
 
+    private void bindIdentity(VideoStreamIdentity next) {
+        if (!next.equals(identity)) { reset(); identity = next; }
+    }
+
     void tick(LegacyVideoPlayback playback, VideoPackets.SessionState session, List<VideoPackets.SessionState> televisions) {
         if (session == null || session.item() == null || session.status() == VideoPackets.SessionStatus.IDLE || televisions.isEmpty()) { reset(); return; }
-        if (!session.sessionId().equals(sessionId) || session.generation() != generation) {
-            reset(); sessionId = session.sessionId(); generation = session.generation();
-        }
+        bindIdentity(session.identity());
         long targetUs = LegacyVideoPlayback.authoritativePositionMs(session,
                 LegacyClientState.INSTANCE.serverEpoch(System.currentTimeMillis())) * 1_000L;
         LegacyDecodedAudioFrame frame;
@@ -412,7 +413,7 @@ final class LegacyVideoAudio {
         // IDs belonging to the new context. Only discard our old ownership.
         forgetSource();
     }
-    void reset() { stopSource(); pending.clear(); sessionId = null; generation = -1; underruns = 0;
+    void reset() { stopSource(); pending.clear(); identity = null; underruns = 0;
         driftTicks = stableTicks = 0; lastAcceptanceLogMs = 0L; }
     private void stopSource() {
         try {

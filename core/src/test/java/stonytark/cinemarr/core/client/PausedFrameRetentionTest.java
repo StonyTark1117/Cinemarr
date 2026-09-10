@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import stonytark.cinemarr.core.library.MediaKind;
 import stonytark.cinemarr.core.library.VideoMediaItem;
 import stonytark.cinemarr.core.protocol.VideoPackets;
+import stonytark.cinemarr.core.protocol.VideoStreamIdentity;
 import stonytark.cinemarr.core.screen.ScreenFacing;
 import stonytark.cinemarr.core.video.PresentationMode;
 import static org.junit.jupiter.api.Assertions.*;
@@ -43,5 +44,30 @@ class PausedFrameRetentionTest {
         }
         assertFalse(PausedFrameRetention.permits(session, 1, "movie", state(session, 2, null, true, VideoPackets.SessionStatus.PAUSED)));
         assertFalse(PausedFrameRetention.permits(session, 1, "movie", state(null, 2, "movie", true, VideoPackets.SessionStatus.PAUSED)));
+    }
+
+    @Test void retainsOnTimelineOnlyPauseAndNeverAcrossPartyOrTvOwnership() {
+        UUID timeline = UUID.randomUUID();
+        VideoStreamIdentity previous = new VideoStreamIdentity(timeline, 7, session, 2);
+        VideoPackets.SessionState paused = state(session, 2, "movie", true, VideoPackets.SessionStatus.PAUSED).withTimeline(timeline, 8);
+        assertTrue(PausedFrameRetention.permits(previous, "movie", paused));
+        assertFalse(PausedFrameRetention.permits(previous, "movie", paused.withTimeline(UUID.randomUUID(), 8)));
+        assertFalse(PausedFrameRetention.permits(previous, "movie", state(UUID.randomUUID(), 3, "movie", true,
+                VideoPackets.SessionStatus.PAUSED).withTimeline(timeline, 8)));
+        assertFalse(PausedFrameRetention.permits(previous, "movie", paused.withTimeline(timeline, 7)));
+        assertFalse(PausedFrameRetention.permits(previous, "movie", paused.withTimeline(timeline, 6)));
+    }
+
+    @Test void eitherGenerationMayAdvanceButNeitherMayRegressWhenRetainingAPausedFrame() {
+        UUID timeline = UUID.randomUUID();
+        VideoStreamIdentity previous = new VideoStreamIdentity(timeline, 7, session, 2);
+        for (int nextTimeline = 6; nextTimeline <= 8; nextTimeline++) {
+            for (int nextStream = 1; nextStream <= 3; nextStream++) {
+                VideoPackets.SessionState paused = state(session, nextStream, "movie", true, VideoPackets.SessionStatus.PAUSED)
+                        .withTimeline(timeline, nextTimeline);
+                assertEquals(nextTimeline >= 7 && nextStream >= 2 && (nextTimeline > 7 || nextStream > 2),
+                        PausedFrameRetention.permits(previous, "movie", paused));
+            }
+        }
     }
 }

@@ -5,19 +5,19 @@ import org.junit.jupiter.api.Test;
 import java.lang.reflect.Field;
 import java.util.Queue;
 import java.util.UUID;
+import stonytark.cinemarr.core.protocol.VideoStreamIdentity;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class LegacyVideoAudioReloadTest {
     @Test void reloadAfterContextDestructionDiscardsNativeIdsWithoutCallingOpenAl() throws Exception {
         LegacyVideoAudio audio = new LegacyVideoAudio();
-        UUID session = UUID.randomUUID();
+        VideoStreamIdentity identity = new VideoStreamIdentity(UUID.randomUUID(), 3, UUID.randomUUID(), 11);
         set(audio, "source", 42);
         set(audio, "prepared", true);
         set(audio, "started", true);
         set(audio, "sourcePaused", true);
-        set(audio, "sessionId", session);
-        set(audio, "generation", 11L);
+        set(audio, "identity", identity);
         set(audio, "underruns", 3);
         set(audio, "stableTicks", 40);
         set(audio, "backendCompletedUs", 123_000L);
@@ -43,14 +43,13 @@ class LegacyVideoAudioReloadTest {
         assertEquals(0L, get(audio, "queuedUntilLocalUs"));
         assertTrue(queue(audio, "backendBuffers").isEmpty());
         assertSame(pending, queue(audio, "pending").peek());
-        assertEquals(session, get(audio, "sessionId"));
-        assertEquals(11L, get(audio, "generation"));
+        assertEquals(identity, get(audio, "identity"));
         assertEquals(3, audio.underruns(), "Reload must not erase previously recorded failures");
         assertFalse(audio.ready());
         assertDoesNotThrow(audio::audioEngineReloaded, "Repeated reload must be idempotent");
         assertDoesNotThrow(audio::reset, "Disconnect after reload must not touch obsolete native IDs");
         assertTrue(queue(audio, "pending").isEmpty());
-        assertNull(get(audio, "sessionId"));
+        assertNull(get(audio, "identity"));
     }
 
     @Test void nativeIdsBelongOnlyToTheSameLiveContextIdentity() {
@@ -61,6 +60,29 @@ class LegacyVideoAudioReloadTest {
         assertFalse(LegacyVideoAudio.ownsContext(null, null, true));
         assertFalse(LegacyVideoAudio.ownsContext(original, replacement, true),
                 "Even equal-looking replacement contexts cannot own the old native IDs");
+    }
+
+    @Test void completeStreamIdentityOwnsPendingAudioAcrossSeekRetuneAndQualityChanges() throws Exception {
+        VideoStreamIdentity original = new VideoStreamIdentity(UUID.randomUUID(), 4, UUID.randomUUID(), 9);
+        VideoStreamIdentity[] replacements = {
+                new VideoStreamIdentity(UUID.randomUUID(), 4, original.streamId(), 9),
+                new VideoStreamIdentity(original.timelineId(), 5, original.streamId(), 9),
+                new VideoStreamIdentity(original.timelineId(), 4, UUID.randomUUID(), 9),
+                new VideoStreamIdentity(original.timelineId(), 4, original.streamId(), 10)
+        };
+        java.lang.reflect.Method bind = LegacyVideoAudio.class.getDeclaredMethod("bindIdentity", VideoStreamIdentity.class);
+        bind.setAccessible(true);
+        for (VideoStreamIdentity replacement : replacements) {
+            LegacyVideoAudio audio = new LegacyVideoAudio(); bind.invoke(audio, original);
+            LegacyDecodedAudioFrame frame = new LegacyDecodedAudioFrame(100_000, 48_000, 2, new byte[8]);
+            queue(audio, "pending").add(frame); set(audio, "underruns", 3);
+            bind.invoke(audio, new VideoStreamIdentity(original.timelineId(), 4, original.streamId(), 9));
+            assertSame(frame, queue(audio, "pending").peek()); assertEquals(3, audio.underruns());
+            bind.invoke(audio, replacement);
+            assertEquals(replacement, get(audio, "identity"));
+            assertTrue(queue(audio, "pending").isEmpty()); assertEquals(0, audio.underruns());
+            audio.reset(); assertNull(get(audio, "identity"));
+        }
     }
 
     @SuppressWarnings("unchecked")

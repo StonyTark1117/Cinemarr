@@ -22,7 +22,7 @@ import stonytark.cinemarr.mixin.client.SoundManagerAccessor;
 import java.util.Comparator;
 import java.util.PriorityQueue;
 import java.util.Queue;
-import java.util.UUID;
+import stonytark.cinemarr.core.protocol.VideoStreamIdentity;
 
 /** Timeline-gated positional TV audio. Audio starts only after a future buffer exists. */
 public final class CinemarrVideoAudio {
@@ -43,8 +43,7 @@ public final class CinemarrVideoAudio {
     private static final int READY_STABLE_TICKS = 10;
     private final Queue<DecodedAudioFrame> pending =
             new PriorityQueue<>(Comparator.comparingLong(DecodedAudioFrame::presentationTimeUs));
-    private UUID sessionId;
-    private long generation = -1;
+    private VideoStreamIdentity identity;
     private VideoPcmAudioStream stream;
     private ChannelAccess.ChannelHandle channel;
     private boolean channelPending;
@@ -65,9 +64,7 @@ public final class CinemarrVideoAudio {
 
     public void tick(CinemarrVideoPlayback playback, VideoPackets.SessionState session) {
         if (session == null || session.item() == null || session.status() == VideoPackets.SessionStatus.IDLE) { reset(); return; }
-        if (!session.sessionId().equals(sessionId) || session.generation() != generation) {
-            reset(); sessionId = session.sessionId(); generation = session.generation();
-        }
+        bindIdentity(session.identity());
         long targetUs = CinemarrVideoPlayback.authoritativePositionMsLocal(session) * 1_000L;
         boolean acceptMore = pending.size() < MAX_PENDING_FRAMES;
         if (stream != null) {
@@ -159,6 +156,10 @@ public final class CinemarrVideoAudio {
         }
     }
 
+    private void bindIdentity(VideoStreamIdentity next) {
+        if (!next.equals(identity)) { reset(); identity = next; }
+    }
+
     private void prepareAndStart(VideoPackets.SessionState session, long targetUs) {
         while (!pending.isEmpty() && endUs(pending.peek()) < targetUs - 50_000L) pending.poll();
         if (pending.isEmpty()) return;
@@ -166,18 +167,18 @@ public final class CinemarrVideoAudio {
         StartWindow window = startWindow(scheduledStartUs);
         if (window == null || !hasStartRunway(scheduledStartUs, window.first.presentationTimeUs(),
                 endUs(window.first), endUs(window.last))) return;
-        UUID expectedSession = sessionId; long expectedGeneration = generation; long expectedAttempt = ++channelAttempt; channelPending = true;
+        VideoStreamIdentity expectedIdentity = identity; long expectedAttempt = ++channelAttempt; channelPending = true;
         ChannelAccess access = ((SoundEngineAccessor) ((SoundManagerAccessor) (Object) Minecraft.getInstance().getSoundManager()).cinemarr$soundEngine()).cinemarr$channelAccess();
         access.createHandle(Library.Pool.STREAMING).whenComplete((handle, error) -> Minecraft.getInstance().execute(
-                () -> finishStart(session, expectedSession, expectedGeneration, expectedAttempt, scheduledStartUs, handle, error)));
+                () -> finishStart(session, expectedIdentity, expectedAttempt, scheduledStartUs, handle, error)));
     }
 
-    private void finishStart(VideoPackets.SessionState session, UUID expectedSession, long expectedGeneration,
+    private void finishStart(VideoPackets.SessionState session, VideoStreamIdentity expectedIdentity,
                              long expectedAttempt, long scheduledStartUs,
                              ChannelAccess.ChannelHandle handle, Throwable error) {
         if (expectedAttempt != channelAttempt) { if (handle != null) handle.execute(com.mojang.blaze3d.audio.Channel::stop); return; }
         channelPending = false;
-        if (error != null || handle == null || !expectedSession.equals(sessionId) || expectedGeneration != generation) {
+        if (error != null || handle == null || !expectedIdentity.equals(identity)) {
             if (handle != null) handle.execute(com.mojang.blaze3d.audio.Channel::stop); return;
         }
         long targetUs = CinemarrVideoPlayback.authoritativePositionMsLocal(session) * 1_000L;
@@ -432,7 +433,7 @@ public final class CinemarrVideoAudio {
     public int underruns() { return underruns; }
     public boolean ready() { return stream != null && channel != null && !channel.isStopped() && stableTicks >= READY_STABLE_TICKS; }
     public void audioEngineReloaded() { resetChannel(); }
-    public void reset() { resetChannel(); pending.clear(); sessionId=null; generation=-1; underruns=0;caughtUpTicks=0;lastAcceptanceLogMs=0; }
+    public void reset() { resetChannel(); pending.clear(); identity=null; underruns=0;caughtUpTicks=0;lastAcceptanceLogMs=0; }
     private void resetChannel() {
         channelAttempt++;
         if (channel != null) { channel.execute(com.mojang.blaze3d.audio.Channel::stop); channel=null; }
