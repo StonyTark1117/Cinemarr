@@ -48,7 +48,9 @@ def main():
     initial = log()
     if not re.search(r"Acceptance video UI: width=320 height=240 widgets=[1-9][0-9]* clipped=0 canControl=true overlaps=0", initial):
         raise RuntimeError("No verified owner controller at the required logical size")
-    desktop = PrivateMinecraftWindow(initial, args.gate_pid)
+    # Controller reopening can briefly unmap the native window while widgets
+    # are rebuilt; tolerate that bounded transition before failing visibility.
+    desktop = PrivateMinecraftWindow(initial, args.gate_pid, wait_seconds=10)
     args.output.mkdir(parents=True)
     captures, actions = [], []
     control = args.log.with_name(args.log.name.removesuffix(".console.log") + ".control")

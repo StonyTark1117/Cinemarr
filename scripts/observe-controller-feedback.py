@@ -28,7 +28,10 @@ def main():
     initial = log()
     if not re.search(r"Acceptance video UI: width=320 height=240 widgets=[1-9][0-9]* clipped=0 canControl=false overlaps=0", initial):
         raise RuntimeError("No verified non-owner scaled controller")
-    desktop = PrivateMinecraftWindow(initial, args.gate_pid)
+    # The client may unmap/remap its native window while the controller page
+    # is being rebuilt. Use the helper's bounded wait instead of treating that
+    # transition as a missing display.
+    desktop = PrivateMinecraftWindow(initial, args.gate_pid, wait_seconds=10)
     args.output.mkdir(parents=True)
     captures = []
     actions = []
