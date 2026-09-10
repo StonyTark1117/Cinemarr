@@ -91,8 +91,13 @@ class PrivateMinecraftWindow:
                                     info = self.run("xwininfo", "-id", window)
                                 except subprocess.CalledProcessError:
                                     continue
-                                if "IsViewable" in info:
+                                if "Map State:" not in info or "IsViewable" in info:
                                     windows.append(window)
+                                elif "IsUnmapped" not in info:
+                                    now = time.monotonic()
+                                    first_seen = ambiguous_since.setdefault(window, now)
+                                    if now - first_seen >= 0.5:
+                                        windows.append(window)
                     except (IndexError, ValueError, subprocess.CalledProcessError):
                         windows = []
                 if len(windows) > 1:
