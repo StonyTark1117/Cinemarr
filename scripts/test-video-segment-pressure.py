@@ -37,8 +37,11 @@ class SegmentTests(unittest.TestCase):
             with self.subTest(path=path):
                 source=(root/path).read_text()
                 tracking=source.split('private void refreshTracking(',1)[1].split('\n    }',1)[0]
-                self.assertIn('trackedScreenSessions.put(television.id(), state.id())', tracking)
-                cleanup='if (transferGrants.releaseUntracked(playerId, trackedScreenSessions, previousTvs.keySet())) egress.remove(playerId);'
+                # The identity refactor tracks full TV-stream ownership rather
+                # than session-name strings. Departed windows must be released
+                # before a returned screen can publish its new snapshot.
+                self.assertIn('trackedStreams.add(identity)', tracking)
+                cleanup='for (TransferGrantRegistry.Window window : transferGrants.releaseExcept(playerId, trackedStreams))'
                 self.assertIn(cleanup, tracking)
                 self.assertLess(tracking.index(cleanup),tracking.index('sendCurrent(player,'))
 
