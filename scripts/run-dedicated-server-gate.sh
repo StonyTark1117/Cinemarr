@@ -604,7 +604,7 @@ run_acceptance_client() {
         -e 'Client disconnected with reason: Disconnected' "$client_console" | tail -n 1
     } > "$evidence"
   fi
-  if (( result == 0 )); then finish_client_launch "$pid" 120 "$client_console" || result=1; fi
+  if (( result == 0 )); then finish_client_launch "$pid" 120 "$client_console" true || result=1; fi
   terminate_client_launch "$pid" 20 || result=1
   active_client_pid=""
   return "$result"
@@ -2639,13 +2639,19 @@ wait_for_process_tree_exit() {
 }
 
 finish_client_launch() {
-  local root=$1 seconds=$2 log=$3 status=0 deadline pid
+  local root=$1 seconds=$2 log=$3 allow_missing_window=${4:-false} status=0 deadline pid
   local -a remaining=()
   # Only a normal application close followed by a successful wait is evidence
   # of clean exit. TERM/KILL cleanup and missing hs_err files cannot prove it.
   if group_alive "$root"; then
-    python3 "$repo_root/scripts/close-private-minecraft-window.py" \
-      --gate-pid "$root" --log "$log" || return 1
+    if ! python3 "$repo_root/scripts/close-private-minecraft-window.py" \
+      --gate-pid "$root" --log "$log"; then
+      # Rejection clients can terminate immediately after the protocol error,
+      # leaving no live X window for a normal close request.
+      if [[ "$allow_missing_window" != true ]] || ! grep -Fq 'Client disconnected with reason:' "$log"; then
+        return 1
+      fi
+    fi
   fi
   deadline=$((SECONDS + seconds))
   while group_alive "$root"; do
