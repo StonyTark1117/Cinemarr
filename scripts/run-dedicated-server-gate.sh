@@ -2651,6 +2651,11 @@ finish_client_launch() {
       if [[ "$allow_missing_window" != true ]] || ! grep -Fq 'Client disconnected with reason:' "$log"; then
         return 1
       fi
+      # The rejection client has already completed its Minecraft lifecycle;
+      # only the Gradle/Xvfb wrapper may remain. Bound cleanup without
+      # pretending that a WM_DELETE request was sent to a nonexistent window.
+      terminate_client_launch "$root" 20 || return 1
+      return 0
     fi
   fi
   deadline=$((SECONDS + seconds))
