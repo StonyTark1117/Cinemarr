@@ -25,11 +25,21 @@ class CinemarrWorldScreensTest {
         CinemarrWorldScreens.Television tv=data.television(controller);assertEquals(2,tv.width());assertEquals(2,tv.height());
         assertEquals(owner,tv.owner());assertArrayEquals(new byte[]{15},tv.mask());
         data.updatePresentation(controller,PresentationMode.STRETCH);data.updateSession(controller,"family");data.updateRendition(controller,3840,2160);
+        assertEquals(PresentationMode.STRETCH,data.television(controller).displaySettings().layout());
+        assertEquals(1,data.television(controller).displaySettings().revision());
         CinemarrWorldScreens restored=CinemarrWorldScreens.load(data.save(new CompoundTag(),null),null);
         CinemarrWorldScreens.Television roundTrip=restored.television(controller);
         assertEquals(PresentationMode.STRETCH,roundTrip.presentationMode());assertEquals("family",roundTrip.sessionName());
         assertArrayEquals(new byte[]{15},roundTrip.mask());assertEquals(Direction.NORTH.name(),roundTrip.facing().name());
         assertEquals(3840,roundTrip.renditionWidth());assertEquals(2160,roundTrip.renditionHeight());
+        assertEquals(PresentationMode.STRETCH,roundTrip.displaySettings().layout());
+        assertEquals(1,roundTrip.displaySettings().revision());
+
+        CompoundTag corrupt = data.save(new CompoundTag(),null);
+        corrupt.getList("televisions",net.minecraft.nbt.Tag.TAG_COMPOUND).getCompound(0).putString("displaySettings", "corrupt");
+        CinemarrWorldScreens fallback=CinemarrWorldScreens.load(corrupt,null);
+        assertEquals(stonytark.cinemarr.core.video.TvDisplaySettings.Origin.UNKNOWN,
+                fallback.television(controller).displaySettings().origin());
     }
 
     @Test void onePersistedTelevisionIsDiscoverableFromEveryScreenChunk() {
