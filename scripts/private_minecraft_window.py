@@ -111,11 +111,25 @@ class PrivateMinecraftWindow:
                             raise RuntimeError("Unable to identify private Minecraft window owner") from error
                         if self.owned(owner):
                             owned_windows.append(window)
-                    # Some native X clients omit _NET_WM_PID. If ownership
-                    # data is unavailable, a single surviving candidate is
-                    # still safe under the private-display boundary; keep
-                    # ambiguity rejection when multiple candidates remain.
-                    windows = owned_windows or unresolved_windows
+                    # Some native clients omit _NET_WM_PID. On a private
+                    # display, identify the mapped game surface by its
+                    # geometry when ancestry is unavailable; helper windows
+                    # are smaller and remain excluded. Keep ambiguity
+                    # rejection when geometry cannot disambiguate.
+                    if owned_windows:
+                        windows = owned_windows
+                    else:
+                        sized = []
+                        for window in windows:
+                            try:
+                                info = self.run("xwininfo", "-id", window)
+                            except subprocess.CalledProcessError:
+                                continue
+                            width = re.search(r"Width:\s+(\d+)", info)
+                            height = re.search(r"Height:\s+(\d+)", info)
+                            if width and height:
+                                sized.append((int(width.group(1)) * int(height.group(1)), window))
+                        windows = [max(sized)[1]] if sized else unresolved_windows
             except subprocess.CalledProcessError as error:
                 if error.returncode != 1:
                     raise
