@@ -105,6 +105,43 @@ class VideoSessionCoordinatorAsyncTest {
         } finally { coordinator.close(); }
     }
 
+    @Test void cancellingReplacementKeepsWorkingGenerationAndOwnsLateHandleUntilRetired() throws Exception {
+        CountDownLatch replacing = new CountDownLatch(1), release = new CountDownLatch(1);
+        AtomicInteger starts = new AtomicInteger(), stops = new AtomicInteger(), originalStops = new AtomicInteger();
+        VideoSessionCoordinator coordinator = new VideoSessionCoordinator(1, 1000, (id, generation, item, offset) -> {
+            int attempt = starts.incrementAndGet();
+            if (attempt == 2) { replacing.countDown(); await(release); }
+            return () -> { stops.incrementAndGet(); if (attempt == 1) originalStops.incrementAndGet(); };
+        }, true);
+        ExecutorService worker = Executors.newSingleThreadExecutor();
+        coordinator.tune(UUID.randomUUID(), "party");
+        try {
+            VideoSessionCoordinator.Snapshot original = coordinator.play("party", movie(), 0, 1000);
+            Future<?> replacement = worker.submit(() -> {
+                assertThrows(IllegalStateException.class, () -> coordinator.play("party", movie(), 5000, 2000, original.generation()));
+            });
+            assertTrue(replacing.await(5, TimeUnit.SECONDS));
+            coordinator.cancelPendingStart("party");
+            assertEquals(original.generation(), coordinator.snapshot("party", 2000).generation());
+            assertTrue(coordinator.snapshot("party", 2000).transcoding());
+            assertEquals(0, originalStops.get());
+            assertEquals(1, coordinator.pendingStarts(), "Cancellation must not release the late handle's ownership reservation");
+            assertThrows(IllegalStateException.class, () -> coordinator.play("party", movie(), 6000, 2100));
+            release.countDown();
+            replacement.get(5, TimeUnit.SECONDS);
+            assertEquals(original.generation(), coordinator.snapshot("party", 2200).generation());
+            assertEquals(0, originalStops.get());
+        } finally {
+            release.countDown(); worker.shutdownNow();
+            assertTrue(worker.awaitTermination(5, TimeUnit.SECONDS)); coordinator.close();
+        }
+        assertEquals(2, starts.get());
+        assertEquals(2, stops.get());
+        assertEquals(1, originalStops.get());
+        assertEquals(0, coordinator.pendingStarts());
+        assertEquals(0, coordinator.retiringMedia());
+    }
+
     @Test void shutdownRejectsNewWorkAndDrainsALateUninterruptibleStart() throws Exception {
         CountDownLatch starting = new CountDownLatch(1), release = new CountDownLatch(1), interrupted = new CountDownLatch(1);
         AtomicInteger stops = new AtomicInteger();

@@ -146,6 +146,16 @@ public final class VideoSessionCoordinator implements AutoCloseable {
         session.noViewersSinceMs = -1;
     }
 
+    /**
+     * Rejects an in-flight replacement without changing the working stream or
+     * its generation. The cancelled attempt remains in the ownership budget
+     * until its factory returns and its handle is retired by play().
+     */
+    public synchronized void cancelPendingStart(String name) {
+        requireOpen();
+        required(name).pending = null;
+    }
+
     public synchronized void viewerLeft(String name, UUID playerId, long nowMs) {
         // Tracking snapshots can briefly retain a session name after its last
         // television has been removed.  The session is already fully detached
