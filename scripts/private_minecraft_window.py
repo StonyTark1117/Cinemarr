@@ -35,6 +35,19 @@ class PrivateMinecraftWindow:
                 # exclusively by this gate, so enumerate visible windows and
                 # retain the exact-one invariant instead of assuming a title.
                 windows = self.run("xdotool", "search", "--onlyvisible", "--name", ".*").splitlines()
+                if len(windows) > 1:
+                    # CI runners can expose transient helper windows on the
+                    # same display. Keep only X clients descended from this
+                    # gate so unrelated windows cannot violate exact-one.
+                    owned_windows = []
+                    for window in windows:
+                        try:
+                            owner = int(self.run("xdotool", "getwindowpid", window))
+                        except (ValueError, KeyError, subprocess.CalledProcessError, StopIteration) as error:
+                            raise RuntimeError("Unable to identify private Minecraft window owner") from error
+                        if self.owned(owner):
+                            owned_windows.append(window)
+                    windows = owned_windows
             except subprocess.CalledProcessError as error:
                 if error.returncode != 1:
                     raise

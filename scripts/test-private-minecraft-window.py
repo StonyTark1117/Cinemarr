@@ -114,7 +114,7 @@ class PrivateWindowTests(unittest.TestCase):
     def test_multiple_minecraft_windows_rejected(self):
         self.run.return_value.stdout = "111\n222\n"
         with self.assertRaises(RuntimeError): PrivateMinecraftWindow(self.log, 42)
-        self.assertEqual(1, self.run.call_count)
+        self.assertEqual(2, self.run.call_count)
 
     def test_reload_holds_f3_across_game_ticks_and_releases_it(self):
         window = PrivateMinecraftWindow(self.log, 42)
