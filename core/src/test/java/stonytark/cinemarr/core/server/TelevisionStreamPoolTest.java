@@ -99,6 +99,19 @@ class TelevisionStreamPoolTest {
         }
     }
 
+    @Test void viewerJoinAdvancesRevisionForManifestRepublish() throws Exception {
+        try (Fixture f = new Fixture(1)) {
+            UUID tv = UUID.randomUUID();
+            f.start(tv);
+            long before = f.pool.changes();
+            UUID follower = UUID.randomUUID();
+            f.update(tv, DEFAULTS, 1100, VIEWER, follower);
+            assertTrue(f.pool.changes() > before);
+            f.pool.tick(1100);
+            assertTrue(f.pool.isViewer(f.pool.identity(f.pool.snapshot(tv, 1100).id(), f.pool.snapshot(tv, 1100).generation()), follower));
+        }
+    }
+
     @Test void fifoCapacityWaitingDeduplicatesUpdatedRequestsAndAdmitsCurrentPosition() throws Exception {
         try (Fixture f = new Fixture(1)) {
             UUID first = UUID.randomUUID(), second = UUID.randomUUID(), third = UUID.randomUUID();

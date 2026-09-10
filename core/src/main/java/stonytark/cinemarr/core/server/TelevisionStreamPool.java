@@ -87,9 +87,15 @@ public final class TelevisionStreamPool implements AutoCloseable {
         if(entry==null){entry=new Entry(request);entries.put(request.televisionId,entry);streams.tune(request.televisionId,request.televisionId.toString());changes++;}
         Request previous=entry.desired;entry.desired=request;
         String name=request.televisionId.toString();
+        boolean viewersChanged = !entry.viewers.equals(request.viewers);
         for(UUID viewer:entry.viewers)if(!request.viewers.contains(viewer))streams.viewerLeft(name,viewer,now);
         for(UUID viewer:request.viewers)if(!entry.viewers.contains(viewer))streams.viewerEntered(name,viewer);
         entry.viewers=new HashSet<UUID>(request.viewers);
+        // A newly visible client needs a fresh manifest even when the media
+        // generation and display settings are unchanged. The server publishes
+        // session state when this revision advances; without it, a follower
+        // joining an already active stream receives PLAYING state but no data.
+        if (viewersChanged) changes++;
         if(!request.sameMedia(previous)){entry.failed=null;entry.error="";changes++;}
         if (entry.pending && (!request.sameMedia(entry.starting) || !request.eligible())) {
             if (!request.sameTimeline(entry.starting) || request.timeline.item() == null
