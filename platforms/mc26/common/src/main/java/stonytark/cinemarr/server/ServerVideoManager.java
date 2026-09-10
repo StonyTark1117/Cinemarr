@@ -292,8 +292,11 @@ public final class ServerVideoManager implements AutoCloseable {
                 PlexVideoService.PlaybackMetadata metadata = plex.metadataDetails(itemKey);VideoMediaItem item=metadata.item();
                 if (!library.rule().allows(item, playerPermission)) throw new IOException("Video item is not allowed by this library policy");
                 StartOptions options=new StartOptions(renditionFor(television,metadata),selection(metadata.streams(),command.audioStreamId(),command.subtitleStreamId(),command.action()!=VideoPackets.SessionAction.SET_STREAMS));
+                StartOptions previousOptions=playbackOptions.get(tuned.id());
+                if(command.action()==VideoPackets.SessionAction.SET_STREAMS) playbackOptions.put(tuned.id(),options);
                 startingOptions.set(options);VideoSessionCoordinator.Snapshot state;
                 try{state=command.action()==VideoPackets.SessionAction.SET_STREAMS?sessions.reconfigure(tuned.name(),System.currentTimeMillis(),tuned.generation()):sessions.play(tuned.name(),item,command.seekPositionMs(),System.currentTimeMillis(),tuned.generation());}
+                catch(RuntimeException|IOException failure){if(command.action()==VideoPackets.SessionAction.SET_STREAMS){if(previousOptions==null)playbackOptions.remove(tuned.id());else playbackOptions.put(tuned.id(),previousOptions);}throw failure;}
                 finally{startingOptions.remove();}
                 return new PreparedPlayback(state, options, library.rule().id());
             } catch (IOException failure) { throw new WrappedFailure(failure); }
