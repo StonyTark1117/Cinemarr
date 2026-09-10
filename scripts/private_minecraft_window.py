@@ -208,8 +208,20 @@ class PrivateMinecraftWindow:
         self.run("xdotool", "mousemove", "--window", self.window, str(x), str(y), "click", "1")
 
     def capture(self, path):
-        self.run("import", "-window", self.window, str(path))
-        read_capture(path)
+        # A delayed XMapWindow can leave the selected client discoverable just
+        # before ImageMagick can capture it. Retry the bounded capture while
+        # preserving the same verified window identity.
+        failure = None
+        for _ in range(20):
+            try:
+                self.run("import", "-window", self.window, str(path))
+                read_capture(path)
+                return
+            except subprocess.CalledProcessError as error:
+                failure = error
+                time.sleep(0.1)
+        if failure is not None:
+            raise failure
 
     def escape(self):
         self.run("xdotool", "key", "--clearmodifiers", "Escape")
