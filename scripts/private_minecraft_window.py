@@ -38,6 +38,17 @@ class PrivateMinecraftWindow:
                 # builds. Require a non-empty name so the root cannot become
                 # a second apparent Minecraft client.
                 windows = self.run("xdotool", "search", "--onlyvisible", "--name", ".+").splitlines()
+                if not windows:
+                    # Native clients may briefly expose a blank title. In
+                    # that case enumerate all visible windows once and remove
+                    # the display root by its authoritative X11 window ID.
+                    try:
+                        candidates = self.run("xdotool", "search", "--onlyvisible", "--name", ".*").splitlines()
+                        root_line = self.run("xwininfo", "-root").splitlines()[0]
+                        root = int(root_line.split("Window id:", 1)[1].split()[0], 16)
+                        windows = [value for value in candidates if int(value) != root]
+                    except (IndexError, ValueError, subprocess.CalledProcessError):
+                        windows = []
                 if len(windows) > 1:
                     # CI runners can expose transient helper windows on the
                     # same display. Keep only X clients descended from this
