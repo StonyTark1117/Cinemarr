@@ -90,12 +90,17 @@ final class LegacyClientState implements LegacyNetwork.ClientListener {
         long now = System.currentTimeMillis();
         long interval = mediaClockReady() ? STEADY_CLOCK_SYNC_INTERVAL_MS : STARTUP_CLOCK_SYNC_INTERVAL_MS;
         if (now - lastTimeSync >= interval) requestTimeSync();
+        String acceptanceOperation = acceptanceControl.poll();
         if (ProtocolLimits.segmentPressurePeerEnabled()) {
-            if ("video:segment-pressure-start".equals(acceptanceControl.poll())) segmentPeer.start(now);
+            if ("video:segment-pressure-start".equals(acceptanceOperation)) segmentPeer.start(now);
             segmentPeer.tick(now, this::sendSegmentPeer, value -> Cinemarr.LOGGER.info(value));
-            return;
+            // Keep acceptance controls responsive while the bounded pressure
+            // peer drains; only its private start command is consumed here.
+            if (!acceptanceOperation.isEmpty() && !"video:segment-pressure-start".equals(acceptanceOperation))
+                inspectAcceptanceVideoControl(acceptanceOperation);
+        } else {
+            inspectAcceptanceVideoControl(acceptanceOperation);
         }
-        inspectAcceptanceVideoControl();
         LegacyVideoClientState.INSTANCE.tick(now);
         LegacyVideoRuntime.INSTANCE.tick();
     }
@@ -205,9 +210,8 @@ final class LegacyClientState implements LegacyNetwork.ClientListener {
         }
     }
 
-    private void inspectAcceptanceVideoControl() {
-        if (!ProtocolLimits.videoProbeEnabled()) return;
-        String operation = acceptanceControl.poll();
+    private void inspectAcceptanceVideoControl(String operation) {
+        if (!ProtocolLimits.videoProbeEnabled() || operation.isEmpty()) return;
         if (operation.length() == 0 || !operation.startsWith("video:")) return;
         VideoPackets.SessionState state = LegacyVideoClientState.INSTANCE.session(acceptanceVideoController);
         if (operation.startsWith("video:browse-pressure:") && ProtocolLimits.browsePressureProbeEnabled()) {
