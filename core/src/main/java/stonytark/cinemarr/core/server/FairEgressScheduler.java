@@ -117,6 +117,22 @@ public final class FairEgressScheduler<K, P, M> {
         active.remove(key); backlogItems -= queue.items.size();
         for (QueuedItem<M> queued : queue.items){backlogBytes -= queued.item.sizeBytes();decrementGroup(queued.group, queued.item.sizeBytes());}
     }
+    /** Remove one stream's queued messages without disturbing sibling order or budgets. */
+    public synchronized int removeMatching(K key, java.util.function.Predicate<M> matches) {
+        if (matches == null) throw new IllegalArgumentException("egress selector");
+        QueueState<P, M> queue = queues.get(key); if (queue == null) return 0;
+        int removed=0;
+        java.util.Iterator<QueuedItem<M>> iterator=queue.items.iterator();
+        while (iterator.hasNext()) {
+            QueuedItem<M> queued=iterator.next();
+            if (!matches.test(queued.item.message())) continue;
+            iterator.remove(); removed++; backlogItems--;
+            int bytes=queued.item.sizeBytes(); queue.bytes-=bytes; backlogBytes-=bytes;
+            decrementGroup(queued.group, bytes);
+        }
+        if (queue.items.isEmpty()) { queues.remove(key); active.remove(key); }
+        return removed;
+    }
     public synchronized void clear() { queues.clear(); active.clear();groupItems.clear();groupBytes.clear(); backlogItems = 0; backlogBytes = 0L; }
     public synchronized int backlogItems() { return backlogItems; }
     public synchronized long backlogBytes() { return backlogBytes; }
