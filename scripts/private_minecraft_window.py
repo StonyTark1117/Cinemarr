@@ -80,7 +80,12 @@ class PrivateMinecraftWindow:
                         # to the raw tree; ownership and geometry checks below
                         # still reject unrelated/helper windows.
                         try:
-                            candidates.extend(self.run("xdotool", "search", "--onlyvisible", "--class", ".*").splitlines())
+                            # Fabric/LWJGL can omit EWMH visibility while
+                            # still exposing a mapped top-level class window.
+                            # Query class metadata without --onlyvisible and
+                            # let the mapped-state checks below decide whether
+                            # the candidate is capturable.
+                            candidates.extend(self.run("xdotool", "search", "--class", ".*").splitlines())
                         except subprocess.CalledProcessError:
                             pass
                         tree = self.run("xwininfo", "-root", "-tree")
