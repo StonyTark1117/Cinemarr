@@ -50,12 +50,21 @@ class PrivateMinecraftWindow:
                         info = self.run("xwininfo", "-id", window)
                     except (subprocess.CalledProcessError, StopIteration):
                         info = ""
-                    # Xvfb clients without a window manager can report
-                    # IsUnviewable even after mapping. Reject only the
-                    # explicit pre-map state; the private display and owner
-                    # checks still prevent unrelated windows from matching.
-                    if "Map State:" not in info or "IsUnmapped" not in info:
+                    # Xvfb clients without a window manager can report an
+                    # ambiguous map state even after mapping. For those
+                    # states, require the same capture operation used by the
+                    # gate before accepting the window; this also waits
+                    # through delayed XMapWindow races.
+                    if "Map State:" not in info or "IsViewable" in info:
                         mapped.append(window)
+                    elif "IsUnmapped" not in info:
+                        try:
+                            subprocess.run(("import", "-window", window, "png:-"),
+                                            env=self.env, stdout=subprocess.DEVNULL,
+                                            stderr=subprocess.DEVNULL, check=True, timeout=6)
+                            mapped.append(window)
+                        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                            pass
                 windows = mapped
                 if not windows and not had_named_window:
                     # Native clients may briefly expose a blank title. In
