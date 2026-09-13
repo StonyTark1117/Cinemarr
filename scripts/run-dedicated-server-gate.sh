@@ -3025,7 +3025,12 @@ run_display_restart_check() {
   fi
   # Registrations are reconciled during server startup, including controllers
   # whose chunks are unloaded. No acceptance player creates replacement TVs.
-  printf 'stop\n' >&"$restart_fd"
+  if [[ "$label" == "1.7.10-forge" ]]; then
+    printf 'stop\n' >&"$restart_fd"
+  elif ! python3 "$repo_root/scripts/minecraft-rcon.py" 127.0.0.1 "$rcon_port" "$rcon_password" stop \
+      >> "$restart_log" 2>&1; then
+    printf 'stop\n' >&"$restart_fd"
+  fi
   if [[ -n "$restart_group" ]]; then
     if ! wait_for_group_exit "$restart_group" 60; then
       restart_status=1
@@ -3121,6 +3126,15 @@ run_target() {
   # interrupted prior run. The run directories are ignored build state.
   level_name=cinemarr-gate-world
   set_property "$run_dir/server.properties" level-name "$level_name"
+  # The isolated framebuffer scene must have a clear, stationary sight line.
+  # Random terrain can otherwise enclose the fixed camera or fill sparse holes.
+  if [[ "$label" == "1.7.10-forge" ]]; then
+    set_property "$run_dir/server.properties" level-type FLAT
+  else
+    set_property "$run_dir/server.properties" level-type minecraft:flat
+  fi
+  set_property "$run_dir/server.properties" generator-settings ''
+  set_property "$run_dir/server.properties" generate-structures false
   set_property "$run_dir/server.properties" online-mode false
   set_property "$run_dir/server.properties" enforce-secure-profile false
   set_property "$run_dir/server.properties" sync-chunk-writes false

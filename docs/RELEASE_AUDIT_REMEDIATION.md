@@ -233,3 +233,54 @@ passed. Its independent receipt records return code zero with all 887
 non-Markdown inputs unchanged. The complete 18-file bundle is preserved under
 `build/audit-remediation-candidate/build2/`. A second complete forced build,
 byte-for-byte comparison and the full candidate certification remain required.
+
+The third invocation forced every all-target task and completed successfully
+(91 executed tasks). All 887 non-Markdown inputs stayed fixed; all 18 bundle
+files match build 2 byte for byte. These bundles contain the implementation
+committed as `b381c7096d8b90a790e1fd4905335d8c2af2a320` on the remediation branch.
+
+Hosted run `34754834080` exposed acceptance-environment defects after successful
+artifact builds. All five Fabric main profiles failed owned-X discovery because
+Loom 1.17.19 automatically launches a second `xvfb-run` when `CI` is present.
+Its installed `AbstractRunTask` confirms this behavior; the runner's exact Ubuntu
+X tools could discover a simple owned X11 window locally. Acceptance runClient
+tasks now explicitly set Loom's `useXvfb` false. An actual Gradle configuration
+check with `CI=true` confirmed the setting. The first configuration-only probe
+used the wrong root wrapper and failed variant resolution; the corrected probe
+used the platform wrapper and passed.
+
+Original hosted framebuffer evidence also showed terrain enclosing a fixed
+camera or occupying sparse-screen sight lines. The temporary isolated local
+world now uses flat generation with structures disabled; original server
+properties and developer worlds are still restored. Five modern profiles passed
+all 33 display steps and subsequent client checks but could not shut down the
+fresh restart through Gradle console input. That stage now uses the same modern
+RCON stop transport as the original server. The two fully completed hosted Forge
+profiles (1.21.1 and 26.1.2) remain scoped successes, not an aggregate pass.
+Attempt 14 runs the complete Fabric 1.21.1 gate with `CI=true` and the hosted
+Ubuntu X tool versions to validate these changes. Source inputs are frozen for
+that invocation; previous CI failures and original captures remain preserved.
+
+Windows native run `20260913T113700Z` passed the 144p, 480p and 1080p software
+fixtures on Windows 11/amd64 with the windows-x86_64 classifier and verified PE
+machine identity. Its input bundle stayed unchanged, all compared production
+classes and the embedded core JAR match build 2, and its retained guest is
+stopped. An earlier setup attempt failed because the packaged jq library path
+was missing; its receipt and verified empty-run-directory cleanup are retained.
+The corrected invocation exposes only the required packaged helpers. ARM native
+validation is running with a scoped temporary key and exact original-key
+restoration checks; no ARM pass is claimed yet.
+
+Attempt 14 completed with return code zero and all 887 inputs unchanged under
+`CI=true` and Ubuntu noble's hosted X tool versions. All 33 display steps, eight
+framebuffer checks, ordinary controls, reconnect, both clients' resource reloads,
+physical PCM/health, three saved-registration comparisons and clean teardown
+passed. All 32 original display/world PNGs and 18 controller/feedback PNGs were
+directly reviewed. This validates the Loom override and deterministic scene in
+a complete Fabric invocation; the final matrix must still cover every adapter.
+
+The attempt-14 outer execution tool subsequently reported 143, after the Python
+wrapper persisted and printed the gate subprocess's zero return code and
+unchanged-source receipt. The successful gate result and anomalous outer-tool
+exit are recorded separately. Subsequent aggregate wrappers give the gate its
+own process session so teardown cannot signal the receipt-writing parent.
