@@ -138,3 +138,35 @@ CINEMARR_LIVE_VIDEO_SECTION_ID='1' \
 ```
 
 See [release acceptance](docs/RELEASE_ACCEPTANCE.md), [compatibility](docs/COMPATIBILITY.md), and [proposal status](docs/PROPOSAL_STATUS.md) for the remaining 1.0 gates.
+
+### Display settings and per-TV quality
+
+Open a TV controller and choose **Display**. Layout cycles through Fit, Fill and
+Stretch. Mapping cycles between Detailed and One pixel per block. Quality cycles
+through Auto, 144p, 240p, 480p, 720p, 1080p, 1440p, 4k, 8k and Custom. Width and
+height are editable only in Custom (2–8192 per axis, within the decoded-frame
+memory budget). Apply waits for the server to acknowledge the saved settings;
+Cancel discards unsent changes. Reload fetches the latest received settings after
+a concurrent edit or timeout. Only the owner or an operator can edit a TV.
+Quick TVs keep their preset quality and Detailed mapping; their layout is editable.
+
+**Screen size** is the block bounding rectangle. **Requested quality** is a stream
+bounding box, limited by source resolution, source aspect ratio, server caps and
+codec rounding. **Actual decoded** is measured from the most recently presented
+source frame on this client; it stays unknown before a frame arrives. During a
+quality replacement it can continue to show the old frame's dimensions until the
+new stream presents a frame. It does not promise that Plex honored the request.
+In One pixel per block mode, the output raster instead matches the screen's block
+dimensions; each visible block displays one sampled color. Fit adds black bars,
+Fill crops, and Stretch fills the rectangle. Screen holes stay absent.
+
+Each TV consumes its own stream slot, including TVs in the same watch party.
+Multiple viewers of one TV share that TV's server stream. A full server shows
+**Waiting for stream capacity** on additional TVs; the next eligible TV starts
+automatically at the party's current position when a slot is freed. Quality
+changes replace only the edited TV's stream. Pause, resume, seek and track
+selection remain shared by the watch party. Paused layout and mapping edits
+redraw the retained frame.
+
+These controls are under prerelease verification; see the release acceptance
+checklist for the certification status of each maintained platform.

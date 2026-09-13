@@ -15,13 +15,18 @@ acceptances preceded those changes; Forge 1.21.1's runtime checks closed but its
 source guard failed, and NeoForge 1.21.1 was interrupted. The 704 reviewed PNGs
 and 38 measured audio pairs, two identical builds, native checks and deployment
 retain their earlier scope and cannot certify the new implementation.
-The latest completed hosted candidate run is `34536028642` for commit
-`cd5501b`; 8 of 16 profile jobs passed and 8 failed. The failures are five
-Fabric private-window/controller-observer cases, terminal-phase timeouts on
-Forge 1.7.10 and NeoForge 1.21.1, and a Forge 26.2 runtime failure; no final
-runtime box is closed. The follow-up discovery fix is commit `7308440`, but
-its hosted run `34536882598` was invalidated by runner dependency-install
-failures before product checks.
+The latest completed hosted run is [34538849435](https://github.com/StonyTark1117/Cinemarr/actions/runs/34538849435)
+for `8e1efda206ed57935ac9e5498ead27e0ad7a445a` (rechecked September 13).
+All 16 build/inspection and byte-identical rebuild steps passed. Final artifact-job
+outcomes were seven successful, seven failed, and two cancelled; the aggregate
+was cancelled. These are artifact-job counts, not 21 completed runtime profiles.
+Failures were Fabric 1.20.1/1.20.2/1.21.1/26.1.2 private-window discovery,
+NeoForge 1.20.2 paused-frame observation, NeoForge 1.21.1 terminal observation,
+and NeoForge 26.2 stream startup. Forge 1.7.10 and Fabric 26.2 were cancelled.
+The [September 12 audit](RELEASE_AUDIT_20260912.md) retains the original findings;
+[remediation status](RELEASE_AUDIT_REMEDIATION.md) records subsequent changes and
+remaining certification work. No release acceptance checkbox is closed by these
+source changes or earlier hosted results.
 The preceding candidate `9075937` and run `34530641372` remain historical
 failure evidence: nine profiles completed successfully and seven failed (five
 Fabric runtime/observer cases, Forge 1.7.10 terminal lifecycle, and NeoForge
@@ -46,8 +51,9 @@ acceptance.
 The fresh local `releaseMatrixGate` for commit `6972cc1` reached all artifact
 families and the ten GameTests, then failed at `verifyPrivateXvfb` after 19m16s:
 all ten launcher cases reported `Private Xvfb did not allocate a live display`.
-This host has no `Xvfb` or `xvfb-run` binary (only the user's existing `:0`
-socket). The launcher now fails fast with an actionable dependency message;
+At that checkpoint this host had no `Xvfb` or `xvfb-run` binary (only the user's existing `:0`
+socket). September remediation extracted a private local X tool runtime and passed
+its launcher regressions; full runtime certification is still pending. The launcher now fails fast with an actionable dependency message;
 the gate is retained as an environment failure rather than being bypassed or
 retried with a different display provider.
 

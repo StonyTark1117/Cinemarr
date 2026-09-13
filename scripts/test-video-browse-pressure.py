@@ -37,7 +37,8 @@ class PressureTests(unittest.TestCase):
         path=Path(__file__).resolve().parents[1]/'platforms/mc1.7.10/forge/src/main/java/stonytark/cinemarr/client/LegacyClientState.java'
         body=path.read_text().split('private void inspectAcceptanceVideoControl()',1)[1]
         self.assertLess(body.index('if (!ProtocolLimits.videoProbeEnabled()) return;'),body.index('showDebugInfo = false'))
-        self.assertLess(body.index('showDebugInfo = false'),body.index('displayGuiScreen('))
+        capture=body.split('if ("video:open-ui".equals(operation)) {',1)[1].split('if (state == null ||',1)[0]
+        self.assertLess(capture.index('showDebugInfo = false'),capture.index('displayGuiScreen('))
 
     def test_all_manager_boundaries_route_browse_to_the_isolated_pool(self):
         root=Path(__file__).resolve().parents[1]

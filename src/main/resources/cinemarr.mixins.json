@@ -9,6 +9,7 @@
     "client.ChannelAccessor",
     "client.NativeImageAccessor",
     "client.SoundEngineAccessor",
+    "client.SoundEngineReloadMixin",
     "client.SoundManagerAccessor"
   ],
   "injectors": {

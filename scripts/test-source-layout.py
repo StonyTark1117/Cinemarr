@@ -16,6 +16,16 @@ SOURCES = (
 
 
 class PlaybackPublicationLayoutTest(unittest.TestCase):
+    def test_display_boundaries_cannot_regress_to_attachment_mutation_or_unmeasured_quality(self):
+        for path in SOURCES:
+            source = (ROOT / path).read_text()
+            layout.verify_display_boundary(source, path)
+            for old, new in [('PresentationCommandGuard.validate(', 'skipValidation('),
+                             ('if(timeline.item()!=null&&!metadataMatches(timeline))continue;', ''),
+                             ('recipients(television,player))sendCurrent(', 'singleRecipient(television,player))sendCurrent(')]:
+                with self.subTest(path=path, mutation=old), self.assertRaises(SystemExit):
+                    layout.verify_display_boundary(source.replace(old, new), path)
+
     def test_all_families_bind_transport_to_both_identities(self):
         for path in SOURCES:
             with self.subTest(path=path):

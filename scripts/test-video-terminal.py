@@ -23,7 +23,7 @@ health = module('check-video-underruns')
 def state(owner=True, generation=5, status='PLAYING', item='9001', session='party'):
     return (f'Acceptance video session: controller=1 session={session} generation={generation} status={status} '
             f'item={item} positionMs=0 canControl={str(owner).lower()} streams=1 audio=-1 subtitle=-1 '
-            'durationMs=300000 message=Playing next queued video\n')
+            f'durationMs=300000 timeline={session} timelineGeneration={generation} message=Playing next queued video\n')
 
 
 def pair(**kwargs):
@@ -31,6 +31,13 @@ def pair(**kwargs):
 
 
 class TerminalTests(unittest.TestCase):
+    def test_queue_matches_timeline_even_when_tv_stream_identity_differs(self):
+        text = state().replace('session=party generation=5', 'session=stream generation=12')
+        current = probe.states(text)[-1]
+        queued = probe.queues('Acceptance video queue: session=party generation=5 entries=1 firstItem=9001')[-1]
+        self.assertEqual(current['session'], queued['session'])
+        self.assertEqual(current['generation'], queued['generation'])
+
     def test_idle_empty_item_is_latest_not_hidden_by_old_playing(self):
         rows = probe.states(state() + state(status='IDLE', item='', generation=6))
         self.assertEqual(2, len(rows))

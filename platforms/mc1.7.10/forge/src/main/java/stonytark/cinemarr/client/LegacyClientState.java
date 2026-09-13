@@ -74,6 +74,8 @@ final class LegacyClientState implements LegacyNetwork.ClientListener {
         } else if (type == LegacyPacketTypes.ERROR && minecraft.thePlayer != null) {
             if (ProtocolLimits.browsePressureProbeEnabled()) Cinemarr.LOGGER.info("Acceptance video request error: message={}", ((LegacyPacketTypes.ErrorMessage) message).message());
             minecraft.thePlayer.addChatMessage(new ChatComponentText("Cinemarr: " + ((LegacyPacketTypes.ErrorMessage) message).message()));
+            if(minecraft.currentScreen instanceof LegacyDisplaySettingsScreen)
+                ((LegacyDisplaySettingsScreen)minecraft.currentScreen).showError(((LegacyPacketTypes.ErrorMessage)message).message());
             if(minecraft.currentScreen instanceof LegacyVideoScreen)
                 ((LegacyVideoScreen)minecraft.currentScreen).showError(((LegacyPacketTypes.ErrorMessage)message).message());
         }
@@ -118,7 +120,7 @@ final class LegacyClientState implements LegacyNetwork.ClientListener {
         acceptanceVideoController = 0L; acceptanceVideoTuneSent = false;
         acceptanceVideoResetSent = false;
         acceptanceVideoLibrariesRequested = false; acceptanceVideoBrowseRequested = false; acceptanceVideoPlaySent = false;
-        acceptanceVideoLibraryId = ""; acceptanceVideoLastItemKey = ""; acceptanceControl.reset();
+        acceptanceVideoLibraryId = ""; acceptanceVideoLastItemKey = ""; acceptanceControl.reset(); stonytark.cinemarr.core.client.DisplayFrameCapture.reset();
         LegacyVideoClientState.INSTANCE.reset(); LegacyVideoRuntime.INSTANCE.reset();
     }
 
@@ -157,11 +159,12 @@ final class LegacyClientState implements LegacyNetwork.ClientListener {
         if (!ProtocolLimits.videoProbeEnabled()) return;
         if (type == LegacyPacketTypes.VIDEO_SESSION_STATE) {
             VideoPackets.SessionState state = (VideoPackets.SessionState) payload;
+            if(ProtocolLimits.displayProbeEnabled() && state.screenWidth()!=16)return;
             if (state.item() != null) acceptanceVideoLastItemKey = state.item().key();
-            Cinemarr.LOGGER.info("Acceptance video session: controller={} session={} generation={} status={} item={} positionMs={} canControl={} streams={} audio={} subtitle={} durationMs={} message={}",
+            Cinemarr.LOGGER.info("Acceptance video session: controller={} session={} generation={} status={} item={} positionMs={} canControl={} streams={} audio={} subtitle={} durationMs={} timeline={} timelineGeneration={} message={}",
                     state.controllerPos(), state.sessionId(), state.generation(), state.status(),
                     state.item() == null ? "" : state.item().key(), state.positionMs(), state.canControl(),
-                    state.streams().size(), state.selectedAudioStreamId(), state.selectedSubtitleStreamId(), state.durationMs(), state.message());
+                    state.streams().size(), state.selectedAudioStreamId(), state.selectedSubtitleStreamId(), state.durationMs(), state.timelineId(), state.timelineGeneration(), state.message());
             acceptanceVideoController = state.controllerPos();
             if (!ProtocolLimits.videoProbeLeader() || !state.canControl()) return;
             if (!acceptanceVideoTuneSent) {
@@ -218,6 +221,63 @@ final class LegacyClientState implements LegacyNetwork.ClientListener {
         if (!ProtocolLimits.videoProbeEnabled()) return;
         if (operation.isEmpty()) return;
         if (operation.length() == 0 || !operation.startsWith("video:")) return;
+        if(ProtocolLimits.displayProbeEnabled() && operation.startsWith("video:display")) {
+            if (operation.startsWith("video:display-look:")) {
+                try {
+                    String[] fields=operation.split(":",-1);
+                    if(fields.length!=4)throw new IllegalArgumentException("Invalid look request");
+                    float yaw=Float.parseFloat(fields[2]),pitch=Float.parseFloat(fields[3]);
+                    if(!Float.isFinite(yaw)||!Float.isFinite(pitch)||Math.abs(pitch)>90||Math.abs(yaw)>36000)
+                        throw new IllegalArgumentException("Invalid look angles");
+                    net.minecraft.client.entity.EntityClientPlayerMP player=Minecraft.getMinecraft().thePlayer;
+                    if(player!=null) {
+                        player.rotationYaw=player.prevRotationYaw=yaw;
+                        player.rotationPitch=player.prevRotationPitch=pitch;
+                    }
+                } catch(IllegalArgumentException invalid) {
+                    Cinemarr.LOGGER.info("Acceptance display look rejected");
+                }
+                return;
+            }
+            if (operation.startsWith("video:display-reload:")) {
+                String nonce=operation.substring("video:display-reload:".length());
+                if(!nonce.matches("[0-9]{1,24}"))return;
+                try {
+                    Minecraft.getMinecraft().refreshResources();
+                    Cinemarr.LOGGER.info("Acceptance display reload: request={} complete=true",nonce);
+                } catch(RuntimeException failure) {
+                    Cinemarr.LOGGER.info("Acceptance display reload: request={} complete=false",nonce);
+                }
+                return;
+            }
+            if (operation.startsWith("video:display-background:")) {
+                stonytark.cinemarr.core.client.DisplayFrameCapture.background(operation);
+                return;
+            }
+            if (operation.startsWith("video:display-frame:")) {
+                stonytark.cinemarr.core.client.DisplayFrameCapture.request(operation);
+                return;
+            }
+            if (operation.startsWith("video:display-open:")) {
+                long pos = Long.parseLong(operation.substring("video:display-open:".length()));
+                Minecraft.getMinecraft().displayGuiScreen(new LegacyDisplaySettingsScreen(pos, LegacyVideoClientState.INSTANCE, new LegacyVideoScreen(pos, LegacyVideoClientState.INSTANCE)));
+                Cinemarr.LOGGER.info("Acceptance display page opened: controller={}", pos);
+                return;
+            }
+            try {
+                for(VideoPackets.SessionState tv:LegacyVideoClientState.INSTANCE.televisions()) {
+                    if(operation.startsWith("video:display-snapshot:"))
+                        Cinemarr.LOGGER.info("Acceptance display snapshot: request={} {}",operation.substring("video:display-snapshot:".length()),
+                                stonytark.cinemarr.core.client.DisplayFeatureProbe.describe(tv,LegacyVideoClientState.INSTANCE.actualDimensions(tv.controllerPos())));
+                    else if(ProtocolLimits.videoProbeLeader() && tv.canControl()) {
+                        VideoPackets.SessionCommand displayCommand=stonytark.cinemarr.core.client.DisplayFeatureProbe.command(operation,tv);
+                        if(displayCommand!=null)LegacyVideoClientState.INSTANCE.command(displayCommand);
+                    }
+                }
+            } catch(RuntimeException failure){Cinemarr.LOGGER.info("Acceptance display command rejected: {}",failure.getClass().getSimpleName());}
+            return;
+        }
+
         VideoPackets.SessionState state = LegacyVideoClientState.INSTANCE.session(acceptanceVideoController);
         if (operation.startsWith("video:browse-pressure:") && ProtocolLimits.browsePressureProbeEnabled()) {
             VideoPackets.LibraryList libraries = LegacyVideoClientState.INSTANCE.libraries();

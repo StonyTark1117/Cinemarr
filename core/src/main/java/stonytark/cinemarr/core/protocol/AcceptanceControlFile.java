@@ -28,6 +28,16 @@ public final class AcceptanceControlFile {
         if (value.isEmpty() || value.equals(lastValue)) return "";
         lastValue = value;
         int separator = value.indexOf('|');
+        if (ProtocolLimits.displayProbeEnabled() && separator > 0) {
+            try {
+                // Receipt only: the harness still requires authoritative state
+                // before considering the operation successful.
+                Files.write(Paths.get(configured + ".received"),
+                        value.substring(0, separator).getBytes(StandardCharsets.UTF_8));
+            } catch (IOException ignored) {
+                // A missing receipt makes the harness fail closed.
+            }
+        }
         return separator < 0 ? value : value.substring(separator + 1).trim();
     }
 

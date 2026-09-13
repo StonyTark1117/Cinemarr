@@ -29,6 +29,18 @@ def verify_stream_change(before, after, kind, expected_position, tolerance=0):
                            + " selection, preserve the other stream and retain the playback cursor/state")
 
 
+def retained_paused_frame(text, minimum_generation):
+    states = re.findall(r"Acceptance video session:.*?generation=(\d+) status=([A-Z_]+).*?canControl=true", text)
+    if not states or states[-1][1] != "PAUSED":
+        return None
+    generation = int(states[-1][0])
+    if generation < minimum_generation:
+        return None
+    matches = re.findall(r"Acceptance paused frame retained: generation=" + str(generation)
+                         + r" frameSha256=([0-9a-f]{64}) ptsUs=([0-9]+)", text)
+    return matches[-1][0] if matches else None
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--log", type=Path, required=True)
@@ -104,12 +116,11 @@ def main():
 
     def retained_frame(generation):
         deadline = time.monotonic() + 10
-        pattern = r"Acceptance paused frame retained: generation=" + str(generation) + r" frameSha256=([0-9a-f]{64}) ptsUs=([0-9]+)"
         while True:
             desktop.validate()
-            match = re.search(pattern, log())
-            if match:
-                return match.group(1)
+            retained = retained_paused_frame(log(), generation)
+            if retained:
+                return retained
             if time.monotonic() >= deadline:
                 raise RuntimeError("Paused generation lost the previously displayed frame")
             time.sleep(0.1)

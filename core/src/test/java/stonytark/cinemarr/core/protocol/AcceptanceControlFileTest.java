@@ -17,6 +17,7 @@ class AcceptanceControlFileTest {
         System.clearProperty(ProtocolLimits.ACCEPTANCE_ENABLED_PROPERTY);
         System.clearProperty(ProtocolLimits.ACCEPTANCE_AUDIO_PROBE_PROPERTY);
         System.clearProperty(ProtocolLimits.ACCEPTANCE_VIDEO_PROBE_PROPERTY);
+        System.clearProperty("cinemarr.acceptance.displayProbe");
         System.clearProperty(ProtocolLimits.ACCEPTANCE_AUDIO_CONTROL_FILE_PROPERTY);
     }
 
@@ -30,6 +31,12 @@ class AcceptanceControlFileTest {
         Files.write(control, "1|video:pause\n".getBytes(StandardCharsets.UTF_8));
         assertEquals("video:pause", reader.poll());
         assertEquals("", reader.poll());
+        Path receipt = temporary.resolve("video-control.txt.received");
+        assertEquals(false, Files.exists(receipt));
+        System.setProperty("cinemarr.acceptance.displayProbe", "true");
+        Files.write(control, "2|video:pause\n".getBytes(StandardCharsets.UTF_8));
+        assertEquals("video:pause", reader.poll());
+        assertEquals("2", new String(Files.readAllBytes(receipt), StandardCharsets.UTF_8));
     }
 
     @Test void sequenceTagsAllowRepeatedCommandsWithoutReplayingUnchangedContent() throws Exception {

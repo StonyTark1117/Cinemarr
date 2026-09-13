@@ -6,15 +6,62 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import stonytark.cinemarr.core.protocol.VideoPackets;
-import stonytark.cinemarr.core.video.*;
+import stonytark.cinemarr.core.video.DisplaySettingsPage;
 
-/** Display settings page for the 26.x extractor GUI API. */
-final class Mc26DisplaySettingsScreen extends Screen {
-    private final long pos; private final CinemarrVideoClientState state; private final CinemarrVideoScreen parent; private DisplaySettingsDraft draft; private EditBox w,h; private String error="";
-    Mc26DisplaySettingsScreen(long pos,CinemarrVideoClientState state,CinemarrVideoScreen parent){super(Component.literal("Display Settings"));this.pos=pos;this.state=state;this.parent=parent;}
-    private void back(){try{minecraft.getClass().getMethod("setScreen",Screen.class).invoke(minecraft,parent);}catch(Exception ignored){}}
-    @Override protected void init(){VideoPackets.SessionState c=state.session(pos);TvDisplaySettings s=c==null?TvDisplaySettings.defaults(PresentationMode.FIT):c.displaySettings();draft=new DisplaySettingsDraft(s);int x=Math.max(4,(width-312)/2),y=28;for(PresentationMode m:PresentationMode.values())addRenderableWidget(Button.builder(Component.literal(m.name()),b->draft.layout(m)).bounds(x+m.ordinal()*72,y,68,20).build());for(PixelMapping m:PixelMapping.values()){Button b=Button.builder(Component.literal(m==PixelMapping.DETAILED?"Detailed":"One/block"),v->draft.mapping(m)).bounds(x+m.ordinal()*100,y+26,96,20).build();b.active=s.origin()!=TvDisplaySettings.Origin.QUICK;addRenderableWidget(b);}Button a=Button.builder(Component.literal("Auto"),b->draft.resolution(ResolutionChoice.AUTO)).bounds(x,y+52,70,20).build();a.active=s.origin()!=TvDisplaySettings.Origin.QUICK;addRenderableWidget(a);Button p=Button.builder(Component.literal("1080p"),b->draft.resolution(ResolutionChoice.preset("1080p"))).bounds(x+74,y+52,70,20).build();p.active=s.origin()!=TvDisplaySettings.Origin.QUICK;addRenderableWidget(p);w=new EditBox(font,x+148,y+52,72,20,Component.literal("Width"));h=new EditBox(font,x+224,y+52,72,20,Component.literal("Height"));w.setMaxLength(4);h.setMaxLength(4);addRenderableWidget(w);addRenderableWidget(h);Button custom=Button.builder(Component.literal("Custom"),b->custom()).bounds(x+148,y+76,72,20).build();custom.active=s.origin()!=TvDisplaySettings.Origin.QUICK;addRenderableWidget(custom);addRenderableWidget(Button.builder(Component.literal("Apply"),b->apply()).bounds(x+140,205,72,20).build());addRenderableWidget(Button.builder(Component.literal("Cancel"),b->back()).bounds(x+216,205,72,20).build());}
-    private void custom(){try{draft.resolution(ResolutionChoice.custom(Integer.parseInt(w.getValue().trim()),Integer.parseInt(h.getValue().trim())));error=draft.error();}catch(RuntimeException e){error=e.getMessage()==null?"Invalid resolution":e.getMessage();}}
-    private void apply(){try{TvDisplaySettings n=draft.apply();VideoPackets.SessionState c=state.session(pos);if(c==null){error="TV state is unavailable";return;}state.command(new VideoPackets.SessionCommand(VideoPackets.SessionAction.SET_DISPLAY,pos,"",c.item()==null?"":c.item().key(),"",c.presentationMode(),c.timelineGeneration(),CinemarrVideoPlayback.authoritativePositionMsLocal(c),c.selectedAudioStreamId(),c.selectedSubtitleStreamId()).withDisplay(n));back();}catch(RuntimeException e){error=e.getMessage()==null?"Unable to apply settings":e.getMessage();}}
-    @Override public void extractRenderState(GuiGraphicsExtractor g,int mx,int my,float partial){super.extractRenderState(g,mx,my,partial);g.centeredText(font,title,width/2,8,0xffffffff);VideoPackets.SessionState v=state.session(pos);String e=v==null?"Actual: unavailable":"Actual: "+v.effectiveWidth()+"x"+v.effectiveHeight()+"  Screen: "+v.screenWidth()+"x"+v.screenHeight();g.centeredText(font,e,width/2,156,0xffa0d8ff);if(!error.isEmpty())g.centeredText(font,error,width/2,180,0xffff8080);}
+/** Compact adapter; the draft and acknowledgement state survive widget rebuilds. */
+final class Mc26DisplaySettingsScreen extends Screen implements DisplaySettingsErrorTarget {
+    private final long controllerPos;
+    private final CinemarrVideoClientState state;
+    private final CinemarrVideoScreen parent;
+    private DisplaySettingsPage page;
+    private EditBox widthBox, heightBox;
+    private Button layout, mapping, quality, apply, reload;
+
+    public Mc26DisplaySettingsScreen(long pos, CinemarrVideoClientState state, CinemarrVideoScreen parent) {
+        super(Component.literal("Display Settings")); controllerPos=pos; this.state=state; this.parent=parent;
+    }
+    @Override protected void init() {
+        if(page==null)page=new DisplaySettingsPage(state.session(controllerPos));
+        if (stonytark.cinemarr.core.protocol.ProtocolLimits.displayProbeEnabled())
+            stonytark.cinemarr.Cinemarr.LOGGER.info("Acceptance display UI: width={} height={} controller={} editable={}", width, height, controllerPos, page.editable());
+        int left=Math.max(4,(width-304)/2);
+        layout=button(left,28,304,page.layoutLabel(),()->page.cycleLayout());
+        mapping=button(left,52,304,page.mappingLabel(),()->page.cycleMapping());
+        quality=button(left,76,304,page.resolutionLabel(),()->page.cycleResolution());
+        widthBox=new EditBox(font,left+40,102,104,20,Component.literal("Width"));
+        heightBox=new EditBox(font,left+196,102,104,20,Component.literal("Height"));
+        widthBox.setMaxLength(4);heightBox.setMaxLength(4);
+        widthBox.setValue(page.width());heightBox.setValue(page.height());
+        widthBox.setResponder(value->page.dimensions(value,heightBox.getValue()));
+        heightBox.setResponder(value->page.dimensions(widthBox.getValue(),value));
+        addRenderableWidget(widthBox);addRenderableWidget(heightBox);
+        reload=button(left,208,96,"Reload",()->{page.reload(state.session(controllerPos));String w=page.width(),h=page.height();widthBox.setValue(w);heightBox.setValue(h);});
+        apply=button(left+104,208,96,"Apply",()->{VideoPackets.SessionCommand command=page.apply(controllerPos,System.currentTimeMillis());if(command!=null)state.command(command);});
+        button(left+208,208,96,"Cancel",()->onClose());
+        refresh();
+    }
+    private Button button(int x,int y,int w,String label,Runnable action) {
+        return addRenderableWidget(Button.builder(Component.literal(label),b->{action.run();refresh();}).bounds(x,y,w,20).build());
+    }
+    private void refresh() {
+        layout.setMessage(Component.literal(page.layoutLabel()));mapping.setMessage(Component.literal(page.mappingLabel()));quality.setMessage(Component.literal(page.resolutionLabel()));
+        layout.active=page.editable();mapping.active=quality.active=page.qualityEditable();apply.active=page.editable();reload.active=!page.pending();
+        widthBox.setEditable(page.customEditable());heightBox.setEditable(page.customEditable());widthBox.active=heightBox.active=page.customEditable();
+    }
+    @Override public void tick(){page.update(state.session(controllerPos),System.currentTimeMillis());refresh();}
+    public void showError(String message){page.fail(message);refresh();}
+    @Override public void onClose(){CinemarrClientUi.openScreen(parent);}
+    private void line(GuiGraphicsExtractor g,String text,int y,int color){g.centeredText(font,font.plainSubstrByWidth(text,304),width/2,y,color);}
+    @Override public void extractRenderState(GuiGraphicsExtractor g,int mx,int my,float partial){
+        super.extractRenderState(g,mx,my,partial);
+        line(g,"Display Settings",8,0xffffffff);
+        int left=Math.max(4,(width-304)/2);g.text(font,"Width",left,108,0xffffffff);g.text(font,"Height",left+152,108,0xffffffff);
+        line(g,page.requestedLabel(),130,0xffa0d8ff);
+        line(g,"Actual decoded: "+state.actualDimensions(controllerPos),142,0xffa0d8ff);
+        VideoPackets.SessionState current=state.session(controllerPos);
+        line(g,current==null?"Screen: unknown":"Screen: "+current.screenWidth()+"x"+current.screenHeight()+" blocks",154,0xffa0d8ff);
+        line(g,"Pixel mode outputs one pixel per screen block.",166,0xffffffff);
+        line(g,"Quality is limited by source and server caps.",178,0xffffffff);
+        line(g,page.message(),192,0xffffb36b);
+    }
 }

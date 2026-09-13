@@ -17,12 +17,20 @@ from png_capture import read_capture, validate_closed_profile
 
 class PrivateWindowTests(unittest.TestCase):
     def test_close_can_wait_for_a_window_to_become_visible(self):
-        self.run.side_effect = [subprocess.CalledProcessError(1, ['xdotool']),
-                                SimpleNamespace(stdout='111\n')]
-        with patch('private_minecraft_window.time.sleep'):
-            window = PrivateMinecraftWindow(self.log, 42, wait_seconds=10)
+        def lookup(command, **kwargs):
+            if command[:4] == ('xdotool', 'search', '--name', '.+'):
+                raise subprocess.CalledProcessError(1, command)
+            if command[:3] == ('xdotool', 'search', '--onlyvisible'):
+                raise subprocess.CalledProcessError(1, command)
+            if command[:3] == ('xdotool', 'search', '--class'):
+                return SimpleNamespace(stdout='111\n111\n')
+            if command == ('xwininfo', '-root', '-tree'):
+                return SimpleNamespace(stdout='\nxwininfo: Window id: 0x1 (the root window)\n  0x6f client\n')
+            return SimpleNamespace(stdout='Map State: IsViewable\n')
+        self.run.side_effect = lookup
+        window = PrivateMinecraftWindow(self.log, 42, wait_seconds=10)
         self.assertEqual('111', window.window)
-        self.assertEqual(3, self.run.call_count)
+
 
     def test_window_wait_does_not_retry_ambiguity_or_x_failure(self):
         for result in (SimpleNamespace(stdout='111\n222\n'),

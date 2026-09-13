@@ -90,6 +90,22 @@ def verify_stream_identity_transport(text: str, label: str) -> None:
         raise SystemExit(f"{label} must distinguish stale transport feedback from ownership errors")
 
 
+def verify_display_boundary(text: str, label: str) -> None:
+    compact = re.sub(r"\s+", "", text)
+    command = compact[compact.index("publicvoidcommand("):]
+    early = command[:command.index("sessions.tune(")]
+    if "PresentationCommandGuard.validate(" not in early or "updatePresentation(" not in early:
+        raise SystemExit(label + " must validate presentation before tuning or restoring attachment")
+    if early.index("PresentationCommandGuard.validate(") > early.index("updatePresentation("):
+        raise SystemExit(label + " mutates presentation before validating it")
+    if "if(timeline.item()!=null&&!metadataMatches(timeline))continue;" not in compact:
+        raise SystemExit(label + " prepares a TV stream before matching playback metadata is committed")
+    if re.search(r"withDisplay\([^;]*media\.dimensions", compact):
+        raise SystemExit(label + " publishes requested rendition bounds as measured output")
+    if "recipients(television,player))sendCurrent(" not in early:
+        raise SystemExit(label + " must publish display edits to all TV recipients")
+
+
 def main() -> None:
     for path in ("src/main/java/stonytark/cinemarr/server/ServerVideoManager.java",
                  "platforms/mc26/common/src/main/java/stonytark/cinemarr/server/ServerVideoManager.java",
@@ -202,9 +218,11 @@ def main() -> None:
             raise SystemExit(f"{prefix} replacement retention must be scoped to the TV and shared timeline")
             raise SystemExit(f"{prefix} paused frame transfer must not steal a still-referenced texture")
     for source in ACCEPTANCE_VIDEO_SCREENS:
-        if source.name == "LegacyVideoScreen.java":
-            continue
         text = source.read_text("utf-8")
+        if source.name == "LegacyVideoScreen.java":
+            if "new LegacyDisplaySettingsScreen(" not in text:
+                raise SystemExit("legacy controller lacks Display Settings entry point")
+            continue
         if '"display-settings"' not in text:
             raise SystemExit(f"{source.relative_to(ROOT)} lacks the Display Settings entry point")
         body = text[text.index("public final class CinemarrVideoScreen"):
@@ -212,6 +230,7 @@ def main() -> None:
         body = body.replace("private int acceptanceScreenshotTicks;",
                             "private boolean acceptanceScreenshotPending;")
         body = body.replace("acceptanceScreenshotTicks=2;", "acceptanceScreenshotPending=true;")
+        body = body.replace("new Mc26DisplaySettingsScreen(", "new DisplaySettingsScreen(")
         body = re.sub(r'widget\("display-settings",Button\.builder\(Component\.literal\("Display"\).*?build\(\)\);', "", body)
         body = re.sub(r"\s+", "", body)
         # Minecraft GUI signatures differ by version; normalize those narrow
@@ -244,6 +263,7 @@ def main() -> None:
         if "sessions.reconfigure(tuned.name()," not in text or "playbackOptions.get(state.id())" not in text:
             raise SystemExit(f"{source.relative_to(ROOT)} must preserve the server cursor and paused stream metadata")
         verify_stream_identity_transport(text, str(source.relative_to(ROOT)))
+        verify_display_boundary(text, str(source.relative_to(ROOT)))
         if source.name == "ServerVideoManager.java":
             if "java.util.function.Predicate<UUID> handshakeComplete" not in text:
                 raise SystemExit(f"{source.relative_to(ROOT)} must receive the actual adapter handshake gate")

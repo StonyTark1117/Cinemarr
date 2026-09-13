@@ -81,6 +81,15 @@ class TelevisionStreamPoolTest {
         }
     }
 
+    @Test void idleTicksDoNotInventNewStreamGenerations() throws Exception {
+        try(Fixture f=new Fixture(2)) {
+            UUID tv=UUID.randomUUID();f.timeline.stop("party",1000);
+            f.update(tv,DEFAULTS,1000,VIEWER);long generation=f.pool.snapshot(tv,1000).generation();
+            for(int now=1001;now<1100;now++){f.update(tv,DEFAULTS,now,VIEWER);f.pool.tick(now);}
+            assertEquals(generation,f.pool.snapshot(tv,1100).generation());assertEquals(0,f.pool.pendingStarts());
+        }
+    }
+
     private static TvDisplaySettings quality(String preset) {
         return DEFAULTS.apply(0, PresentationMode.FIT, PixelMapping.DETAILED, ResolutionChoice.preset(preset));
     }

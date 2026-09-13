@@ -514,6 +514,12 @@ tasks.register('verifyAllTargets') {
     dependsOn(familyReleaseGates, verifyGameTests)
 }
 
+tasks.register('verifyDisplayFeatureHarness', Exec) {
+    group = 'verification'
+    description = 'Checks fresh per-TV feature observations and maintained gate wiring.'
+    commandLine 'python3', 'scripts/test-display-feature.py'
+}
+
 tasks.register('verifySourceLayoutTests', Exec) {
     group = 'verification'
     description = 'Exercise source-layout playback-publication guards with mutations.'
@@ -656,7 +662,7 @@ tasks.register('verifyVideoFaultRecovery', Exec) {
 
 tasks.named('verifyAllTargets') {
     dependsOn tasks.named('verifySourceLayout'), tasks.named('verifyTargetManifest'),
-            tasks.named('verifyReleaseHygiene'), tasks.named('verifyPcmCaptureAlignment'),
+            tasks.named('verifyReleaseHygiene'), tasks.named('verifyDisplayFeatureHarness'), tasks.named('verifyPcmCaptureAlignment'),
             tasks.named('verifyLogMarkerPolling'), tasks.named('verifyLegacyProbePlayerState'),
             tasks.named('verifyPrivateXvfb'), tasks.named('verifyClientExit'), tasks.named('verifyClientJoinOrder'),
             tasks.named('verifyPrivateMinecraftWindow'), tasks.named('verifyFabricLoaderVersion'),
@@ -805,6 +811,7 @@ tasks.register('verifyDedicatedServers', Exec) {
     environment('CINEMARR_COMMAND_CLIENT_GATE', 'true')
     environment('CINEMARR_VIDEO_CLIENT_GATE', 'true')
     environment('CINEMARR_VIDEO_CONTROL_GATE', 'true')
+    environment('CINEMARR_DISPLAY_FEATURE_GATE', 'true')
     commandLine('bash', 'scripts/run-dedicated-server-gate.sh', '1.21.1-neoforge')
 }
 
@@ -818,6 +825,7 @@ tasks.register('verifyRuntimeMatrix', Exec) {
     environment('CINEMARR_COMMAND_CLIENT_GATE', 'true')
     environment('CINEMARR_VIDEO_CLIENT_GATE', 'true')
     environment('CINEMARR_VIDEO_CONTROL_GATE', 'true')
+    environment('CINEMARR_DISPLAY_FEATURE_GATE', 'true')
     environment('CINEMARR_LEGACY_DECODE_STALL_MS', '10000')
     environment('CINEMARR_MODERN_AUDIO_SETUP_STALL_MS', '250')
     commandLine('bash', 'scripts/run-dedicated-server-gate.sh', 'all')
@@ -837,6 +845,7 @@ def terminalRuntimeGates = [
         environment('CINEMARR_COMMAND_CLIENT_GATE', 'true')
         environment('CINEMARR_VIDEO_CLIENT_GATE', 'true')
         environment('CINEMARR_VIDEO_CONTROL_GATE', 'true')
+    environment('CINEMARR_DISPLAY_FEATURE_GATE', 'true')
         environment('CINEMARR_VIDEO_TERMINAL_GATE', 'true')
         mustRunAfter('inspectReleaseArtifacts', 'verifyDedicatedServers')
         commandLine('bash', 'scripts/run-dedicated-server-gate.sh', profile)
@@ -863,6 +872,7 @@ def pressureRuntimeGates = [
         environment('CINEMARR_COMMAND_CLIENT_GATE', 'true')
         environment('CINEMARR_VIDEO_CLIENT_GATE', 'true')
         environment('CINEMARR_VIDEO_CONTROL_GATE', 'true')
+    environment('CINEMARR_DISPLAY_FEATURE_GATE', 'true')
         environment('CINEMARR_VIDEO_PRESSURE_GATE', 'true')
         environment('CINEMARR_GATE_VIDEO_DURATION_SECONDS', '600')
         mustRunAfter('inspectReleaseArtifacts', 'verifyDedicatedServers')
@@ -891,6 +901,7 @@ def faultRecoveryRuntimeGates = [
         environment('CINEMARR_COMMAND_CLIENT_GATE', 'true')
         environment('CINEMARR_VIDEO_CLIENT_GATE', 'true')
         environment('CINEMARR_VIDEO_CONTROL_GATE', 'true')
+    environment('CINEMARR_DISPLAY_FEATURE_GATE', 'true')
         environment('CINEMARR_VIDEO_ADVERSE_NETWORK_GATE', 'true')
         environment('CINEMARR_GATE_VIDEO_DURATION_SECONDS', '600')
         mustRunAfter('inspectReleaseArtifacts', 'verifyDedicatedServers')
@@ -913,6 +924,7 @@ tasks.register('verifyQuiltRuntimes', Exec) {
     environment('CINEMARR_COMMAND_CLIENT_GATE', 'true')
     environment('CINEMARR_VIDEO_CLIENT_GATE', 'true')
     environment('CINEMARR_VIDEO_CONTROL_GATE', 'true')
+    environment('CINEMARR_DISPLAY_FEATURE_GATE', 'true')
     environment('CINEMARR_MODERN_AUDIO_SETUP_STALL_MS', '250')
     commandLine('bash', 'scripts/run-dedicated-server-gate.sh', 'quilt')
 }
@@ -927,6 +939,7 @@ tasks.register('verifyQuiltModMenuRuntimes', Exec) {
     environment('CINEMARR_COMMAND_CLIENT_GATE', 'true')
     environment('CINEMARR_VIDEO_CLIENT_GATE', 'true')
     environment('CINEMARR_VIDEO_CONTROL_GATE', 'true')
+    environment('CINEMARR_DISPLAY_FEATURE_GATE', 'true')
     commandLine('bash', 'scripts/run-dedicated-server-gate.sh', 'quilt')
     mustRunAfter('verifyDedicatedServers', 'verifyRuntimeMatrix', 'inspectReleaseArtifacts')
 }

@@ -110,7 +110,10 @@ public final class TelevisionStreamPool implements AutoCloseable {
         }
         if(!request.eligible()) {
             waiting.remove(request.televisionId);
-            if(request.timeline.item()==null)streams.stop(name,now);
+            if(request.timeline.item()==null){
+                VideoSessionCoordinator.Snapshot idle=streams.snapshot(name,now);
+                if(idle.item()!=null||idle.transcoding()||entry.pending)streams.stop(name,now);
+            }
             else if(request.timeline.paused())streams.pause(name,now);
             else if(!request.timeline.transcoding())streams.suspend(name,now);
             return;

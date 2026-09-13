@@ -156,6 +156,23 @@ public final class CinemarrServer {
         if (lifecycleProbe) {
             return;
         }
+        if(ProtocolLimits.displayProbeEnabled() && "CinemarrVideoA".equals(player.getGameProfile().getName())) {
+            for(int index=0;index<2;index++) {
+                int startX=20+index*24,w=index==0?4:17,h=index==0?4:11;
+                BlockPos customController=new BlockPos(startX,100,-1);
+                if(screens.television(customController)!=null)continue;
+                level.getChunk(startX>>4,0);level.getChunk((startX+w-1)>>4,0);
+                level.setBlockAndUpdate(customController,CinemarrBlocks.TV_CONTROLLER.get().defaultBlockState());
+                for(int x=0;x<w;x++)for(int y=0;y<h;y++) {
+                    // The 4x4 L and 17x11 central hole exercise the actual masked mesh.
+                    if(index==0 ? x>=2&&y>=2 : x>=7&&x<=9&&y>=4&&y<=6)continue;
+                    BlockPos pixel=new BlockPos(startX+x,100+y,0);
+                    level.setBlockAndUpdate(pixel,CinemarrBlocks.screenPixel().defaultBlockState().setValue(stonytark.cinemarr.screen.ScreenPixelBlock.FACING,Direction.SOUTH));
+                    screens.putPixel(pixel,Direction.SOUTH);
+                }
+                if(!screens.activate(customController,player.getUUID()).success())throw new IllegalStateException("Display acceptance custom TV activation failed");
+            }
+        }
         for (int x = -9; x <= 9; x++) for (int z = 1; z <= 8; z++) {
             level.setBlockAndUpdate(new BlockPos(x, 99, z), Blocks.SMOOTH_STONE.defaultBlockState());
             for (int y = 100; y <= 109; y++) level.setBlockAndUpdate(new BlockPos(x, y, z), Blocks.AIR.defaultBlockState());

@@ -28,6 +28,7 @@ import java.util.List;
 
 /** Controller-specific movie/show browser and synchronized TV controls for Forge 1.7.10. */
 final class LegacyVideoScreen extends GuiScreen {
+    private static final int DISPLAY_SETTINGS = 27; // display-settings
     private static final int SEARCH = 1, BACK = 2, REFRESH = 3, TOGGLE_QUEUE = 4;
     private static final int PREVIOUS_PAGE=5, NEXT_PAGE=6, PAGE_LABEL=7, LIBRARY_PREVIOUS=8, LIBRARY_NEXT=9, VOLUME_LABEL=26;
     private static final int PAUSE = 10, SEEK_BACK = 11, SEEK_FORWARD = 12, STOP = 13, SKIP = 14,
@@ -76,6 +77,7 @@ final class LegacyVideoScreen extends GuiScreen {
         if (queueView) addQueueRows(left, top, panel); else addBrowseRows(left, top, panel);
         addControls();
         if(previousSession!=null)previousSession.restore(sessionName);
+        add(DISPLAY_SETTINGS,layout.left(),2,68,14,"Display");
         inspectAcceptanceLayout();
     }
 
@@ -135,6 +137,7 @@ final class LegacyVideoScreen extends GuiScreen {
 
     @Override protected void actionPerformed(GuiButton button) {
         if (!button.enabled) return;
+        if(button.id==DISPLAY_SETTINGS){mc.displayGuiScreen(new LegacyDisplaySettingsScreen(controllerPos,state,this));return;}
         if (button.id >= LIBRARY_BASE && button.id < OPEN_BASE) { int index = button.id - LIBRARY_BASE; if (index < state.libraries().libraries().size()) selectLibrary(state.libraries().libraries().get(index).id()); return; }
         if (button.id >= OPEN_BASE && button.id < PLAY_BASE) { int row = button.id - OPEN_BASE; if (row < displayed.size()) activate(displayed.get(row)); return; }
         if (button.id >= PLAY_BASE && button.id < QUEUE_BASE) { int row = button.id - PLAY_BASE; if (row < displayed.size()) play(displayed.get(row)); return; }

@@ -40,7 +40,7 @@ class PrivateMinecraftWindow:
                 # `.*` also matches the private X root window on some xdotool
                 # builds. Require a non-empty name so the root cannot become
                 # a second apparent Minecraft client.
-                windows = self.run("xdotool", "search", "--name", ".+").splitlines()
+                windows = self.search("--name", ".+")
                 # Do not capture a native client during the short interval
                 # between XCreateWindow and XMapWindow.  Conversely, accept
                 # clients whose WM metadata omits the EWMH visible hint.
@@ -73,7 +73,7 @@ class PrivateMinecraftWindow:
                     # that case enumerate all visible windows once and remove
                     # the display root by its authoritative X11 window ID.
                     try:
-                        candidates = self.run("xdotool", "search", "--onlyvisible", "--name", ".*").splitlines()
+                        candidates = self.search("--onlyvisible", "--name", ".*")
                         # LWJGL/Fabric can leave WM_NAME empty while still
                         # exposing a mapped GL surface. Query the X11 class as
                         # an independent discovery signal before falling back
@@ -85,12 +85,14 @@ class PrivateMinecraftWindow:
                             # Query class metadata without --onlyvisible and
                             # let the mapped-state checks below decide whether
                             # the candidate is capturable.
-                            candidates.extend(self.run("xdotool", "search", "--class", ".*").splitlines())
+                            candidates.extend(self.search("--class", ".*"))
                         except subprocess.CalledProcessError:
                             pass
                         tree = self.run("xwininfo", "-root", "-tree")
-                        root_line = tree.splitlines()[0]
-                        root = int(root_line.split("Window id:", 1)[1].split()[0], 16)
+                        root_match = re.search(r"Window id:\s*(0x[0-9a-fA-F]+)", tree)
+                        if root_match is None:
+                            raise RuntimeError("Cannot identify private X root window")
+                        root = int(root_match.group(1), 16)
                         windows = [value for value in candidates if int(value) != root]
                         if not windows:
                             # Some Fabric clients expose no EWMH-visible name
@@ -114,6 +116,7 @@ class PrivateMinecraftWindow:
                                         windows.append(window)
                     except (IndexError, ValueError, subprocess.CalledProcessError):
                         windows = []
+                windows = list(dict.fromkeys(windows))
                 if len(windows) > 1:
                     # CI runners can expose transient helper windows on the
                     # same display. Keep only X clients descended from this
@@ -166,6 +169,15 @@ class PrivateMinecraftWindow:
             # A disconnect can be logged before the render thread maps the
             # window. Revalidate the owned X server on every bounded lookup.
             time.sleep(0.1)
+
+    def search(self, *args):
+        """No matches is normal; still try class/tree discovery for untitled LWJGL windows."""
+        try:
+            return self.run("xdotool", "search", *args).splitlines()
+        except subprocess.CalledProcessError as error:
+            if error.returncode != 1:
+                raise
+            return []
 
     @staticmethod
     def identity(pid):

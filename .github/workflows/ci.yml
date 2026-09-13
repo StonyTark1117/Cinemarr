@@ -65,7 +65,7 @@ jobs:
           for attempt in 1 2 3; do
             if sudo apt-get update && sudo apt-get install -y --fix-missing \
                 ffmpeg imagemagick iproute2 libasound2-plugins libgl1-mesa-dri \
-                libopenal1 pulseaudio pulseaudio-utils x11-utils x11-xserver-utils \
+                libopenal1 pulseaudio pulseaudio-utils python3-pil x11-utils x11-xserver-utils \
                 xdotool xvfb; then
               installed=1
               break
@@ -79,6 +79,7 @@ jobs:
           fi
           pulseaudio --start --exit-idle-time=-1
           python3 scripts/test-private-xvfb.py
+          python3 scripts/test-display-feature.py
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
@@ -163,6 +164,7 @@ jobs:
           CINEMARR_COMMAND_CLIENT_GATE: 'true'
           CINEMARR_VIDEO_CLIENT_GATE: 'true'
           CINEMARR_VIDEO_CONTROL_GATE: 'true'
+          CINEMARR_DISPLAY_FEATURE_GATE: 'true'
           CINEMARR_LEGACY_DECODE_STALL_MS: '10000'
           CINEMARR_MODERN_AUDIO_SETUP_STALL_MS: '250'
         run: bash scripts/run-dedicated-server-gate.sh ${{ matrix.runtime }}
@@ -175,6 +177,7 @@ jobs:
           CINEMARR_COMMAND_CLIENT_GATE: 'true'
           CINEMARR_VIDEO_CLIENT_GATE: 'true'
           CINEMARR_VIDEO_CONTROL_GATE: 'true'
+          CINEMARR_DISPLAY_FEATURE_GATE: 'true'
           CINEMARR_VIDEO_TERMINAL_GATE: 'true'
         run: bash scripts/run-dedicated-server-gate.sh ${{ matrix.runtime }}
       - name: Validate browse and third-peer segment overload isolation
@@ -186,6 +189,7 @@ jobs:
           CINEMARR_COMMAND_CLIENT_GATE: 'true'
           CINEMARR_VIDEO_CLIENT_GATE: 'true'
           CINEMARR_VIDEO_CONTROL_GATE: 'true'
+          CINEMARR_DISPLAY_FEATURE_GATE: 'true'
           CINEMARR_VIDEO_PRESSURE_GATE: 'true'
           CINEMARR_GATE_VIDEO_DURATION_SECONDS: '600'
         run: bash scripts/run-dedicated-server-gate.sh ${{ matrix.runtime }}
@@ -198,6 +202,7 @@ jobs:
           CINEMARR_COMMAND_CLIENT_GATE: 'true'
           CINEMARR_VIDEO_CLIENT_GATE: 'true'
           CINEMARR_VIDEO_CONTROL_GATE: 'true'
+          CINEMARR_DISPLAY_FEATURE_GATE: 'true'
           CINEMARR_VIDEO_ADVERSE_NETWORK_GATE: 'true'
           CINEMARR_GATE_VIDEO_DURATION_SECONDS: '600'
         run: bash scripts/run-dedicated-server-gate.sh ${{ matrix.runtime }}
@@ -210,6 +215,7 @@ jobs:
           CINEMARR_COMMAND_CLIENT_GATE: 'true'
           CINEMARR_VIDEO_CLIENT_GATE: 'true'
           CINEMARR_VIDEO_CONTROL_GATE: 'true'
+          CINEMARR_DISPLAY_FEATURE_GATE: 'true'
           CINEMARR_MODERN_AUDIO_SETUP_STALL_MS: '250'
         run: bash scripts/run-dedicated-server-gate.sh ${{ matrix.quilt }}
       - name: Validate ${{ matrix.quilt }} with Mod Menu
@@ -225,6 +231,7 @@ jobs:
           CINEMARR_COMMAND_CLIENT_GATE: 'true'
           CINEMARR_VIDEO_CLIENT_GATE: 'true'
           CINEMARR_VIDEO_CONTROL_GATE: 'true'
+          CINEMARR_DISPLAY_FEATURE_GATE: 'true'
         run: bash scripts/run-dedicated-server-gate.sh ${{ matrix.quilt }}
       - name: Validate minimum Fabric Loader
         if: ${{ matrix.quilt != '' }}

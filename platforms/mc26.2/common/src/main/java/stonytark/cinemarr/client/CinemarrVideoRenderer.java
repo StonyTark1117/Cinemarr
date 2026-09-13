@@ -37,8 +37,11 @@ public final class CinemarrVideoRenderer {
             if(state.item()==null||state.status()==VideoPackets.SessionStatus.IDLE)continue;
             CinemarrVideoPlayback pipeline=playback.pipeline(new CinemarrVideoClientState.StreamKey(state.identity()));
             if(pipeline==null||!pipeline.texture().ready())continue;visible.add(state.televisionId());
-            CinemarrVideoTexture displayTexture=pipeline.texture().forDisplay(state);MeshCache mesh=updateMesh(state);PresentationTransform transform=PresentationTransform.create(displayTexture.width(),displayTexture.height(),state.screenWidth(),state.screenHeight(),state.displaySettings().mapping()==stonytark.cinemarr.core.video.PixelMapping.ONE_PIXEL_PER_BLOCK?stonytark.cinemarr.core.video.PresentationMode.STRETCH:state.presentationMode());
-            RenderType type=RenderTypes.entityCutout(displayTexture.location());
+            CinemarrVideoTexture displayTexture=pipeline.texture().forDisplay(state);
+            if(stonytark.cinemarr.core.client.DisplayFrameCapture.isSuppressed(state.controllerPos()))continue;
+            MeshCache mesh=updateMesh(state);PresentationTransform transform=PresentationTransform.create(displayTexture.width(),displayTexture.height(),state.screenWidth(),state.screenHeight(),state.displaySettings().mapping()==stonytark.cinemarr.core.video.PixelMapping.ONE_PIXEL_PER_BLOCK?stonytark.cinemarr.core.video.PresentationMode.STRETCH:state.presentationMode());
+            // Full-bright textured quads preserve source colors without directional entity lighting.
+            RenderType type=RenderTypes.text(displayTexture.location());
             int sourceWidth=displayTexture.width(),sourceHeight=displayTexture.height();
             submits.submitCustomGeometry(pose,type,(entry,vertices)->{
                 Matrix4f matrix=entry.pose();

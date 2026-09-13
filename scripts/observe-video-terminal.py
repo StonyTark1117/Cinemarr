@@ -13,13 +13,13 @@ import time
 spec = importlib.util.spec_from_file_location('world', Path(__file__).with_name('capture-post-reconnect-video.py'))
 world = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(world)
-STATE = re.compile(r'Acceptance video session: controller=\S+ session=(\S+) generation=(\d+) status=(\S+) item=([^\s\]]*) positionMs=(\d+) canControl=(true|false).*? durationMs=(\d+) message=([^\r\n<]*)')
+STATE = re.compile(r'Acceptance video session: controller=\S+ session=(\S+) generation=(\d+) status=(\S+) item=([^\s\]]*) positionMs=(\d+) canControl=(true|false).*? durationMs=(\d+) timeline=(\S+) timelineGeneration=(\d+) message=([^\r\n<]*)')
 QUEUE = re.compile(r'Acceptance video queue: session=(\S+) generation=(\d+) entries=(\d+) firstItem=([^\s\]]*)')
 
 
 def states(text):
-    return [dict(session=m[0], generation=int(m[1]), status=m[2], item=m[3], position=int(m[4]),
-                 owner=m[5] == 'true', duration=int(m[6]), message=m[7].split(']]>', 1)[0]) for m in STATE.findall(text)]
+    return [dict(session=m[7], generation=int(m[8]), status=m[2], item=m[3], position=int(m[4]),
+                 owner=m[5] == 'true', duration=int(m[6]), message=m[9].split(']]>', 1)[0]) for m in STATE.findall(text)]
 
 
 def queues(text):

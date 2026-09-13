@@ -20,28 +20,39 @@ public final class CinemarrVideoTexture implements AutoCloseable {
     private final java.util.Map<java.util.UUID, Derived> derived = new java.util.HashMap<>();
     private static final class Derived {
         final CinemarrVideoTexture texture = new CinemarrVideoTexture();
-        byte[] raster;
         long revision = -1;
         int width, height;
         stonytark.cinemarr.core.video.PresentationMode layout;
     }
     public CinemarrVideoTexture forDisplay(stonytark.cinemarr.core.protocol.VideoPackets.SessionState state) {
         if (state.displaySettings().mapping() == stonytark.cinemarr.core.video.PixelMapping.DETAILED) {
-            Derived old=derived.remove(state.televisionId()); if(old!=null)old.texture.close(); return this;
+            Derived old=derived.remove(state.televisionId()); if(old!=null)old.texture.close();
+            if(derived.isEmpty())presented.releaseRaster();
+            captureFrame(state);
+            return this;
         }
         if (source == null) return this;
         Derived value=derived.get(state.televisionId());
         if(value==null){value=new Derived();derived.put(state.televisionId(),value);}
         if(value.revision!=frameRevision||value.width!=state.screenWidth()||value.height!=state.screenHeight()||value.layout!=state.presentationMode()) {
-            value.raster=presented.raster(state.screenWidth(),state.screenHeight(),state.presentationMode());
-            value.texture.uploadRaw(state.screenWidth(),state.screenHeight(),value.raster,true);
+            byte[] raster=presented.raster(state.screenWidth(),state.screenHeight(),state.presentationMode());
+            value.texture.uploadRaw(state.screenWidth(),state.screenHeight(),raster,true);
             value.revision=frameRevision; value.width=state.screenWidth(); value.height=state.screenHeight(); value.layout=state.presentationMode();
         }
+        captureFrame(state);
         return value.texture;
+    }
+    private void captureFrame(stonytark.cinemarr.core.protocol.VideoPackets.SessionState state) {
+        if(!stonytark.cinemarr.core.client.DisplayFrameCapture.requested(state.controllerPos()))return;
+        double[] camera=CinemarrClientUi.acceptanceCamera();
+        String receipt=stonytark.cinemarr.core.client.DisplayFrameCapture.capture(state,source,width,height,
+                presented.retainedBytes(),derived.size(),camera);
+        if(!receipt.isEmpty())stonytark.cinemarr.Cinemarr.LOGGER.info("Acceptance display frame: {}",receipt);
     }
     public void retainDisplays(java.util.Set<java.util.UUID> visible) {
         java.util.Iterator<java.util.Map.Entry<java.util.UUID,Derived>> it=derived.entrySet().iterator();
         while(it.hasNext()){java.util.Map.Entry<java.util.UUID,Derived> entry=it.next();if(!visible.contains(entry.getKey())){entry.getValue().texture.close();it.remove();}}
+        if(derived.isEmpty())presented.releaseRaster();
     }
     private int width;
     private int height;

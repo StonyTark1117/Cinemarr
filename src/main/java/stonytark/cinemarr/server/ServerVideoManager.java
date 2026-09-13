@@ -250,7 +250,16 @@ public final class ServerVideoManager implements AutoCloseable {
             if (command.action() == VideoPackets.SessionAction.SET_DISPLAY) {
                 if(command.displaySettings()==null)throw new IllegalArgumentException("Missing display settings");
                 CinemarrWorldScreens.get(player.serverLevel()).updateDisplay(controller,command.displaySettings());
-                sendCurrent(player,television,System.currentTimeMillis());
+                for(ServerPlayer recipient:recipients(television,player))sendCurrent(recipient,television,System.currentTimeMillis());
+                return;
+            }
+            // Presentation edits never tune, restore, persist attachment, or refresh tracking.
+            if (command.action() == VideoPackets.SessionAction.SET_PRESENTATION) {
+                VideoSessionCoordinator.Snapshot current = sessions.snapshotIfPresent(television.sessionName(), System.currentTimeMillis());
+                stonytark.cinemarr.core.video.PresentationCommandGuard.validate(command,
+                        television.sessionName(), current == null ? 0 : current.generation());
+                CinemarrWorldScreens.get(player.serverLevel()).updatePresentation(controller, command.presentationMode());
+                for(ServerPlayer recipient:recipients(television,player))sendCurrent(recipient,television,System.currentTimeMillis());
                 return;
             }
             String requestedSession=command.sessionName().isBlank()?television.sessionName():command.sessionName();
@@ -541,7 +550,9 @@ public final class ServerVideoManager implements AutoCloseable {
         for(ServerLevel world:server.getAllLevels())for(CinemarrWorldScreens.Television tv:CinemarrWorldScreens.get(world).televisions()) {
             VideoSessionCoordinator.Snapshot timeline=sessions.snapshotIfPresent(tv.sessionName(),now);
             if(timeline==null)continue;
-            retained.add(tv.id());Set<UUID> viewers=new HashSet<UUID>();
+            retained.add(tv.id());
+            if(timeline.item()!=null&&!metadataMatches(timeline))continue;
+            Set<UUID> viewers=new HashSet<UUID>();
             for(Map.Entry<UUID,Map<UUID,Long>> entry:visibleTelevisions.entrySet())if(entry.getValue().containsKey(tv.id()))viewers.add(entry.getKey());
             tvStreams.update(new TelevisionStreamPool.Request(tv.id(),timeline,tv.displaySettings(),tv.width(),tv.height(),viewers),now);
             VideoSessionCoordinator.Snapshot stream=tvStreams.snapshot(tv.id(),now);
@@ -577,7 +588,7 @@ public final class ServerVideoManager implements AutoCloseable {
     private boolean canControl(ServerPlayer player,CinemarrWorldScreens.Television tv){return tv.owner().equals(player.getUUID())||permission(player)>=CinemarrSettings.operatorPermissionLevel();}
     private void sendState(ServerPlayer player,CinemarrWorldScreens.Television tv,VideoSessionCoordinator.Snapshot state,PresentationMode mode,String message){VideoSessionCoordinator.Snapshot stream=tvStreams.snapshot(tv.id(),System.currentTimeMillis());
         if(!tvStreams.message(tv.id()).isEmpty())message=tvStreams.message(tv.id());
-        VideoPackets.SessionStatus status=state.item()==null?VideoPackets.SessionStatus.IDLE:state.paused()?VideoPackets.SessionStatus.PAUSED:stream!=null&&stream.transcoding()?VideoPackets.SessionStatus.PLAYING:VideoPackets.SessionStatus.BUFFERING;ActiveVideoMedia media=stream==null?null:active.get(key(stream.id(),stream.generation()));StartOptions configured=playbackOptions.get(state.id());StreamSelection selected=configured==null?new StreamSelection(Collections.emptyList(),-1,-1):configured.streams;List<VideoStreamOption> streams=media==null?selected.options:media.options;int audio=media==null?selected.audioId:media.audioId,subtitle=media==null?selected.subtitleId:media.subtitleId;CinemarrNetwork.sendToPlayer(player,new VideoPayloads.SessionState(new VideoPackets.SessionState(tv.id(),tv.controllerPos(),stream==null?tv.id():stream.id(),stream==null?0:stream.generation(),status,state.item(),state.positionMs(),state.item()==null?0:state.item().durationMs(),state.paused(),mode,tv.width(),tv.height(),tv.mask(),tv.facing(),tv.plane(),tv.minimumU(),tv.minimumV(),streams,audio,subtitle,state.serverEpochMs(),canControl(player,tv),message).withDisplay(tv.displaySettings(),media==null?0:media.dimensions.width(),media==null?0:media.dimensions.height()).withTimeline(state.id(),state.generation())));}
+        VideoPackets.SessionStatus status=state.item()==null?VideoPackets.SessionStatus.IDLE:state.paused()?VideoPackets.SessionStatus.PAUSED:stream!=null&&stream.transcoding()?VideoPackets.SessionStatus.PLAYING:VideoPackets.SessionStatus.BUFFERING;ActiveVideoMedia media=stream==null?null:active.get(key(stream.id(),stream.generation()));StartOptions configured=playbackOptions.get(state.id());StreamSelection selected=configured==null?new StreamSelection(Collections.emptyList(),-1,-1):configured.streams;List<VideoStreamOption> streams=media==null?selected.options:media.options;int audio=media==null?selected.audioId:media.audioId,subtitle=media==null?selected.subtitleId:media.subtitleId;CinemarrNetwork.sendToPlayer(player,new VideoPayloads.SessionState(new VideoPackets.SessionState(tv.id(),tv.controllerPos(),stream==null?tv.id():stream.id(),stream==null?0:stream.generation(),status,state.item(),state.positionMs(),state.item()==null?0:state.item().durationMs(),state.paused(),mode,tv.width(),tv.height(),tv.mask(),tv.facing(),tv.plane(),tv.minimumU(),tv.minimumV(),streams,audio,subtitle,state.serverEpochMs(),canControl(player,tv),message).withDisplay(tv.displaySettings(),0,0).withTimeline(state.id(),state.generation())));}
     private void sendIdle(ServerPlayer player,CinemarrWorldScreens.Television tv,String message){CinemarrNetwork.sendToPlayer(player,new VideoPayloads.SessionState(new VideoPackets.SessionState(tv.id(),tv.controllerPos(),new UUID(0,0),0,VideoPackets.SessionStatus.IDLE,null,0,0,false,tv.presentationMode(),tv.width(),tv.height(),tv.mask(),tv.facing(),tv.plane(),tv.minimumU(),tv.minimumV(),Collections.emptyList(),-1,-1,System.currentTimeMillis(),canControl(player,tv),message).withDisplay(tv.displaySettings(),0,0)));}
     private PlexVideoService.ResolvedLibrary library(String id,ServerPlayer player){for(PlexVideoService.ResolvedLibrary value:libraries)if(value.rule().id().equals(id)){if(permission(player)<value.rule().permissionLevel()){error(player,"Library permission denied");return null;}return value;}error(player,"Unknown video library");return null;}
     private PlexVideoService.ResolvedLibrary library(String id){for(PlexVideoService.ResolvedLibrary value:libraries)if(value.rule().id().equals(id))return value;return null;}

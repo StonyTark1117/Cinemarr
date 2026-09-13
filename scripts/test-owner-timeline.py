@@ -10,6 +10,15 @@ spec.loader.exec_module(owner)
 
 
 class StreamChangeTests(unittest.TestCase):
+    def test_coalesced_paused_packets_require_retention_at_latest_authoritative_generation(self):
+        old = 'Acceptance video session: generation=9 status=PAUSED item=movie canControl=true\n'
+        latest = 'Acceptance video session: generation=10 status=PAUSED item=movie canControl=true\n'
+        retained = 'Acceptance paused frame retained: generation=10 frameSha256=' + 'a'*64 + ' ptsUs=123\n'
+        self.assertEqual('a'*64, owner.retained_paused_frame(old + latest + retained, 9))
+        self.assertIsNone(owner.retained_paused_frame(old + latest + retained.replace('generation=10', 'generation=9'), 9))
+        self.assertIsNone(owner.retained_paused_frame(old + latest + retained, 11))
+        self.assertIsNone(owner.retained_paused_frame(old + latest.replace('PAUSED', 'PLAYING') + retained, 9))
+
     def setUp(self):
         self.before = dict(generation=3, status='PAUSED', positionMs=84388, audio=205039, subtitle=-1)
         self.subtitle = dict(self.before, generation=4, subtitle=205040)
