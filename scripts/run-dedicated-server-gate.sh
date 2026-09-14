@@ -3018,8 +3018,12 @@ run_display_restart_check() {
   done
   restart_server=$(ss -ltnp "sport = :$port" \
     | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -n 1)
-  if [[ -n "$restart_server" ]]; then
+  if [[ -n "$restart_server" ]] && process_tree_pids "$restart_pid" | grep -Fx -- "$restart_server" >/dev/null; then
     restart_group=$(ps -o pgid= -p "$restart_server" | tr -d '[:space:]')
+  else
+    echo "$label: persistence restart has no owned listener on its game port" >&2
+    restart_status=1
+    restart_server=''
   fi
   if [[ "$restart_group" =~ ^[0-9]+$ ]] && (( restart_group > 1 )); then
     active_server_group=$restart_group
@@ -3028,7 +3032,11 @@ run_display_restart_check() {
   fi
   # Registrations are reconciled during server startup, including controllers
   # whose chunks are unloaded. No acceptance player creates replacement TVs.
-  if [[ "$label" == "1.7.10-forge" ]]; then
+  if [[ "$label" == "1.7.10-forge" || -z "$restart_server" ]]; then
+    printf 'stop\n' >&"$restart_fd"
+  elif [[ "$(ss -ltnp "sport = :$rcon_port" | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -n 1)" != "$restart_server" ]]; then
+    echo "$label: persistence restart RCON listener is not the owned server" >&2
+    restart_status=1
     printf 'stop\n' >&"$restart_fd"
   elif ! python3 "$repo_root/scripts/minecraft-rcon.py" 127.0.0.1 "$rcon_port" "$rcon_password" stop \
       >> "$restart_log" 2>&1; then
@@ -3045,7 +3053,7 @@ run_display_restart_check() {
     stop_process_tree "$restart_pid" TERM
     wait_for_process_tree_exit "$restart_pid" 10 || stop_process_tree "$restart_pid" KILL
   fi
-  wait "$restart_pid" 2>/dev/null || true
+  wait "$restart_pid" 2>/dev/null || restart_status=1
   active_server_pid=''
   active_server_group=''
   exec {restart_fd}>&-

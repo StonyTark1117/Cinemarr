@@ -10,6 +10,7 @@ import sys
 import urllib.request
 import urllib.error
 import hashlib
+import os
 from types import SimpleNamespace
 from unittest.mock import patch
 from PIL import Image, ImageDraw
@@ -188,5 +189,78 @@ class DisplayFeatureTests(unittest.TestCase):
         self.assertIn('CINEMARR_DISPLAY_FEATURE_GATE', (root/'build.gradle').read_text())
         self.assertIn('CINEMARR_DISPLAY_FEATURE_GATE', (root/'.github/workflows/ci.yml').read_text())
         self.assertIn('export CINEMARR_DISPLAY_FEATURE_GATE=true',(root/'scripts/run-discopanel-real-plex-gate.sh').read_text())
+
+class DisplayRestartTests(unittest.TestCase):
+    def test_restart_requires_successful_launcher_and_owned_game_and_rcon_listeners(self):
+        source = (Path(__file__).resolve().parents[1] / 'scripts/run-dedicated-server-gate.sh').read_text()
+        function = 'run_display_restart_check() {' + source.split('run_display_restart_check() {', 1)[1].split('\nrun_target() {', 1)[0]
+        tree = 'process_tree_pids() {' + source.split('process_tree_pids() {', 1)[1].split('\nstop_process_tree() {', 1)[0]
+        cases = [('1.7.10-forge', 0, False, False), ('1.7.10-forge', 17, False, False),
+                 ('1.7.10-forge', 0, True, False), ('1.21.1-neoforge', 0, True, False),
+                 ('1.21.1-neoforge', 0, False, False), ('1.21.1-neoforge', 0, False, True)]
+        for label, launcher_exit, foreign_game, foreign_rcon in cases:
+            with self.subTest(label=label, launcher_exit=launcher_exit, foreign_game=foreign_game,
+                              foreign_rcon=foreign_rcon), tempfile.TemporaryDirectory() as directory:
+                base = Path(directory)
+                (base / 'out').mkdir()
+                launcher = base / 'gradlew'
+                launcher.write_text('''#!/bin/bash
+printf '%s' "$$" > "$FIXTURE_PID"
+printf 'Done (0.01s)! For help\n'
+read -r -t 5 line || exit 99
+printf 'Stopping server\nSaving players\n'
+exit "$FIXTURE_EXIT"
+''')
+                launcher.chmod(0o755)
+                script = base / 'case.sh'
+                # No network service runs: only socket discovery, RCON transport and
+                # the already separately tested saved-data checker are replaced.
+                # The real restart function launches/waits for a real child process.
+                script.write_text('''set -uo pipefail
+label="$FIXTURE_LABEL"
+output_root="$FIXTURE_ROOT/out"
+target_dir="$FIXTURE_ROOT"
+repo_root="$FIXTURE_ROOT"
+java_home=/usr
+plex_runtime_token=fixture
+server_java_options=''
+active_server_task=runServer
+cache_args=()
+runtime_args=()
+port=1
+rcon_port=2
+rcon_password=fixture
+ss() {
+  if [[ "$FIXTURE_RCON_COLLISION" == 1 && "$*" == "-ltnp sport = :2" ]]; then
+    printf 'LISTEN pid=%s\n' "$$"
+  elif [[ "$FIXTURE_COLLISION" == 1 ]]; then
+    if [[ "$*" == *'-ltnp'* ]]; then printf 'LISTEN pid=%s\n' "$$"; fi
+  elif [[ -f "$FIXTURE_PID" ]] && kill -0 "$(cat "$FIXTURE_PID")" 2>/dev/null; then
+    printf 'LISTEN pid=%s\n' "$(cat "$FIXTURE_PID")"
+  fi
+}
+wait_for_group_exit() { return 0; }
+wait_for_process_tree_exit() { return 0; }
+stop_group() { printf 'Unexpected group signal\n' >&2; return 1; }
+stop_process_tree() { printf 'Unexpected process signal\n' >&2; return 1; }
+python3() {
+  if [[ "$1" == *minecraft-rcon.py ]]; then
+    printf 'RCON stop attempted\n' >> "$FIXTURE_ROOT/rcon-calls"
+    printf 'stop\n' > "$restart_fifo"
+  fi
+  return 0
+}
+''' + tree + '\n' + function + '\nrun_display_restart_check\n')
+                env = dict(os.environ, FIXTURE_ROOT=str(base), FIXTURE_PID=str(base / 'pid'),
+                           FIXTURE_LABEL=label, FIXTURE_EXIT=str(launcher_exit),
+                           FIXTURE_COLLISION='1' if foreign_game else '0',
+                           FIXTURE_RCON_COLLISION='1' if foreign_rcon else '0')
+                result = subprocess.run(['bash', str(script)], env=env, capture_output=True,
+                                        text=True, timeout=10)
+                rejected = launcher_exit != 0 or foreign_game or foreign_rcon
+                self.assertEqual(1 if rejected else 0, result.returncode, result.stdout + result.stderr)
+                self.assertNotIn('Unexpected', result.stderr)
+                rcon_expected = label != '1.7.10-forge' and not foreign_game and not foreign_rcon
+                self.assertEqual(rcon_expected, (base / 'rcon-calls').exists())
 
 if __name__=='__main__':unittest.main()
