@@ -17,6 +17,17 @@ compatible-command and cleanup checks. The new source regression fails on both
 old adapters and passes with the fix. New artifact certification is pending;
 the earlier manifest does not certify these changed bytes.
 
+The subsequent original-push CI run [34903364198](https://github.com/StonyTark1117/Cinemarr/actions/runs/34903364198)
+on `a8b69ba` finished with fifteen successful artifact jobs, one failed
+NeoForge 1.21.1 job and a skipped aggregate. Its main and terminal checks passed;
+the overload check failed before a client connected, when FancyModLoader 4.0.43's
+asynchronous early display threw `FileSystemNotFoundException`. The acceptance
+harness now includes this profile in its existing `earlyWindowControl = false`
+configuration. The loader source confirms that this selects its dummy early
+window provider. Conflicting and symlinked configurations remain rejected;
+protocol, playback and pressure requirements are unchanged. Certification on
+the corrected harness remains pending.
+
 | Finding | Implementation and verification status |
 | --- | --- |
 | 1. Fresh display edit rejected | Draft payload preserves the expected revision; the authoritative world adapter alone increments it. Packet-to-world regression accepts the first writer and rejects a stale second writer without changing layout or attachment. |
