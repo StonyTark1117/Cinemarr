@@ -8,11 +8,13 @@ Cinemarr is a required client-and-server Minecraft mod for server-authoritative 
 
 This checkout targets **Cinemarr 1.0.0**, with custom TV display controls and
 independent streams across the **16-artifact / 21-runtime** matrix.
-The recorded artifact bytes have build, runtime, direct GUI, native-decoder and
-representative real-Plex evidence. The target manifest records that evidence as
-`runtime-certified`; release readiness additionally requires the final exact
-commit's complete local gate, fully green hosted aggregate, matching downloaded
-artifacts and clean teardown. No tag or publication is part of this work.
+The current handshake correction is awaiting artifact certification, so the
+target manifest records `prerelease`. Earlier artifact evidence remains bound
+to its recorded hashes. The final gate at `1ea796f` failed a protocol-rejection
+check; the correction passed repeated focused modern and legacy checks.
+Release readiness requires the new exact commit's complete local gate, fully
+green hosted aggregate, matching downloaded artifacts and clean teardown.
+No tag or publication is part of this work.
 
 Protocol 11 separates watch-party and TV-stream identities. Saved-data migration
 preserves existing screens; new custom TVs default to Fit, Detailed, Auto, and

@@ -106,7 +106,23 @@ def verify_display_boundary(text: str, label: str) -> None:
         raise SystemExit(label + " must publish display edits to all TV recipients")
 
 
+def verify_client_hello_direction(text: str, label: str) -> None:
+    compact = re.sub(r"\s+", "", text)
+    # The test override must affect only the outbound packet. Applying it to
+    # inbound validation lets the client close before server rejection occurs.
+    outbound = re.findall(r"new(?:CinemarrPayloads|LegacyPacketTypes)\.ClientHello\(ProtocolLimits\.clientHelloVersion\(\)\)", compact)
+    if len(outbound) != 1 or compact.count("ProtocolLimits.clientHelloVersion()") != 1:
+        raise SystemExit(f"{label} must use the protocol override only for the outbound client hello")
+    if not re.search(r"if\(\(?!(?:value|hello)\.valid\(\)", compact):
+        raise SystemExit(f"{label} must validate the incoming server capabilities")
+
+
 def main() -> None:
+    for path in (
+        "src/main/java/stonytark/cinemarr/client/CinemarrClientState.java",
+        "platforms/mc1.7.10/forge/src/main/java/stonytark/cinemarr/client/LegacyClientState.java",
+    ):
+        verify_client_hello_direction((ROOT / path).read_text("utf-8"), path)
     for path in ("src/main/java/stonytark/cinemarr/server/ServerVideoManager.java",
                  "platforms/mc26/common/src/main/java/stonytark/cinemarr/server/ServerVideoManager.java",
                  "platforms/mc1.7.10/forge/src/main/java/stonytark/cinemarr/server/LegacyVideoManager.java"):

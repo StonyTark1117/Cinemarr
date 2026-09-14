@@ -16,6 +16,23 @@ SOURCES = (
 
 
 class PlaybackPublicationLayoutTest(unittest.TestCase):
+    def test_protocol_override_cannot_change_incoming_server_validation(self):
+        for path, variable in (
+            ("src/main/java/stonytark/cinemarr/client/CinemarrClientState.java", "value"),
+            ("platforms/mc1.7.10/forge/src/main/java/stonytark/cinemarr/client/LegacyClientState.java", "hello"),
+        ):
+            source = (ROOT / path).read_text()
+            with self.subTest(path=path):
+                layout.verify_client_hello_direction(source, path)
+                valid = f"!{variable}.valid()"
+                self.assertIn(valid, source)
+                for replacement in (
+                    valid + f" || {variable}.protocolVersion() != ProtocolLimits.clientHelloVersion()",
+                    "false",
+                ):
+                    with self.assertRaises(SystemExit):
+                        layout.verify_client_hello_direction(source.replace(valid, replacement), path)
+
     def test_display_boundaries_cannot_regress_to_attachment_mutation_or_unmeasured_quality(self):
         for path in SOURCES:
             source = (ROOT / path).read_text()

@@ -87,6 +87,20 @@ class ProtocolLimitsTest {
         assertEquals(ProtocolLimits.VERSION, ProtocolLimits.clientHelloVersion());
     }
 
+    @Test void badOutgoingTestHelloDoesNotChangeIncomingCapabilityValidation() {
+        System.setProperty(ProtocolLimits.ACCEPTANCE_ENABLED_PROPERTY, "true");
+        System.setProperty(ProtocolLimits.ACCEPTANCE_CLIENT_PROTOCOL_PROPERTY, "10");
+        ProtocolCapabilities.Offer server = ProtocolCapabilities.currentOffer();
+        assertEquals(ProtocolLimits.VERSION, server.version());
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> ProtocolCapabilities.negotiate(
+                server.version(), server.features(), server.maxChunkBytes(),
+                server.maxTransferWindow(), server.healthIntervalMs()));
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> ProtocolCapabilities.negotiate(ProtocolLimits.clientHelloVersion(),
+                        server.features(), server.maxChunkBytes(), server.maxTransferWindow(),
+                        server.healthIntervalMs()));
+    }
+
     @Test void helloSuppressionRequiresTheExplicitAcceptanceGate() {
         System.setProperty(ProtocolLimits.ACCEPTANCE_SUPPRESS_HELLO_PROPERTY, "true");
         assertEquals(false, ProtocolLimits.clientHelloSuppressed());

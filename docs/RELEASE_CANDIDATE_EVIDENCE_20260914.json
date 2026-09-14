@@ -2,6 +2,8 @@
   "schemaVersion": 1,
   "product": "Cinemarr",
   "version": "1.0.0",
+  "candidateStatus": "historical-superseded",
+  "supersededReason": "Final local gate at 1ea796f failed the Fabric 26.1.2 wrong-protocol check. The outgoing-only protocol override fix changes both client adapters and requires new artifact certification. This manifest certifies only the historical hashes below.",
   "testedProductSource": "86684359df84f305531639a9d0184b2c2eab083c",
   "scope": {
     "artifacts": 16,

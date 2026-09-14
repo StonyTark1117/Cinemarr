@@ -1,6 +1,29 @@
 # Release acceptance
 
-**Cinemarr 1.0.0 prerelease: artifact runtime evidence reconciled; release readiness is governed by the final-commit gate.**
+**Cinemarr 1.0.0 prerelease: protocol correction awaiting new artifact certification.**
+
+The final local gate at `1ea796f91fe4e38993dc68ffa611370062fe92f1`
+failed Fabric 26.1.2's wrong-protocol check after 600 seconds. Both peers
+reported only a generic disconnect. Nineteen preceding cases passed; the
+remaining matrix was stopped through the harness cleanup handler and is not
+certified. Its frozen sources and eighteen-file bundle stayed unchanged.
+
+The acceptance-only outgoing protocol override also affected incoming server
+validation, allowing the client to close before the server rejected its bad
+hello. Both client adapters now use canonical capability validation for incoming
+hellos. Three consecutive Fabric 26.1.2 cases and one Forge 1.7.10 case passed
+explicit server rejection, compatible-client command checks, missing-client
+checks and clean shutdown. Sixteen protocol unit tests and ten source-layout
+tests passed; the new regression fails on both original adapters. The rejection
+oracle and its timeout are unchanged.
+
+The correction changes the artifact bytes. Target statuses return to prerelease
+until the new candidate is certified. The evidence below and its manifest are
+historical, bound to the recorded `8668435` bytes; they do not certify the new
+candidate. A new build pair and artifact/runtime evidence, followed by the full
+final-commit local and hosted gates, scans and cleanup, remain required.
+
+## Previous candidate evidence
 
 All ten phases of the [release hardening plan](1.0_RELEASE_HARDENING_PLAN.md)
 and every requirement in the [custom TV display and independent-stream specification](1.0_CUSTOM_TV_DISPLAY_PLAN.md)

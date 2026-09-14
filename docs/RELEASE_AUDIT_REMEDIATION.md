@@ -4,8 +4,18 @@ The [September 12 audit](RELEASE_AUDIT_20260912.md) remains unchanged as the
 historical assessment of `8e1efda`. The table below records the remedies.
 The [release acceptance record](RELEASE_ACCEPTANCE.md) and
 [candidate evidence manifest](RELEASE_CANDIDATE_EVIDENCE_20260914.json) hold the
-current artifact assessment and exact hashes. Final-commit local and hosted
+artifact assessment and exact historical hashes. Final-commit local and hosted
 acceptance, final scans and cleanup remain mandatory. No tag or publication is authorized.
+
+The final local gate at `1ea796f` failed a Fabric 26.1.2 protocol-rejection
+check after nineteen completed cases. The acceptance protocol override could
+make the client reject a valid server hello before the server rejected the bad
+client hello. Modern and legacy adapters now validate incoming capabilities
+against the canonical protocol, keeping the override outbound only. Three
+consecutive Fabric cases and one legacy case passed the focused protocol,
+compatible-command and cleanup checks. The new source regression fails on both
+old adapters and passes with the fix. New artifact certification is pending;
+the earlier manifest does not certify these changed bytes.
 
 | Finding | Implementation and verification status |
 | --- | --- |
