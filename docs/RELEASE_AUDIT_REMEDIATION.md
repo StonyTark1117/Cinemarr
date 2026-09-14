@@ -284,3 +284,56 @@ wrapper persisted and printed the gate subprocess's zero return code and
 unchanged-source receipt. The successful gate result and anomalous outer-tool
 exit are recorded separately. Subsequent aggregate wrappers give the gate its
 own process session so teardown cannot signal the receipt-writing parent.
+
+ARM native run `20260913T115705Z` completed successfully with the frozen bundle:
+all three software fixtures passed, the retained guest bundle matches the input
+hashes, and the guest is stopped. The scoped SSH key was removed; the original
+authorized-keys bytes match the preflight hash exactly, and temporary local key
+files were deleted. Together with Windows run `20260913T113700Z`, native decoding
+is verified for the production decoder/core bytes shared with build 3.
+
+The final local aggregate on `d823945` failed after 1,463 seconds at the legacy
+terminal supplement, with all source inputs unchanged. Both clients received
+the queue-advance event and resumed the next generation; immediate preparation
+and playback updates replaced the event as the latest log entry before polling.
+The observer now requires each client's advance event in the fresh log interval
+and matching current playback at that same generation. Missing events, stale
+generations and stopped playback remain failures. Hosted legacy acceptance hit
+the same timeout; neither failed invocation is accepted as a pass.
+
+Hosted Forge 1.20.2 completed its feature/client stages but the new fresh-process
+check exposed a saved-data defect: its Minecraft disk loader dereferences a null
+data-fix type for both TV registrations and saved playback. The 1.20.2 factories
+now supply a non-null level data-fix type, retaining custom schema decoding. A
+regression exercises compressed-file loading through fresh Minecraft storage,
+including old-version metadata. This changes the 1.20.2 artifacts, so the earlier
+full-bundle equality remains historical evidence and a new matching pair is
+required. The native decoder/core and four Proxmox-profile artifacts are outside
+this source change; their exact-byte evidence must still be reconciled with the
+final bundle.
+
+The compressed saved-data regression passed for both registries and both data
+versions. The initial `test --tests ...` invocation subsequently failed because
+Gradle also applied the filter to `:core:test`, which has no matching test; the
+explicit platform `:test --tests ...` invocation completed successfully using
+that test result. Thirteen terminal-harness regressions pass. Of the 21 Python
+scripts, only the private-X test failed when invoked without its isolated tool
+environment; it passes with the complete X and ImageMagick environment.
+
+The next local legacy attempt (15) was interrupted by a long host pause and
+failed before the wrong-protocol client initialized. Its 55,836-second receipt
+records unchanged sources and failure; it does not validate the terminal fix.
+Hosted run `34756506555` finished with all five Fabric jobs (including Quilt and
+minimum-loader checks) and four Forge jobs successful. Forge 1.20.2 and legacy
+hit the two failures above; five NeoForge builds failed on upstream HTTP 502.
+The aggregate was skipped. The upstream metadata endpoint subsequently returned
+HTTP 200, but that is not a replacement for successful job execution.
+
+Proxmox candidate deployment passed exact-JAR checks. The legacy, Quilt and
+NeoForge recovery cases passed; Fabric 26.2 failed when DiscPanel returned HTTP
+500 on server start. Its automatic override restoration also failed. After the
+local SSH connection timed out, the remote journal established that the runner
+had finished. Follow-up restoration independently verified all four servers
+stopped with Cinemarr disabled, exact original configuration bytes/overrides,
+and other mod settings preserved. Three scoped recovery passes remain valid;
+the failed Fabric case and failed outer transaction are retained separately.

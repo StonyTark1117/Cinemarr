@@ -24,7 +24,9 @@ import stonytark.cinemarr.core.video.DisplaySettingsCodec;
 import java.util.*;
 
 public final class CinemarrWorldScreens extends SavedData {
-    private static final Factory<CinemarrWorldScreens> FACTORY=new Factory<>(CinemarrWorldScreens::new,CinemarrWorldScreens::load,null);
+    // Forge 1.20.2 dereferences the data-fix type even for current-version files.
+    // Our custom fields retain their own schema migration in load().
+    private static final Factory<CinemarrWorldScreens> FACTORY=new Factory<>(CinemarrWorldScreens::new,CinemarrWorldScreens::load,net.minecraft.util.datafix.DataFixTypes.LEVEL);
     private final Map<Long,Direction> pixels=new HashMap<>();
     private final Map<Long,Television> televisions=new HashMap<>();
     private final Map<Long,Set<Long>> quickTvConstructions=new HashMap<>();
