@@ -13,6 +13,7 @@ from pathlib import Path
 from private_minecraft_window import PrivateMinecraftWindow
 from display_framebuffer import verify_pixel_frame, verify_mask_frame
 from display_server import DisplayServer
+from display_ui_edges import exercise as exercise_ui_edges
 
 
 def snapshots(text, request):
@@ -276,6 +277,7 @@ class Observer:
                     time.sleep(.3)
                     self.capture(desktop, 'custom-acknowledged')
                 self.close_page(desktop)
+        exercise_ui_edges(self, custom)
 
     def run(self):
         try:
