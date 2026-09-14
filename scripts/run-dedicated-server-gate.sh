@@ -2994,12 +2994,15 @@ run_display_restart_check() {
   restart_fifo="$restart_fifo_dir/stdin"
   mkfifo "$restart_fifo"
   exec {restart_fd}<>"$restart_fifo"
+  # The first server already resolved this exact task and its dependencies.
+  # Reuse them for persistence verification so a launcher-metadata refresh
+  # cannot prevent the fresh process from reading the saved world.
   (
     cd "$target_dir" || exit 1
     export CINEMARR_PLEX_TOKEN="$plex_runtime_token"
     exec setsid env JAVA_HOME="$java_home" PATH="$java_home/bin:$PATH" \
       JAVA_TOOL_OPTIONS="$server_java_options" \
-      ./gradlew "$active_server_task" --no-daemon --max-workers=1 --console=plain \
+      ./gradlew "$active_server_task" --offline --no-daemon --max-workers=1 --console=plain \
       "${cache_args[@]}" "${runtime_args[@]}" < "$restart_fifo" > "$restart_log" 2>&1
   ) &
   restart_pid=$!

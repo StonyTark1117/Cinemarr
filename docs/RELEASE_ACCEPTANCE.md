@@ -13,18 +13,21 @@ on `codex/release-audit-remediation-20260913`. The display implementation and
 expanded maintained gates are integrated. Certification remains incomplete;
 no final acceptance checkbox is closed by a scoped diagnostic result.
 
-The latest completed hosted run is [34756506555](https://github.com/StonyTark1117/Cinemarr/actions/runs/34756506555)
-for `d823945`: all five Fabric jobs (including Quilt and minimum-loader checks)
-and four Forge jobs passed. Forge 1.20.2 failed fresh-server persistence and
-legacy Forge failed terminal observation; five NeoForge builds failed on upstream
-HTTP 502. The aggregate was skipped. The two runtime defects are addressed in
-`d6e3566`; [run 34810548231](https://github.com/StonyTark1117/Cinemarr/actions/runs/34810548231)
-is in progress and is not yet accepted. Its NeoForge 1.20.2 job exposed stale
-retained-frame evidence in the owner observer: a prior TV reused the same stream
-generation. The follow-up observer now requires retention after each actual
-widget action, including paused seeks that keep the stream generation. Two
-regressions cover that race. The earlier local aggregate also failed at the
-legacy terminal observer with unchanged sources.
+The latest completed hosted run is [34810548231](https://github.com/StonyTark1117/Cinemarr/actions/runs/34810548231)
+for `d6e3566`: fifteen artifact jobs passed, including all five Fabric jobs with
+Quilt and minimum-loader checks and both complete terminal/pressure/fault
+boundaries. NeoForge 1.20.2 alone failed the owner observer because an earlier TV
+reused a stream generation and supplied stale retained-frame evidence. The
+aggregate was skipped. The follow-up `ae153de` requires retention after each
+actual widget action, including paused seeks that retain the same stream
+generation; fourteen owner and thirteen terminal observer regressions pass.
+[Run 34812686752](https://github.com/StonyTark1117/Cinemarr/actions/runs/34812686752)
+checks that follow-up and is not yet accepted. The earlier local aggregate and
+prior hosted failures remain preserved in the remediation ledger.
+The subsequent local repeat passed controls and reconnect but failed a Mojang
+metadata download before its persistence restart launched. That restart now
+uses the initial launch's resolved dependencies in offline mode; a complete
+repeat is pending.
 
 Windows run `20260913T113700Z` and ARM run `20260913T115705Z` passed all three native
 software fixtures. Both guests are stopped and original ARM access is restored.

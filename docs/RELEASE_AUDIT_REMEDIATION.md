@@ -384,3 +384,27 @@ supervisor will preserve a clean repeat's exit receipt independently of the
 interactive tool lifetime. All 32 original Forge 1.20.2 hosted Display Settings
 and paired world captures were directly reviewed and passed; the receipt is
 under `ci-d6e3566/1.20.2-forge/`, separate from pending controller/timeline review.
+
+
+Hosted run `34810548231` for `d6e3566` completed with fifteen successful artifact
+jobs, one NeoForge 1.20.2 owner-observer failure, and a skipped aggregate. All five
+Fabric jobs completed their Quilt and minimum-loader checks, and both legacy and
+root NeoForge terminal/pressure/fault boundaries passed. Its immutable final job
+snapshot is `ci-d6e3566/final-status.json`. Follow-up `ae153de` contains the fresh
+retention observer and fourteen passing owner/thirteen terminal regressions;
+run `34812686752` is its new hosted check. The complete local legacy terminal
+run-15b now also has a passing direct review of all 32 original captures. All 32
+Fabric 26.2 hosted display/world captures passed direct review. These scoped
+reviews do not certify unreviewed evidence or the complete final matrix.
+
+
+Supervised runtime-17b returned 1 with all non-Markdown inputs unchanged. Its
+expanded feature, owner controls, physical PCM, reconnect and media cleanup
+checks passed; the final persistence restart never launched Minecraft because
+NeoGradle failed downloading Mojang's launcher manifest. The full failure is
+preserved under `build/audit-remediation-runtime17b/` and `runtime17b-exit.json`.
+No live Plex case started. The persistence restart now requests Gradle offline
+mode, reusing dependencies resolved by the already-completed initial server task.
+A fresh NeoForge 1.20.2 offline configuration invocation passed; the complete
+runtime repeat remains required. This only changes acceptance launch behavior,
+not production code or persistence/shutdown criteria.
