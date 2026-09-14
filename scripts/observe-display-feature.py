@@ -107,7 +107,9 @@ class Observer:
 
     def page(self, row, role, name):
         desktop = PrivateMinecraftWindow(self.logs[role].read_text(), self.gate_pid, wait_seconds=30)
-        offset = self.logs[role].stat().st_size
+        # Search decoded text using a character offset. Packaged legacy logs
+        # contain CRLF, and library titles can contain multibyte characters.
+        offset = len(self.logs[role].read_text(errors='replace'))
         self.send('video:display-open:' + row['controller'], role)
         deadline = time.monotonic() + 10
         marker = 'Acceptance display UI: width=320 height=240 controller=' + row['controller']

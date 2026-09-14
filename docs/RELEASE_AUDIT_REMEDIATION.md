@@ -408,3 +408,31 @@ mode, reusing dependencies resolved by the already-completed initial server task
 A fresh NeoForge 1.20.2 offline configuration invocation passed; the complete
 runtime repeat remains required. This only changes acceptance launch behavior,
 not production code or persistence/shutdown criteria.
+
+
+Runtime-17c on `ebd36c8` passed the complete NeoForge 1.20.2 main invocation in
+653 seconds with unchanged sources and a verified zero exit. All33 expanded
+feature steps, owner controls, physical audio, reconnect, cleanup and fresh
+server restoration of all3 TVs passed. `runtime17c-reconciliation.json` records
+its scope; original-image review and the final complete matrix remain separate.
+The first live legacy attempt then stopped before Minecraft launch because the
+service PATH lacked jq. Its return2 and complete restoration receipt are retained
+in `live-main-1.7.10-forge-exit.json`. The private runner now uses the packaged jq
+wrapper already used by native checks; jq/curl/Pulse tool preflight passes.
+The six live cases are proceeding in a new supervised chain, with a distinct
+legacy attempt2 log and result so the failed setup evidence remains intact.
+
+
+The second legacy live attempt reached real Plex playback but failed its first
+Display Settings observation. The original log proves that the page opened at
+320x240. The observer sliced decoded text using the file's byte size; packaged
+legacy XML logs use CRLF, so the last pre-action snapshot's byte offset already
+exceeded the following UI marker's character offset. The redacted reproduction
+records 7,698 CRLF pairs and that offset mismatch. The observer now takes its
+offset from decoded text, consistent with the other maintained observers. A
+regression covers CRLF and multibyte prefixes and still rejects stale markers;
+the historical implementation fails both fresh-marker cases, while all14 display
+tests pass with the fix. The failed attempt's208seconds, unchanged sources and
+JAR, and complete original-server restoration remain recorded. Its runtime
+directory is preserved under `live-legacy-attempt2-runtime` with a file-hash map
+before retrying the complete scenario. No production artifact changed.

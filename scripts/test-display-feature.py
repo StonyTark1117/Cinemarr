@@ -22,6 +22,33 @@ spec=importlib.util.spec_from_file_location('persistence',Path(__file__).with_na
 persistence=importlib.util.module_from_spec(spec);spec.loader.exec_module(persistence)
 
 class DisplayFeatureTests(unittest.TestCase):
+    def test_page_observes_fresh_marker_in_crlf_and_unicode_logs(self):
+        marker = 'Acceptance display UI: width=320 height=240 controller=-3996'
+        for prefix in [b'old event\r\n' * 1000, ('old évent\n' * 1000).encode()]:
+            for fresh in (True, False):
+                with self.subTest(prefix=prefix[:20], fresh=fresh), tempfile.TemporaryDirectory() as directory:
+                    base = Path(directory)
+                    log = base / 'fixture.audio-leader.console.log'
+                    log.write_bytes(marker.encode() + b'\n' + prefix)
+                    (base / 'fixture.audio-leader.control').touch()
+                    observer = probe.Observer({'leader': log}, base / 'output', gate_pid=1)
+                    def append_marker(*args):
+                        if fresh:
+                            with log.open('ab') as stream:
+                                stream.write(marker.encode() + b'\r\n')
+                    with patch.object(observer, 'send', side_effect=append_marker), \
+                         patch.object(observer, 'capture') as capture, \
+                         patch.object(probe, 'PrivateMinecraftWindow') as window, \
+                         patch.object(probe.time, 'sleep'), \
+                         patch.object(probe.time, 'monotonic', side_effect=[0, 11]):
+                        if fresh:
+                            self.assertIs(window.return_value, observer.page({'controller': '-3996'}, 'leader', 'quick'))
+                            capture.assert_called_once_with(window.return_value, 'quick')
+                        else:
+                            with self.assertRaisesRegex(RuntimeError, 'Display page did not open'):
+                                observer.page({'controller': '-3996'}, 'leader', 'quick')
+                            capture.assert_not_called()
+
     def test_restart_requires_every_saved_setting_and_all_three_registrations(self):
         rows={str(i): dict(controller=str(i),tv='tv-'+str(i),revision=str(i+4),
               origin='QUICK' if i==0 else 'CUSTOM',layout='FIT',mapping='DETAILED',
