@@ -6,29 +6,23 @@ Cinemarr is a required client-and-server Minecraft mod for server-authoritative 
 
 ## 1.0 prerelease status
 
-This checkout targets **Cinemarr 1.0.0**. It is a prerelease development build,
-**not a release candidate**. Custom TV display controls and independent per-TV
-streams are implemented across the **16-artifact / 21-runtime** matrix and are undergoing release certification.
-See the [full feature specification](docs/1.0_CUSTOM_TV_DISPLAY_PLAN.md) and
-[release hardening plan](docs/1.0_RELEASE_HARDENING_PLAN.md).
+This checkout targets **Cinemarr 1.0.0**, with custom TV display controls and
+independent streams across the **16-artifact / 21-runtime** matrix.
+The recorded artifact bytes have build, runtime, direct GUI, native-decoder and
+representative real-Plex evidence. The target manifest records that evidence as
+`runtime-certified`; release readiness additionally requires the final exact
+commit's complete local gate, fully green hosted aggregate, matching downloaded
+artifacts and clean teardown. No tag or publication is part of this work.
 
-The earlier V11 candidate used protocol 10 and screen-data schema 3. Integrated
-development now uses protocol 11; saved-data migration and verification of all
-adapters remain required before certification.
-New custom TVs must default to Fit, Detailed, Auto, while Quick TV construction
-sizes and preset resolutions remain intact. Full release acceptance is still pending.
+Protocol 11 separates watch-party and TV-stream identities. Saved-data migration
+preserves existing screens; new custom TVs default to Fit, Detailed, Auto, and
+Quick TV construction sizes and preset resolutions remain intact. Requested
+quality and measured decoded dimensions are reported separately.
 
-The earlier runtime batch stopped when source changes superseded its frozen
-candidate. Prior matching builds, partial runtime passes, native checks and
-Plex-session diagnostics remain historical evidence. They do not certify the
-changed implementation, and that batch is no longer running.
-
-Fresh certification must include the existing 37 local cases, feature smoke on
-all 21 profiles, additional capacity/failure/raster supplements, two matching
-builds, all ten GameTests, native guests, real-Plex multi-TV/two-client playback,
-recovery/lifecycle and cleanup. The reviewed final commit must pass the full
-local release gate and all required GitHub jobs with matching downloaded
-artifacts. See [release acceptance](docs/RELEASE_ACCEPTANCE.md).
+See the [release acceptance record](docs/RELEASE_ACCEPTANCE.md),
+[artifact evidence and hashes](docs/RELEASE_CANDIDATE_EVIDENCE_20260914.json),
+[full feature specification](docs/1.0_CUSTOM_TV_DISPLAY_PLAN.md) and
+[ten-phase hardening plan](docs/1.0_RELEASE_HARDENING_PLAN.md).
 
 The old global Plex-music queue, stations, MP3 transport, music UI, and their bundled JLayer/Jump3r libraries have been removed. Cinemarr 1.0 is a television/video mod; it does not require Jammarr.
 
@@ -168,5 +162,5 @@ changes replace only the edited TV's stream. Pause, resume, seek and track
 selection remain shared by the watch party. Paused layout and mapping edits
 redraw the retained frame.
 
-These controls are under prerelease verification; see the release acceptance
-checklist for the certification status of each maintained platform.
+See the release acceptance checklist for the artifact evidence and final-commit
+certification requirements of each maintained platform.

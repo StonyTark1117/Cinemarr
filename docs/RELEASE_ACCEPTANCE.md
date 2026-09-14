@@ -1,68 +1,88 @@
 # Release acceptance
 
-**1.0 prerelease under hardening — not a release candidate.**
+**Cinemarr 1.0.0 prerelease: artifact runtime evidence reconciled; release readiness is governed by the final-commit gate.**
 
 All ten phases of the [release hardening plan](1.0_RELEASE_HARDENING_PLAN.md)
 and every requirement in the [custom TV display and independent-stream specification](1.0_CUSTOM_TV_DISPLAY_PLAN.md)
-are mandatory across all 16 artifacts and 21 runtime profiles, including Forge
-1.7.10. New custom TVs default to Fit, Detailed, Auto; Quick TV construction and
-presets remain intact. These are required behaviors, not certification claims.
+remain mandatory across all sixteen artifacts and twenty-one runtime profiles,
+including Forge 1.7.10. New custom TVs default to Fit, Detailed, Auto. Quick TV
+construction and preset behavior remain intact. No tag or publication is authorized.
 
-The product remediation baseline is `d6e3566e76bcfa35ca52fa4b21e0fb46953c7491`
-on `codex/release-audit-remediation-20260913`. The display implementation and
-expanded maintained gates are integrated. Certification remains incomplete;
-no final acceptance checkbox is closed by a scoped diagnostic result.
+The audit findings are implemented and the integrated artifact evidence is
+reconciled in the [candidate evidence manifest](RELEASE_CANDIDATE_EVIDENCE_20260914.json).
+It records all sixteen JAR hashes and twenty-one runtime profiles. The product
+source is `86684359df84f305531639a9d0184b2c2eab083c`; subsequent certification
+metadata and documentation changes must reproduce that bundle exactly.
 
-The latest completed hosted run is [34810548231](https://github.com/StonyTark1117/Cinemarr/actions/runs/34810548231)
-for `d6e3566`: fifteen artifact jobs passed, including all five Fabric jobs with
-Quilt and minimum-loader checks and both complete terminal/pressure/fault
-boundaries. NeoForge 1.20.2 alone failed the owner observer because an earlier TV
-reused a stream generation and supplied stale retained-frame evidence. The
-aggregate was skipped. The follow-up `ae153de` requires retention after each
-actual widget action, including paused seeks that retain the same stream
-generation; fourteen owner and thirteen terminal observer regressions pass.
-[Run 34812686752](https://github.com/StonyTark1117/Cinemarr/actions/runs/34812686752)
-checks that follow-up and is not yet accepted. The earlier local aggregate and
-prior hosted failures remain preserved in the remediation ledger.
-The subsequent local repeat passed controls and reconnect but failed a Mojang
-metadata download before its persistence restart launched. That restart now
-uses the initial launch's resolved dependencies in offline mode; a complete
-repeat is pending.
+All sixteen targets have **runtime-certified artifact evidence**. This means
+build, launch, playback, protocol, controls, reconnect, lifecycle and representative
+real-Plex acceptance for the recorded bytes. Release readiness additionally
+requires phase 10 for the final containing commit: the complete local gate,
+all eighteen hosted jobs including the aggregate, inspected downloaded artifacts
+matching the local bundle, final security/cleanup review and clean synchronized
+`main`. The metadata does not substitute for those checks or authorize publication.
 
-Windows run `20260913T113700Z` and ARM run `20260913T115705Z` passed all three native
-software fixtures. Both guests are stopped and original ARM access is restored.
-All four real-Plex recovery profiles have passed on exact build-3 profile JARs;
-Fabric required a separate retry after a DiscPanel server-start failure. Original
-server configurations/overrides are restored, all four servers are stopped with
-Cinemarr disabled, and the temporary recovery workspace is removed. Native and
-recovery bytes must still match the final indexed bundle. Four full real-Plex
-A/V cases and two lifecycle cases remain open. The four packaged-client recipes
-pass preflight locally; preflight is not playback certification.
+The corrected forced build pair passed all 92 top-level tasks in each build,
+including all ten GameTests and inspection of all sixteen JARs. Both eighteen-file
+bundles match exactly; all 894 source inputs stayed unchanged. Fifteen JARs match
+the earlier `b99a5c2` candidate. The changed Forge 1.7.10 JAR is
+`70b7eb7afa5c94b0297b7014703111b6e553fafcc5721732c1b6fc239ee620f5`.
+Its field fix preserves complete text when replacing a full selection; four
+regressions pass, including cases that failed against vanilla behavior.
 
-Two earlier full bundles match byte for byte, but the subsequent Forge 1.20.2
-saved-data fix changes the 1.20.2 family and requires a new matching build pair.
-The complete final local matrix, direct visual/audio review, all hosted jobs and
-aggregate, downloaded bundle parity, current metadata/scans and clean synchronized
-main remain required. The [remediation ledger](RELEASE_AUDIT_REMEDIATION.md)
-retains detailed scope, failures and teardown receipts.
+The earlier complete local matrix passed all 37 cases. Its same-byte evidence
+covers the fifteen unchanged artifacts; fresh legacy GUI and live runs cover
+the changed artifact. All five maintained GUI boundaries passed complete
+runtime checks and direct review: Forge 1.7.10, Quilt 1.20.1, Forge 1.20.2,
+NeoForge 26.1.2 and Fabric 26.2. Each has 27 newly reviewed GUI originals.
+Legacy has 98 reviewed originals in total; the other four also retain 36
+previously reviewed same-JAR originals each. The root NeoForge prototype and
+all six rendering boundaries have separate direct reviews. The final commit
+must rerun the whole local matrix; these scoped joins do not replace it.
 
-The [September 12 audit](RELEASE_AUDIT_20260912.md) preserves the original
-`8e1efda` / run `34538849435` findings (seven successful, seven failed and two
-cancelled artifact jobs; aggregate cancelled). Earlier V11 source-change and
-native/Plex evidence remains historical under
-`build/release-resume-20260909/plex-session-lifecycle/`, including
-`source-change-interruption-review.json`; it does not certify changed binaries.
+Exact-byte real-Plex evidence covers four main profiles, four outage/recovery
+supplements and two lifecycle supplements. The refreshed legacy main passed
+in 536 seconds with all 96 originals directly reviewed, audible physical PCM
+(correlation 0.923318, lag 0 ms), two resource reloads per client, three-TV
+restoration in a fresh server process and clean shutdown. Its recovery test
+passed both manual and automatic recovery from a 503 outage. Its lifecycle
+run passed in 154 seconds: checkpoint 256 placed/8960 remaining, restart with
+9216 unloaded cells still pending, loaded cleanup to zero, first pixel restored
+to air. Local controlled scenarios contain 33 feature steps; real-Plex scenarios
+contain 31 because synthetic failed-replacement injection belongs to the local
+fixture. All thresholds remain unchanged.
 
-Retain all 37 local cases, including the expanded feature scenario on all 21
-profiles, plus the specified capacity/failure/raster checks. Preserve failed and
-interrupted runs and their source identities. Standalone native decoding proves
-ABI/functionality, not full Windows/ARM Minecraft playback or physical ARM speed.
-No tag or publication is authorized by this plan.
+Windows x86-64 and emulated Linux ARM64 passed three native software fixtures.
+The new legacy JAR retains all 86 native members unchanged. These are decoder
+ABI/functionality checks, not full Windows/ARM Minecraft or physical-ARM speed
+claims. Both retained guests are powered off. Fresh checks found all four test
+servers stopped with original configuration and other mods preserved, Cinemarr
+disabled, and no Cinemarr Plex sessions/transcodes. The owned recovery scratch
+workspace was removed after verifying its owner, stopped unit, artifact and
+exported evidence. User credential files are preserved.
+
+Configured-secret scans passed for the new artifacts, GUI runs and live evidence.
+The final live scan covered 369 files and 6807 payloads (1,915,037,515 bytes),
+with fourteen configured values and no findings, errors or changed inputs.
+Final source, local-gate and hosted-output scans and generated-private cleanup
+are required as part of phase 10.
+
+Earlier successful hosted runs are
+[34815343612](https://github.com/StonyTark1117/Cinemarr/actions/runs/34815343612),
+[34827174909](https://github.com/StonyTark1117/Cinemarr/actions/runs/34827174909)
+and [34835244372](https://github.com/StonyTark1117/Cinemarr/actions/runs/34835244372).
+Their recorded bundle scopes and failed predecessors remain in the
+[remediation ledger](RELEASE_AUDIT_REMEDIATION.md). They do not certify a later
+commit's CI outcome. For final acceptance, use the run whose `headSha` equals
+the tested containing commit and verify all phase-10 conditions.
 
 ## Completion checklist
 
-These boxes close only for the final candidate and commit. Scoped intermediate
-passes above do not complete a broader requirement.
+Use this checklist to assess the final containing commit. The committed evidence
+manifest records completed artifact checks; final local/hosted receipts record
+commit-level completion. An unchecked template item is a required verification,
+not a claim that its implementation is missing. Preserve failed attempts and
+require exact hashes when joining earlier evidence.
 
 ## Display controls and independent streams
 

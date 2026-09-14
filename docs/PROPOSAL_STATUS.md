@@ -1,14 +1,15 @@
 # Prerelease implementation status
 
-This checkout is a Cinemarr 1.0.0 prerelease under hardening, not a validated
-release candidate. No tag or publication is authorized by this plan.
+This checkout is a Cinemarr 1.0.0 prerelease under hardening, with runtime-certified artifact evidence. Release readiness is assessed by the
+final containing commit’s local and hosted acceptance gates. No tag or publication is authorized by this plan.
 
 The authoritative current checkpoint and remaining work are in the
 [1.0 release hardening plan](1.0_RELEASE_HARDENING_PLAN.md). Its original ten
 phases retain the 16-artifact / 21-runtime scope. Detailed failed, interrupted,
 partial and source-bound accepted runs are distinguished in
-[release acceptance](RELEASE_ACCEPTANCE.md). Passing automation or historical
-artifact hashes do not certify the current uncommitted code.
+[release acceptance](RELEASE_ACCEPTANCE.md). The [candidate evidence manifest](RELEASE_CANDIDATE_EVIDENCE_20260914.json)
+records the current tested product bytes and scoped receipt hashes. Final
+commit-level acceptance requires matching local/hosted artifacts and clean Git state.
 
 Current implementation includes shared media/health policies, bounded
 asynchronous work and egress, required-client negotiation, legacy persistence
