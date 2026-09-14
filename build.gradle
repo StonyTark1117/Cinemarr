@@ -459,6 +459,13 @@ def releaseGateNames = { target ->
 def isolatedTargets = targetManifest.artifacts.findAll { it.path != '.' }
         .sort { a, b -> (a.runtimeJava == 8 ? 1 : 0) <=> (b.runtimeJava == 8 ? 1 : 0) }
 def isolatedGradleReleaseGates = isolatedTargets.collectMany(releaseGateNames).collect { tasks.named(it) }
+// A cached outer task graph can otherwise restore the command line from a
+// non-rerun invocation, silently dropping the flag from the child builds.
+isolatedGradleReleaseGates.each { gate ->
+    gate.configure {
+        notCompatibleWithConfigurationCache('Nested release arguments depend on the current rerun-tasks request')
+    }
+}
 if (gradle.startParameter.rerunTasks) {
     isolatedGradleReleaseGates.each { gate ->
         gate.configure { args '--rerun-tasks' }
@@ -518,6 +525,12 @@ tasks.register('verifyDisplayFeatureHarness', Exec) {
     group = 'verification'
     description = 'Checks fresh per-TV feature observations and maintained gate wiring.'
     commandLine 'python3', 'scripts/test-display-feature.py'
+}
+
+tasks.register('verifyNestedReleaseRebuild', Exec) {
+    group = 'verification'
+    description = 'Checks nested rebuild arguments across actual Gradle configuration-cache invocations.'
+    commandLine 'python3', 'scripts/test-release-rerun.py'
 }
 
 tasks.register('verifySourceLayoutTests', Exec) {
@@ -661,7 +674,7 @@ tasks.register('verifyVideoFaultRecovery', Exec) {
 }
 
 tasks.named('verifyAllTargets') {
-    dependsOn tasks.named('verifySourceLayout'), tasks.named('verifyTargetManifest'),
+    dependsOn tasks.named('verifySourceLayout'), tasks.named('verifyTargetManifest'), tasks.named('verifyNestedReleaseRebuild'),
             tasks.named('verifyReleaseHygiene'), tasks.named('verifyDisplayFeatureHarness'), tasks.named('verifyPcmCaptureAlignment'),
             tasks.named('verifyLogMarkerPolling'), tasks.named('verifyLegacyProbePlayerState'),
             tasks.named('verifyPrivateXvfb'), tasks.named('verifyClientExit'), tasks.named('verifyClientJoinOrder'),

@@ -94,6 +94,9 @@ jobs:
           cache: gradle
       - name: Record Java 21 home
         run: echo "CINEMARR_JAVA21_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
+      - name: Verify nested forced rebuilds
+        if: ${{ matrix.name == '1.21.1-neoforge' }}
+        run: python3 scripts/test-release-rerun.py
       - name: Build and inspect artifact
         run: bash scripts/run-gradle-download-retry.sh ./gradlew ${{ matrix.task }} --no-daemon --max-workers=1
       - name: Verify byte-identical rebuild
@@ -290,6 +293,8 @@ jobs:
             build/fabric-loader-0.19.2-gate/**/*.tsv
             build/fabric-loader-0.19.2-gate/**/*.png
             build/gametest-gate.log
+            build/release-rerun-tests/*.log
+            build/release-rerun-tests/*.json
 
   release-gate:
     name: 1.0 release gate
