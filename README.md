@@ -2,13 +2,13 @@
 
 <img src="artwork/cinemarr-icon.png" alt="Cinemarr logo" width="160">
 
-Cinemarr is a required client-and-server Minecraft mod for server-authoritative Plex movie and television playback on player-built screens. The server owns Plex credentials, library policy, transcodes, timelines, and media relay. Clients receive bounded HLS media, decode a visible session once, and render it across that television's dynamic texture.
+Cinemarr is a required client-and-server Minecraft mod for server-authoritative Plex movie and television playback on player-built screens. The server owns Plex credentials, library policy, transcodes, timelines, and media relay. Clients receive bounded HLS media, decode each visible TV stream once, and render it across that television's dynamic texture.
 
 ## 1.0 prerelease status
 
 This checkout targets **Cinemarr 1.0.0**. It is a prerelease development build,
 **not a release candidate**. Custom TV display controls and independent per-TV
-streams are now required 1.0 work across the **16-artifact / 21-runtime** matrix.
+streams are implemented across the **16-artifact / 21-runtime** matrix and are undergoing release certification.
 See the [full feature specification](docs/1.0_CUSTOM_TV_DISPLAY_PLAN.md) and
 [release hardening plan](docs/1.0_RELEASE_HARDENING_PLAN.md).
 
@@ -16,7 +16,7 @@ The earlier V11 candidate used protocol 10 and screen-data schema 3. Integrated
 development now uses protocol 11; saved-data migration and verification of all
 adapters remain required before certification.
 New custom TVs must default to Fit, Detailed, Auto, while Quick TV construction
-sizes and preset resolutions remain intact. Implementation is in progress.
+sizes and preset resolutions remain intact. Full release acceptance is still pending.
 
 The earlier runtime batch stopped when source changes superseded its frozen
 candidate. Prior matching builds, partial runtime passes, native checks and
@@ -102,7 +102,7 @@ CINEMARR_VIDEO_CLIENT_GATE=true \
 ./scripts/run-dedicated-server-gate.sh 1.21.1-neoforge
 ```
 
-Earlier green automation missed real audio, concurrency, camera and controller defects. Subsequent live pressure, reload and lifecycle checks prompted further fixes. Their source-bound acceptance and earlier complete builds are regression evidence, not certification of the current uncommitted code or final release bytes.
+Earlier green automation missed real audio, concurrency, camera and controller defects. Subsequent live pressure, reload and lifecycle checks prompted further fixes. Their source-bound acceptance and earlier complete builds are regression evidence; the integrated remediation still requires final exact-byte certification.
 
 The full local entry point is `./gradlew releaseMatrixGate --no-configuration-cache --max-workers=1` under Java 21, from a clean candidate checkout with fresh evidence directories. It requires all 16 artifacts, ten GameTests, all 21 runtimes and the required supplements. Direct image review, reproducibility, exact-artifact real-Plex/recovery/lifecycle and Windows/ARM checks, security/documentation review, scoped commits/push and exact-SHA green hosted CI with matching artifact hashes remain separate completion requirements. Installed Windows/ARM test guests are retained powered off between tests; see the [guest runbook](docs/NATIVE_TEST_GUESTS.md). See [the 1.0 hardening plan](docs/1.0_RELEASE_HARDENING_PLAN.md) for current evidence. The [earlier Jammarr target-feasibility assessment](docs/JAMMARR_TARGET_FEASIBILITY.md) concerns later expansion, does not change the 1.0 matrix, and will be refreshed only after the preceding hardening and CI gates finish.
 

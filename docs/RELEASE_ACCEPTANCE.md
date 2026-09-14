@@ -8,86 +8,53 @@ are mandatory across all 16 artifacts and 21 runtime profiles, including Forge
 1.7.10. New custom TVs default to Fit, Detailed, Auto; Quick TV construction and
 presets remain intact. These are required behaviors, not certification claims.
 
-The integrated feature implementation is in progress. No frozen final candidate
-or complete release acceptance exists for the changed binaries. The earlier
-V11 batch was stopped after concurrent source changes. Seventeen scoped runtime
-acceptances preceded those changes; Forge 1.21.1's runtime checks closed but its
-source guard failed, and NeoForge 1.21.1 was interrupted. The 704 reviewed PNGs
-and 38 measured audio pairs, two identical builds, native checks and deployment
-retain their earlier scope and cannot certify the new implementation.
-The latest completed hosted run is [34538849435](https://github.com/StonyTark1117/Cinemarr/actions/runs/34538849435)
-for `8e1efda206ed57935ac9e5498ead27e0ad7a445a` (rechecked September 13).
-All 16 build/inspection and byte-identical rebuild steps passed. Final artifact-job
-outcomes were seven successful, seven failed, and two cancelled; the aggregate
-was cancelled. These are artifact-job counts, not 21 completed runtime profiles.
-Failures were Fabric 1.20.1/1.20.2/1.21.1/26.1.2 private-window discovery,
-NeoForge 1.20.2 paused-frame observation, NeoForge 1.21.1 terminal observation,
-and NeoForge 26.2 stream startup. Forge 1.7.10 and Fabric 26.2 were cancelled.
-The [September 12 audit](RELEASE_AUDIT_20260912.md) retains the original findings;
-[remediation status](RELEASE_AUDIT_REMEDIATION.md) records subsequent changes and
-remaining certification work. No release acceptance checkbox is closed by these
-source changes or earlier hosted results.
-The preceding candidate `9075937` and run `34530641372` remain historical
-failure evidence: nine profiles completed successfully and seven failed (five
-Fabric runtime/observer cases, Forge 1.7.10 terminal lifecycle, and NeoForge
-1.21.1 terminal lifecycle). No runtime acceptance checkbox is closed for the
-current candidate.
-The downloaded 1.7.10 diagnostic nevertheless records an 8-second physical audio pair with zero lag and 0.998006 correlation; its terminal/lifecycle assertion still failed, so that evidence does not close the profile.
+The product remediation baseline is `d6e3566e76bcfa35ca52fa4b21e0fb46953c7491`
+on `codex/release-audit-remediation-20260913`. The display implementation and
+expanded maintained gates are integrated. Certification remains incomplete;
+no final acceptance checkbox is closed by a scoped diagnostic result.
 
-The authoritative interruption/cleanup record is
-`build/release-resume-20260909/plex-session-lifecycle/source-change-interruption-review.json`.
-It overrides the earlier in-progress summaries. The original 843-input source
-snapshot and prior receipts remain historical evidence. The Proxmox control plane,
-DiscPanel and Plex endpoints are reachable, and existing server credentials can
-be reused. The retained `codex-minecraft-dev` guest (`qemu/143`) is
-inventory-visible, but its guest agent did not answer execution requests in this
-checkout; retained-guest staging and checks remain open. Earlier evidence
-recorded that it provides `/usr/bin/Xvfb` and
-`/usr/bin/xvfb-run`, and its private `/opt/cinemarr/java8` Temurin 8 runtime
-was restored for the legacy gate. The guest was powered off after inspection;
-the candidate runtime bundle still must be staged there before real-Plex
-acceptance.
+The latest completed hosted run is [34756506555](https://github.com/StonyTark1117/Cinemarr/actions/runs/34756506555)
+for `d823945`: all five Fabric jobs (including Quilt and minimum-loader checks)
+and four Forge jobs passed. Forge 1.20.2 failed fresh-server persistence and
+legacy Forge failed terminal observation; five NeoForge builds failed on upstream
+HTTP 502. The aggregate was skipped. The two runtime defects are addressed in
+`d6e3566`; [run 34810548231](https://github.com/StonyTark1117/Cinemarr/actions/runs/34810548231)
+is in progress and is not yet accepted. Its NeoForge 1.20.2 job exposed stale
+retained-frame evidence in the owner observer: a prior TV reused the same stream
+generation. The follow-up observer now requires retention after each actual
+widget action, including paused seeks that keep the stream generation. Two
+regressions cover that race. The earlier local aggregate also failed at the
+legacy terminal observer with unchanged sources.
 
-The fresh local `releaseMatrixGate` for commit `6972cc1` reached all artifact
-families and the ten GameTests, then failed at `verifyPrivateXvfb` after 19m16s:
-all ten launcher cases reported `Private Xvfb did not allocate a live display`.
-At that checkpoint this host had no `Xvfb` or `xvfb-run` binary (only the user's existing `:0`
-socket). September remediation extracted a private local X tool runtime and passed
-its launcher regressions; full runtime certification is still pending. The launcher now fails fast with an actionable dependency message;
-the gate is retained as an environment failure rather than being bypassed or
-retried with a different display provider.
+Windows run `20260913T113700Z` and ARM run `20260913T115705Z` passed all three native
+software fixtures. Both guests are stopped and original ARM access is restored.
+All four real-Plex recovery profiles have passed on exact build-3 profile JARs;
+Fabric required a separate retry after a DiscPanel server-start failure. Original
+server configurations/overrides are restored, all four servers are stopped with
+Cinemarr disabled, and the temporary recovery workspace is removed. Native and
+recovery bytes must still match the final indexed bundle. Four full real-Plex
+A/V cases and two lifecycle cases remain open. The four packaged-client recipes
+pass preflight locally; preflight is not playback certification.
 
-The scoped exact-value scan over 931 source, script, CI, Gradle and
-documentation files (1,186 payloads; 5,495,997 bytes) completed with zero
-configured-value findings and zero audit errors. Generated platform build
-archives remain under the separate artifact-inspection gate.
+Two earlier full bundles match byte for byte, but the subsequent Forge 1.20.2
+saved-data fix changes the 1.20.2 family and requires a new matching build pair.
+The complete final local matrix, direct visual/audio review, all hosted jobs and
+aggregate, downloaded bundle parity, current metadata/scans and clean synchronized
+main remain required. The [remediation ledger](RELEASE_AUDIT_REMEDIATION.md)
+retains detailed scope, failures and teardown receipts.
 
-After correcting the stale protocol value, `indexReleaseArtifacts` regenerated
-the canonical bundle and `inspect-release-artifacts.py` inspected all 16 JARs
-successfully. This packaging evidence does not replace two-build parity or
-final-commit certification.
+The [September 12 audit](RELEASE_AUDIT_20260912.md) preserves the original
+`8e1efda` / run `34538849435` findings (seven successful, seven failed and two
+cancelled artifact jobs; aggregate cancelled). Earlier V11 source-change and
+native/Plex evidence remains historical under
+`build/release-resume-20260909/plex-session-lifecycle/`, including
+`source-change-interruption-review.json`; it does not certify changed binaries.
 
-Freeze the integrated implementation in an isolated checkout before fresh
-certification. Retain all existing 37 local cases, add the feature smoke across
-all 21 profiles, and inventory additional capacity/failure/raster supplements
-on representative legacy/modern boundaries and every distinct rendering adapter.
-The new smoke does not replace existing controls, A/V, adverse-network,
-ModMenu/minimum-loader, terminal, lifecycle or native-platform requirements.
-
-Run two complete matching builds, all focused tests and ten GameTests, the
-expanded runtime suite, both retained native guests, all four real-Plex profiles,
-four recovery supplements and two lifecycle supplements. Real-Plex evidence
-must exercise the specified multi-TV watch party, different qualities, Quick TV
-preset, same-TV viewers, live quality changes and paused mapping changes.
-Then require reviewed final metadata/docs/scans, the complete final-commit local
-release gate, all hosted jobs and aggregate gate, downloaded artifact parity,
-and a clean checkout with HEAD equal to origin/main. No tag or publication.
-
-Prior evidence limitations remain explicit: overwritten paused PCM does not
-certify pause silence; sequential automatic screenshots are not simultaneous
-phase proof; standalone native tests establish decoder ABI/functionality, not
-full Windows/ARM Minecraft playback or physical ARM performance. Preserve
-failed/interrupted runs and their source identity; do not retry to mask failures.
+Retain all 37 local cases, including the expanded feature scenario on all 21
+profiles, plus the specified capacity/failure/raster checks. Preserve failed and
+interrupted runs and their source identities. Standalone native decoding proves
+ABI/functionality, not full Windows/ARM Minecraft playback or physical ARM speed.
+No tag or publication is authorized by this plan.
 
 ## Completion checklist
 

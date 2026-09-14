@@ -14,7 +14,7 @@ by claims based on unit tests.
 | 5. Hosted failures | Fixed empty-name X discovery skipping fallback; terminal observer now compares timeline identities to queue identities; paused observer requires retained evidence for the latest authoritative revision when intermediate packets coalesce. The 26.x metadata-start race is guarded before per-TV preparation. Local private-X infrastructure is now available in an isolated extracted runtime. All 21 fresh runtime results and final hosted CI remain required. |
 | 6. Retained pixel storage | Detailed mode and invisible-display cleanup release the CPU raster; derived adapters no longer keep redundant raster references. Legacy upload reuses a bounded direct buffer. Modern adapter-level CPU ownership regression passes; runtime GL lifecycle coverage remains required. |
 | 7. Stale presentation side effects | Presentation commands validate the existing attachment/generation and return before tune/restore/tracking mutation. Tests check attachment invariance. Display and presentation updates publish to all TV recipients so paused viewers receive edits. |
-| 8. Stale records/guidance | Plan and acceptance introduction identify the audited hosted run and exact failure inventory. README explains requested versus decoded quality, block mapping, acknowledgements and per-TV capacity. |
+| 8. Stale records/guidance | Plan and acceptance introduction identify the latest completed remediation run and exact failure inventory, with the audited run retained historically. README explains requested versus decoded quality, block mapping, acknowledgements and per-TV capacity. |
 
 Additional regression findings: idle pool updates no longer increment stream
 generations on every tick, and raster rounding treats exact half-channel ties
@@ -337,3 +337,50 @@ had finished. Follow-up restoration independently verified all four servers
 stopped with Cinemarr disabled, exact original configuration bytes/overrides,
 and other mod settings preserved. Three scoped recovery passes remain valid;
 the failed Fabric case and failed outer transaction are retained separately.
+
+Fabric recovery retry completed successfully on September 14 with its candidate
+JAR unchanged. Its independent outer receipt returned zero and the remote
+transaction verified original configuration bytes, overrides and other mod
+settings, stopped state and disabled Cinemarr. All four recovery profiles now
+have scoped successes. Both transient units are inactive, no process retains
+the owned remote workspace, and marker-verified workspace removal is recorded.
+All four packaged-client recipes pass a fresh check-only preflight on `d6e3566`;
+full live A/V and lifecycle acceptance remain pending.
+
+Legacy terminal attempt 15b passed in 553 seconds on `d6e3566` with all source
+inputs unchanged and an independent zero exit receipt. Queue advancement, two
+world-change cycles, EOS reconnect, replay and stop passed, as did all five
+physical PCM-pair checks and final process/port teardown. Its original framebuffer
+review remains separate. A scoped sleep inhibitor was held only for the run to
+prevent another automatic host suspend; it was released when the process exited.
+
+Forge 1.20.2 attempt 16 passed the full 33-step display/client scenario and fresh
+server restoration in 645 seconds, with unchanged sources and clean teardown.
+Its hosted `d6e3566` job also passed. NeoForge 1.20.2 in that hosted run exposed
+another observer race: PAUSE first published stream generation 6 before 7, and
+the observer accepted an earlier TV's generation-6 retention record from before
+the widget action. The actual pause and subsequent seek retained the same frame
+hash; paired original pause captures were directly reviewed and stayed fixed.
+The exact old-log prefix reproduces the false match. Retention checks now begin
+at the corresponding widget action's log offset, including paused seek/stream
+changes which need not advance the TV-stream generation. Fourteen owner-timeline
+regressions pass; runtime attempt 17 exercises the corrected NeoForge boundary.
+
+A configured-value scan found one private value in the Windows VM shutdown log.
+The original was retained privately and the exported log was redacted with
+before/after hashes; native results and candidate payloads were not changed.
+The repeated source/native/recovery scan passed over 939 files and 1,472 decoded
+payloads (7,306,962 bytes), with zero findings and zero audit errors. This scope
+does not yet include the final artifact bundles or complete runtime evidence.
+
+
+The NeoForge 1.20.2 runtime-17 gate logged successful owner pause/seek/stream
+checks, reconnect, restoration, clean shutdown and a final gate pass, with all
+non-Markdown inputs unchanged. Its launch process was terminated with 143 before
+the independent child return code could be saved. The child completed after
+reparenting; this is scoped observer evidence, not a verified zero-exit run.
+`runtime17-outer-execution.json` records the distinction. A user-service
+supervisor will preserve a clean repeat's exit receipt independently of the
+interactive tool lifetime. All 32 original Forge 1.20.2 hosted Display Settings
+and paired world captures were directly reviewed and passed; the receipt is
+under `ci-d6e3566/1.20.2-forge/`, separate from pending controller/timeline review.

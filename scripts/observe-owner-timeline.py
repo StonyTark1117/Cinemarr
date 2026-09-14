@@ -29,7 +29,10 @@ def verify_stream_change(before, after, kind, expected_position, tolerance=0):
                            + " selection, preserve the other stream and retain the playback cursor/state")
 
 
-def retained_paused_frame(text, minimum_generation):
+def retained_paused_frame(text, minimum_generation, after_offset=0):
+    # TV-stream generations can repeat across earlier TVs and paused timeline
+    # changes need not advance them. Require a record after this widget action.
+    text = text[after_offset:]
     states = re.findall(r"Acceptance video session:.*?generation=(\d+) status=([A-Z_]+).*?canControl=true", text)
     if not states or states[-1][1] != "PAUSED":
         return None
@@ -109,16 +112,16 @@ def main():
             if marker in value and current and current[-1]["status"] == status and transitioned:
                 result = current[-1]
                 actions.append({"action": action, "marker": marker, "before": previous, "after": result})
-                return result, time.monotonic()
+                return result, time.monotonic(), offset
             if time.monotonic() >= deadline:
                 raise RuntimeError("No fresh authoritative result for owner widget: " + action)
             time.sleep(0.1)
 
-    def retained_frame(generation):
+    def retained_frame(generation, after_offset):
         deadline = time.monotonic() + 10
         while True:
             desktop.validate()
-            retained = retained_paused_frame(log(), generation)
+            retained = retained_paused_frame(log(), generation, after_offset)
             if retained:
                 return retained
             if time.monotonic() >= deadline:
@@ -151,36 +154,36 @@ def main():
         capture("playing-before")
         time.sleep(3.2)
         capture("playing-after-three-seconds")
-        paused, _ = click("PAUSE", 85, 350, "PAUSED", current)
-        paused_frame = retained_frame(paused["generation"])
+        paused, _, pause_offset = click("PAUSE", 85, 350, "PAUSED", current)
+        paused_frame = retained_frame(paused["generation"], pause_offset)
         capture("paused-before")
         paused_world_pair()
         capture("paused-after-three-seconds")
-        sought, _ = click("SEEK", 328, 350, "PAUSED", paused)
+        sought, _, seek_offset = click("SEEK", 328, 350, "PAUSED", paused)
         if sought["positionMs"] != paused["positionMs"] + 30_000:
             raise RuntimeError("Paused +30s did not preserve pause and move exactly thirty seconds")
-        if retained_frame(sought["generation"]) != paused_frame:
+        if retained_frame(sought["generation"], seek_offset) != paused_frame:
             raise RuntimeError("Paused seek lost the held program frame")
         capture("paused-seek")
-        changed, _ = click("SET_STREAMS", stream_x, 300, "PAUSED", sought)
+        changed, _, stream_offset = click("SET_STREAMS", stream_x, 300, "PAUSED", sought)
         verify_stream_change(sought, changed, args.stream_kind, sought["positionMs"])
-        if retained_frame(changed["generation"]) != paused_frame:
+        if retained_frame(changed["generation"], stream_offset) != paused_frame:
             raise RuntimeError("Paused stream change lost the held program frame")
         capture("paused-stream-change")
-        resumed, resume_at = click("RESUME", 85, 350, "PLAYING", changed)
+        resumed, resume_at, _ = click("RESUME", 85, 350, "PLAYING", changed)
         if abs(resumed["positionMs"] - changed["positionMs"]) > 2_000:
             raise RuntimeError("Resume did not start near the paused cursor")
         time.sleep(3.2)
         capture("resumed-clock")
         elapsed = (time.monotonic() - resume_at) * 1000
-        sought, seek_at = click("SEEK", 328, 350, "PLAYING", resumed)
+        sought, seek_at, _ = click("SEEK", 328, 350, "PLAYING", resumed)
         expected = resumed["positionMs"] + elapsed + 30_000
         if abs(sought["positionMs"] - expected) > 2_000:
             raise RuntimeError("Playing +30s used a stale snapshot instead of the advancing clock")
         capture("playing-seek")
         time.sleep(3.2)
         elapsed = (time.monotonic() - seek_at) * 1000
-        changed, _ = click("SET_STREAMS", stream_x, 300, "PLAYING", sought)
+        changed, _, _ = click("SET_STREAMS", stream_x, 300, "PLAYING", sought)
         verify_stream_change(sought, changed, args.stream_kind, sought["positionMs"] + elapsed, 5_000)
         capture("playing-stream-change")
         edits.finish()
