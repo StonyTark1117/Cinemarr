@@ -18,13 +18,7 @@ def exercise(observer, custom):
     def cap(name):time.sleep(.25);observer.capture(desktop,'extended-'+name)
     def click(x,y):desktop.click(x,y);time.sleep(.15)
     def field(x,value):
-        click(x,222)
-        desktop.run('xdotool','key','--clearmodifiers','ctrl+a')
-        # LWJGL 2 consumes the selection shortcut on a later client tick.
-        # Let it settle before typing, or selection can erase the first digit.
-        time.sleep(.3)
-        desktop.run('xdotool','type','--clearmodifiers','--delay','80',value)
-        time.sleep(.2)
+        click(x,222);desktop.run('xdotool','key','--clearmodifiers','ctrl+a');desktop.run('xdotool','type','--clearmodifiers','--delay','80',value);time.sleep(.2)
     def apply():click(320,436)
     try:
         desktop=observer.page(baseline,'leader','extended-initial')

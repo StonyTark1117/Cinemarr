@@ -24,7 +24,7 @@ final class LegacyDisplaySettingsScreen extends GuiScreen {
             stonytark.cinemarr.Cinemarr.LOGGER.info("Acceptance display UI: width={} height={} controller={} editable={}", width, height, pos, page.editable());
         int left=Math.max(4,(width-304)/2);
         add(0,left,28,304,page.layoutLabel());add(1,left,52,304,page.mappingLabel());add(2,left,76,304,page.resolutionLabel());
-        widthBox=new GuiTextField(fontRendererObj,left+40,102,104,20);heightBox=new GuiTextField(fontRendererObj,left+196,102,104,20);
+        widthBox=new LegacyDisplayTextField(fontRendererObj,left+40,102,104,20);heightBox=new LegacyDisplayTextField(fontRendererObj,left+196,102,104,20);
         widthBox.setMaxStringLength(4);heightBox.setMaxStringLength(4);widthBox.setText(page.width());heightBox.setText(page.height());
         add(3,left,208,96,"Reload");add(4,left+104,208,96,"Apply");add(5,left+208,208,96,"Cancel");refresh();
     }
