@@ -11,6 +11,9 @@ import urllib.request
 import urllib.error
 import hashlib
 import os
+import json
+import math
+import array
 from types import SimpleNamespace
 from unittest.mock import patch
 from PIL import Image, ImageDraw
@@ -189,6 +192,54 @@ class DisplayFeatureTests(unittest.TestCase):
         self.assertIn('CINEMARR_DISPLAY_FEATURE_GATE', (root/'build.gradle').read_text())
         self.assertIn('CINEMARR_DISPLAY_FEATURE_GATE', (root/'.github/workflows/ci.yml').read_text())
         self.assertIn('export CINEMARR_DISPLAY_FEATURE_GATE=true',(root/'scripts/run-discopanel-real-plex-gate.sh').read_text())
+
+class TerminalAudioFixtureTests(unittest.TestCase):
+    def test_only_terminal_neoforge_toast_events_are_silenced(self):
+        source = Path(__file__).with_name('run-dedicated-server-gate.sh').read_text()
+        function = 'prepare_terminal_ui_audio() {' + source.split('prepare_terminal_ui_audio() {', 1)[1].split('\nstart_audio_client() {', 1)[0]
+        for enabled, label in [('true', '1.21.1-neoforge'), ('false', '1.21.1-neoforge'),
+                               ('true', '1.7.10-forge'), ('true', '26.2-neoforge')]:
+            with self.subTest(enabled=enabled, label=label), tempfile.TemporaryDirectory(prefix='audio fixture ') as directory:
+                base = Path(directory)
+                options = base / 'options.txt'
+                original = 'soundCategory_master:1.0\nsoundCategory_record:1.0\n'
+                options.write_text(original)
+                result = subprocess.run(['bash', '-c', function + '\nvideo_terminal_gate="$1"\nprepare_terminal_ui_audio "$2" "$3"',
+                                         'fixture', enabled, label, directory], capture_output=True, text=True, timeout=5)
+                self.assertEqual(0, result.returncode, result.stderr)
+                pack = base / 'resourcepacks/cinemarr-acceptance-ui'
+                if enabled == 'true' and label == '1.21.1-neoforge':
+                    self.assertEqual({'ui.toast.in': {'replace': True, 'sounds': []},
+                                      'ui.toast.out': {'replace': True, 'sounds': []}},
+                                     json.loads((pack / 'assets/minecraft/sounds.json').read_text()))
+                    self.assertEqual(34, json.loads((pack / 'pack.mcmeta').read_text())['pack']['pack_format'])
+                    self.assertEqual({'pack.mcmeta', 'assets/minecraft/sounds.json'},
+                                     {str(p.relative_to(pack)) for p in pack.rglob('*') if p.is_file()})
+                    self.assertTrue(options.read_text().startswith(original))
+                    self.assertEqual(['vanilla', 'file/cinemarr-acceptance-ui'],
+                                     json.loads(options.read_text().split('resourcePacks:', 1)[1]))
+                else:
+                    self.assertFalse(pack.exists())
+                    self.assertEqual(original, options.read_text())
+
+    def test_terminal_silence_gate_still_rejects_audible_pcm(self):
+        source = Path(__file__).with_name('run-dedicated-server-gate.sh').read_text()
+        function = 'real_video_capture_is_silent() {' + source.split('real_video_capture_is_silent() {', 1)[1].split('\nlatest_video_generation() {', 1)[0]
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            for audible in [False, True]:
+                raw = base / ('audible.s16le' if audible else 'quiet.s16le')
+                samples = array.array('h')
+                for frame in range(48000 * 4):
+                    value = int(8192 * math.sin(2 * math.pi * 1000 * frame / 48000)) if audible else 0
+                    samples.extend((value, value))
+                if sys.byteorder != 'little':
+                    samples.byteswap()
+                raw.write_bytes(samples.tobytes())
+                result = subprocess.run(['bash', '-c', function + '\nreal_video_capture_is_silent "$1" "$2"',
+                                         'fixture', str(raw), str(base / 'metrics.txt')],
+                                        capture_output=True, text=True, timeout=10)
+                self.assertEqual(1 if audible else 0, result.returncode, result.stderr)
 
 class DisplayRestartTests(unittest.TestCase):
     def test_restart_requires_successful_launcher_and_owned_game_and_rcon_listeners(self):

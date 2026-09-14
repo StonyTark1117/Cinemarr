@@ -794,6 +794,20 @@ run_command_client() {
 started_audio_client_pid=""
 ready_audio_client_pid=""
 
+prepare_terminal_ui_audio() {
+  local label=$1 client_dir=$2
+  [[ "$video_terminal_gate" == true && "$label" == '1.21.1-neoforge' ]] || return 0
+  # Minecraft's insecure-chat toast uses MASTER, not an ambient category.
+  # Its dismissal can overlap the fresh follower's terminal-silence capture.
+  # Isolate only those UI events in this temporary 1.21.1 test installation;
+  # retain master/record volume, the TV pipeline, and all physical thresholds.
+  local pack="$client_dir/resourcepacks/cinemarr-acceptance-ui"
+  mkdir -p "$pack/assets/minecraft"
+  printf '%s\n' '{"pack":{"pack_format":34,"description":"Cinemarr terminal audio fixture: quiet toast transitions"}}' > "$pack/pack.mcmeta"
+  printf '%s\n' '{"ui.toast.in":{"replace":true,"sounds":[]},"ui.toast.out":{"replace":true,"sounds":[]}}' > "$pack/assets/minecraft/sounds.json"
+  printf '%s\n' 'resourcePacks:["vanilla","file/cinemarr-acceptance-ui"]' >> "$client_dir/options.txt"
+}
+
 start_audio_client() {
   local label=$1
   local target_dir=$2
@@ -867,6 +881,7 @@ start_audio_client() {
     'soundCategory_ambient:0.0' \
     'soundCategory_voice:0.0' \
     'soundCategory_record:1.0' > "$client_dir/options.txt"
+  prepare_terminal_ui_audio "$label" "$client_dir" || return 1
   # Paired mask captures require a stationary background.
   # Disable moving clouds in these isolated client installations.
   if [[ "$label" == '1.7.10-forge' ]]; then
