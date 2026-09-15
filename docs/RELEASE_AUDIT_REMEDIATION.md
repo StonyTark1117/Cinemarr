@@ -38,6 +38,17 @@ with independent verification of restored server settings. New-artifact live
 playback, detailed boundary reviews and final containing-commit certification
 are still being completed.
 
+Legacy and Quilt live playback now pass record and direct review of all 96
+original images per profile. The new NeoForge 1.21.1 field attempt failed:
+the server recorded the saved acceptance player falling to its death just after
+the test teleport, before playback readiness. The failed output is preserved;
+all six server-restoration checks passed. The existing stopped-server preparation
+of the two named legacy test identities now also handles modern float-health NBT.
+It clears saved death and fall state before the run, checks survival afterward,
+and restores original player bytes even on failure. Seven regressions pass,
+including the actual shell preparation/restoration path and a negative control
+against the old implementation. No health changes occur during playback.
+
 The new legacy real-Plex run exposed a capture-selection race: the widget
 observer's initial image can precede the controller's first buffer swap. The
 later permission-denial and expiry images show the correct non-owner UI. The
