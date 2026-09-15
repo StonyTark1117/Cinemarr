@@ -30,6 +30,7 @@ Earlier detailed implementation checkpoints and their superseded table are
 preserved verbatim in [historical evidence](HARDENING_EVIDENCE_HISTORY.md).
 They describe older candidates, not the current release state.
 
-The [earlier Jammarr feasibility assessment](JAMMARR_TARGET_FEASIBILITY.md)
-concerns later expansion. It does not expand this release matrix and will be
-refreshed only after the hardening documentation and exact-SHA CI work finish.
+The [current Jammarr comparison](JAMMARR_COMPARISON_20260914.md) was completed
+at the user's explicit request while release acceptance was paused. It compares
+GitHub's current source and published release, identifies useful fixes and future
+ports, and leaves this release matrix and its unfinished gates unchanged.

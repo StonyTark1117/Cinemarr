@@ -43,8 +43,10 @@ advanced. Resume from `codex/release-audit-remediation-20260913`.
 4. Run the complete 37-case local matrix and original-push eighteen-job hosted
    CI on the final containing commit, including the three latest harness fixes.
    Verify artifact parity and final scans; then synchronize `main` normally.
-5. Complete final cleanup verification and the deferred fresh Jammarr feasibility
-   assessment after release acceptance. Do not publish a tag or release.
+5. Complete final cleanup verification. The user subsequently requested the
+   [fresh Jammarr comparison](JAMMARR_COMPARISON_20260914.md) immediately; that
+   assessment is now complete independently of release acceptance. Do not
+   publish a tag or release.
 
 ## Cleanup and resumption
 
