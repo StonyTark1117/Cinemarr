@@ -25,8 +25,28 @@ asynchronous early display threw `FileSystemNotFoundException`. The acceptance
 harness now includes this profile in its existing `earlyWindowControl = false`
 configuration. The loader source confirms that this selects its dummy early
 window provider. Conflicting and symlinked configurations remain rejected;
-protocol, playback and pressure requirements are unchanged. Certification on
-the corrected harness remains pending.
+protocol, playback and pressure requirements are unchanged.
+
+The corrected original-push run [34907274193](https://github.com/StonyTark1117/Cinemarr/actions/runs/34907274193)
+on `4187962` passes all eighteen jobs, including the aggregate. Its downloaded
+eighteen-file bundle matches both forced `a8b69ba` builds; the intervening change
+only affects acceptance configuration and its regression. All twenty-one main
+profiles and five Quilt/Mod Menu cases passed direct playback/controller image
+review, eight-second physical PCM checks and feature/restart record checks.
+The four deployed profiles passed manual and automatic Plex outage recovery,
+with independent verification of restored server settings. New-artifact live
+playback, detailed boundary reviews and final containing-commit certification
+are still being completed.
+
+The new legacy real-Plex run exposed a capture-selection race: the widget
+observer's initial image can precede the controller's first buffer swap. The
+later permission-denial and expiry images show the correct non-owner UI. The
+harness now retains the existing post-denial image for its named small-window
+UI evidence. A regression distinguishes that image from both the pre-paint
+world image and a concurrently truncated client screenshot; it fails with the
+old selection and passes with the fix. All twenty-three private-window tests
+pass. The original capture is preserved and is not credited as UI evidence;
+the containing-commit runtime gate must verify the corrected selection.
 
 | Finding | Implementation and verification status |
 | --- | --- |
@@ -43,7 +63,7 @@ Additional regression findings: idle pool updates no longer increment stream
 generations on every tick, and raster rounding treats exact half-channel ties
 consistently despite floating-point transform noise.
 
-## September 14 current artifact reconciliation
+## September 14 historical artifact reconciliation
 
 All five maintained GUI cases passed with direct review. The fresh legacy
 real-Plex main, outage recovery and lifecycle tests now also pass on JAR
@@ -61,7 +81,7 @@ phase 10 on the exact containing commit.
 
 The dated entries below preserve observations, pending work and failed attempts
 as they were recorded. Their forward-looking statements describe that checkpoint;
-use the current reconciliation above for completed artifact checks.
+use the candidate-specific updates above for the current scope of completed checks.
 
 ## Fresh remediation checks (September 13)
 

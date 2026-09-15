@@ -1302,9 +1302,10 @@ run_video_control_scenarios() {
   python3 "$repo_root/scripts/observe-controller-feedback.py" \
     --log "$follower_log" --output "$output_root/$label.widget-feedback" --gate-pid "$$" \
     || { echo "$label: actual controller widget feedback failed" >&2; return 1; }
-  # The client continuously rewrites its own UI PNG. Retain the observer's
-  # completed initial capture while owner commands are still idle instead.
-  python3 "$repo_root/scripts/png_capture.py" "$output_root/$label.widget-feedback/initial-status.png" \
+  # The client continuously rewrites its own UI PNG, and the observer's first
+  # capture can precede the first controller buffer swap. Retain its completed
+  # post-denial capture while owner commands are still idle instead.
+  python3 "$repo_root/scripts/png_capture.py" "$output_root/$label.widget-feedback/play-denial-expired.png" \
     --copy "$follower_ui" \
     || { echo "$label: non-owner small-window UI screenshot is invalid or could not be retained" >&2; return 1; }
   printf 'Non-owner controller UI rendered at 320x240 logical (640x480 physical, scale two) with zero clipped or overlapping widgets. Screenshot SHA-256: ' >> "$evidence"

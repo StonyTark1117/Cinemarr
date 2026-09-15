@@ -286,16 +286,18 @@ run_closed_tail() {
                 window.capture(path)
             self.assertEqual(sample_png(), path.read_bytes())
 
-    def test_non_owner_evidence_survives_live_ui_file_truncation(self):
+    def test_non_owner_evidence_uses_settled_ui_and_survives_live_file_truncation(self):
         # Exercise the real shell control flow. The client screenshot is valid
         # at the initial check, then truncated by the simulated UI writer while
         # the observer retains its independent, immutable window capture.
+        # Its first capture can still show the world before the first UI swap.
         source = Path(__file__).with_name('run-dedicated-server-gate.sh').read_text()
         function = re.search(r'(?ms)^run_video_control_scenarios\(\) \{\n.*?^\}', source).group()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             fixture = root / 'original.png'
             fixture.write_bytes(sample_png())
+            (root / 'before-first-paint.png').write_bytes(sample_png(b'\0\0\0\0\0\0\0'))
             profile = '1.20.1-fabric'
             for role in ('leader', 'follower'):
                 (root / (profile + '.audio-' + role + '.console.log')).write_text('ready\n')
@@ -324,7 +326,8 @@ python3() {
   case "$1" in
     */observe-controller-feedback.py)
       mkdir -p "$output_root/$label.widget-feedback"
-      command cp "$output_root/original.png" "$output_root/$label.widget-feedback/initial-status.png"
+      command cp "$output_root/before-first-paint.png" "$output_root/$label.widget-feedback/initial-status.png"
+      command cp "$output_root/original.png" "$output_root/$label.widget-feedback/play-denial-expired.png"
       : > "$output_root/$label.audio-follower/screenshots/cinemarr-video-ui-acceptance.png" ;;
     */observe-owner-timeline.py) return 0 ;;
     *) command python3 "$@" ;;
@@ -340,7 +343,8 @@ command_output() { return 1; }
             self.assertEqual(1, result.returncode, result.stderr)
             self.assertEqual(b'', ui.read_bytes())
             saved = root / (profile + '.non-owner-small-window-ui.png')
-            self.assertEqual(sample_png(), saved.read_bytes(), 'Gate copied a mutable/truncated client UI file')
+            self.assertEqual(sample_png(), saved.read_bytes(),
+                             'Gate copied a pre-paint world image or mutable/truncated client UI file')
 
 
 if __name__ == "__main__": unittest.main()
