@@ -48,6 +48,12 @@ It clears saved death and fall state before the run, checks survival afterward,
 and restores original player bytes even on failure. Seven regressions pass,
 including the actual shell preparation/restoration path and a negative control
 against the old implementation. No health changes occur during playback.
+The corrected NeoForge field attempt passes all 31 feature steps, three-TV
+restart persistence and physical audio alignment, with both saved players
+restored byte-for-byte. Fabric 26.2's preflight then identified its different
+player storage layout, before any mutation: `world/players/data` and the double
+`fall_distance` tag. The preparation now selects that explicit schema for 26.x;
+nine regressions cover both modern layouts and restoration.
 
 The new legacy real-Plex run exposed a capture-selection race: the widget
 observer's initial image can precede the controller's first buffer swap. The

@@ -17,11 +17,16 @@ FIELDS = {"Health": (2, 20), "HealF": (5, 20.0), "DeathTime": (2, 0),
 FORMATS = {1: "b", 2: "h", 3: "i", 4: "q", 5: "f", 6: "d"}
 
 
-def prepare(compressed, repair=False, modern=False):
+def prepare(compressed, repair=False, modern=False, modern26=False):
     expected = dict(FIELDS)
     if modern:
         expected.pop("HealF")
         expected["Health"] = (5, 20.0)
+    if modern26:
+        if not modern:
+            raise ValueError("26.x player schema requires modern health")
+        expected.pop("FallDistance")
+        expected["fall_distance"] = (6, 0.0)
     if len(compressed) > LIMIT:
         raise ValueError("oversized player data")
     with gzip.GzipFile(fileobj=io.BytesIO(compressed)) as stream:
@@ -93,12 +98,12 @@ def prepare(compressed, repair=False, modern=False):
 
 
 def main():
-    if sys.argv[1:] not in (["check"], ["prepare"], ["check-modern"], ["prepare-modern"]):
+    if sys.argv[1:] not in (["check"], ["prepare"], ["check-modern"], ["prepare-modern"], ["check-modern26"], ["prepare-modern26"]):
         raise ValueError("expected check or prepare, optionally suffixed -modern")
     encoded = sys.stdin.buffer.read(LIMIT * 2 + 1)
     if len(encoded) > LIMIT * 2:
         raise ValueError("oversized encoded player data")
-    data = prepare(base64.b64decode(encoded.strip(), validate=True), sys.argv[1].startswith("prepare"), sys.argv[1].endswith("-modern"))
+    data = prepare(base64.b64decode(encoded.strip(), validate=True), sys.argv[1].startswith("prepare"), sys.argv[1].endswith(("-modern", "-modern26")), sys.argv[1].endswith("-modern26"))
     if sys.argv[1].startswith("prepare"):
         print(base64.b64encode(data).decode("ascii"))
 

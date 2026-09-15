@@ -192,13 +192,14 @@ restore_properties() {
 legacy_probe_files=()
 legacy_probe_originals=()
 prepare_legacy_probe_players() {
-  local files path original prepared mode=prepare
+  local files path original prepared mode=prepare player_dir=world/playerdata
   [[ "$label" == 1.7.10-forge ]] || mode=prepare-modern
+  if [[ "$label" == 26.* ]]; then mode=prepare-modern26; player_dir=world/players/data; fi
   [[ $(get_server | jq -r '.server.status') == SERVER_STATUS_STOPPED ]] || return 1
   files=$(api_call discopanel.v1.FileService/ListFiles \
-    "$(jq -cn --arg id "$server_id" '{serverId:$id,path:"world/playerdata"}')") || return 1
-  for path in world/playerdata/42ca340c-04ef-3fa1-b363-ebb5d33ee76d.dat \
-              world/playerdata/ab770eaf-1e72-3375-9500-a23286375fad.dat; do
+    "$(jq -cn --arg id "$server_id" --arg path "$player_dir" '{serverId:$id,path:$path}')") || return 1
+  for path in "$player_dir/42ca340c-04ef-3fa1-b363-ebb5d33ee76d.dat" \
+              "$player_dir/ab770eaf-1e72-3375-9500-a23286375fad.dat"; do
     [[ $(jq --arg path "$path" '[.files[] | select(.path == $path)] | length' <<<"$files") == 1 ]] || continue
     original=$(api_call discopanel.v1.FileService/GetFile \
       "$(jq -cn --arg id "$server_id" --arg path "$path" '{serverId:$id,path:$path}')" | jq -er '.content') || return 1
@@ -212,10 +213,11 @@ prepare_legacy_probe_players() {
 }
 
 check_legacy_probe_players_alive() {
-  local path content mode=check
+  local path content mode=check player_dir=world/playerdata
   [[ "$label" == 1.7.10-forge ]] || mode=check-modern
-  for path in world/playerdata/42ca340c-04ef-3fa1-b363-ebb5d33ee76d.dat \
-              world/playerdata/ab770eaf-1e72-3375-9500-a23286375fad.dat; do
+  if [[ "$label" == 26.* ]]; then mode=check-modern26; player_dir=world/players/data; fi
+  for path in "$player_dir/42ca340c-04ef-3fa1-b363-ebb5d33ee76d.dat" \
+              "$player_dir/ab770eaf-1e72-3375-9500-a23286375fad.dat"; do
     content=$(api_call discopanel.v1.FileService/GetFile \
       "$(jq -cn --arg id "$server_id" --arg path "$path" '{serverId:$id,path:$path}')" | jq -er '.content') || return 1
     printf '%s' "$content" | python3 "$repo_root/scripts/legacy-probe-player-state.py" "$mode" || return 1
