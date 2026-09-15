@@ -1,5 +1,9 @@
 # September release-audit remediation
 
+Work is paused at the user's request. The [September 14 pause checkpoint](RELEASE_AUDIT_PAUSE_20260914.md)
+records the current verified state, cleanup and remaining acceptance work;
+it supersedes older in-progress statements below.
+
 The [September 12 audit](RELEASE_AUDIT_20260912.md) remains unchanged as the
 historical assessment of `8e1efda`. The table below records the remedies.
 The [release acceptance record](RELEASE_ACCEPTANCE.md) and
