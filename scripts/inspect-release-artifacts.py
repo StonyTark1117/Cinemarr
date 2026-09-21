@@ -444,7 +444,6 @@ def verify_jar(path: Path, minecraft: str, loader: str, java: int, expected_majo
                 "stonytark/cinemarr/client/FfmpegHardwareVideoDecoder.class",
                 "stonytark/cinemarr/mixin/client/ChannelAccessor.class",
                 "stonytark/cinemarr/mixin/client/SoundEngineLifecycleMixin.class",
-                "stonytark/cinemarr/core/client/AudioEngineGeneration.class",
             }
             if required_modern - names:
                 fail(f"{filename} is missing modern runtime entries: {sorted(required_modern - names)}")
@@ -501,6 +500,7 @@ def verify_jar(path: Path, minecraft: str, loader: str, java: int, expected_majo
                 "stonytark/cinemarr/core/server/PlexVideoService.class",
                 "stonytark/cinemarr/core/server/VideoSessionCoordinator.class",
                 "stonytark/cinemarr/core/screen/QuickTvPreset.class",
+                "stonytark/cinemarr/core/client/AudioEngineGeneration.class",
             ):
                 core_class = require_nested_class(archive, core_candidates[0], core_entry, filename)
                 if class_major(core_class, f"{filename}:{core_entry}") != 52:
