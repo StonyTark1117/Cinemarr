@@ -5,6 +5,9 @@ repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 api_base=${DISCOPANEL_API_BASE:-}
 server_host=${DISCOPANEL_SERVER_HOST:-}
 label=${1:-}
+display_gate=${CINEMARR_VIDEO_DISPLAY_GATE:-false}
+[[ "$display_gate" == true || "$display_gate" == false ]] \
+  || { echo 'CINEMARR_VIDEO_DISPLAY_GATE must be true or false' >&2; exit 2; }
 
 if [[ -z "${DISCOPANEL_TOKEN:-}" ]]; then
   echo "DISCOPANEL_TOKEN is required" >&2
@@ -46,6 +49,19 @@ case "$label" in
     exit 2
     ;;
 esac
+
+# An evidence attempt owns a fresh directory beneath this checkout's build tree.
+# Resolve before any remote mutation or cleanup trap can redact files.
+CINEMARR_GATE_OUTPUT_ROOT=$(python3 - "$repo_root" "${CINEMARR_GATE_OUTPUT_ROOT:-$repo_root/build/discopanel-real-plex/$label}" <<'PYOUTPUT'
+import pathlib, sys
+root = pathlib.Path(sys.argv[1]).resolve() / 'build'
+output = pathlib.Path(sys.argv[2]).resolve()
+if not output.is_relative_to(root) or output == root or output.exists():
+    raise SystemExit('Real-Plex evidence requires a fresh directory under repository build')
+print(output)
+PYOUTPUT
+)
+export CINEMARR_GATE_OUTPUT_ROOT
 
 # Fail before contacting or changing a managed server if production-client
 # inputs are unavailable. Exact server bytes plus a development client are
@@ -247,6 +263,24 @@ plex_cinemarr_session_count() {
     | jq '[.. | objects | select(.clientIdentifier? == "c4c216b757884ecb91dce7f33dbe9f31")] | length'
 }
 
+# Only the opt-in display fixture owns these two small, fixed screen footprints.
+remove_display_scene() {
+  [[ "$display_gate" == true ]] || return 0
+  send_command 'setblock -7 110 3 air' || return 1
+  send_command 'setblock 4 110 3 air' || return 1
+  if [[ "$label" == 1.7.10-forge ]]; then
+    local x y
+    for x in -7 -6 -5 -4 4 5 6 7; do
+      for y in 110 111 112 113; do
+        send_command "setblock $x $y 2 air" || return 1
+      done
+    done
+  else
+    send_command 'fill -7 110 2 -4 113 2 air' || return 1
+    send_command 'fill 4 110 2 7 113 2 air' || return 1
+  fi
+}
+
 remote_prepared=0
 remote_started=0
 acceptance_tv_id=''
@@ -264,6 +298,7 @@ cleanup_remote() {
   if (( remote_started )); then
     if [[ -n "$acceptance_tv_id" ]]; then send_command "cinemarr tv unregister $acceptance_tv_id"; fi
     send_command 'setblock -1 100 -1 air'
+    remove_display_scene || cleanup_status=1
     if (( acceptance_forceload )); then
       command_output 'forceload remove -16 -16 15 15' >/dev/null
       acceptance_forceload=0
@@ -330,7 +365,7 @@ jammarr_response=$(api_call discopanel.v1.FileService/GetFile \
   "$(jq -cn --arg id "$server_id" --arg path "mods/$jammarr_name" '{serverId:$id,path:$path}')")
 jammarr_content=$(jq -r '.content' <<<"$jammarr_response")
 for role in leader follower; do
-  client_mod_dir="$repo_root/build/discopanel-real-plex/$label/$label.audio-$role/mods"
+  client_mod_dir="$CINEMARR_GATE_OUTPUT_ROOT/$label.audio-$role/mods"
   mkdir -p "$client_mod_dir"
   # These game directories are deliberately retained as evidence between
   # runs. Remove the prior Jammarr candidate before installing the single
@@ -340,8 +375,8 @@ for role in leader follower; do
     \( -iname 'jammarr-*.jar' -o -iname 'jammarr-*.jar.production-reference' \) -delete
   base64 -d <<<"$jammarr_content" > "$client_mod_dir/$jammarr_name"
 done
-leader_jammarr_sha=$(sha256sum "$repo_root/build/discopanel-real-plex/$label/$label.audio-leader/mods/$jammarr_name" | awk '{print $1}')
-follower_jammarr_sha=$(sha256sum "$repo_root/build/discopanel-real-plex/$label/$label.audio-follower/mods/$jammarr_name" | awk '{print $1}')
+leader_jammarr_sha=$(sha256sum "$CINEMARR_GATE_OUTPUT_ROOT/$label.audio-leader/mods/$jammarr_name" | awk '{print $1}')
+follower_jammarr_sha=$(sha256sum "$CINEMARR_GATE_OUTPUT_ROOT/$label.audio-follower/mods/$jammarr_name" | awk '{print $1}')
 [[ "$leader_jammarr_sha" == "$follower_jammarr_sha" ]] \
   || { echo "Temporary clients received different Jammarr artifacts" >&2; exit 1; }
 server_jammarr_sha=$leader_jammarr_sha
@@ -365,9 +400,9 @@ initial_sessions=$(plex_cinemarr_session_count /status/sessions)
 [[ "$initial_transcodes" == 0 && "$initial_sessions" == 0 ]] \
   || { echo "Plex already has a Cinemarr session before $label" >&2; exit 1; }
 
-acceptance_overrides=$(jq -c '
+acceptance_overrides=$(jq -c --arg display "$display_gate" '
   .environment = (.environment // {})
-  | .environment.JAVA_TOOL_OPTIONS = (((.environment.JAVA_TOOL_OPTIONS // "") + " -Dcinemarr.acceptance.enabled=true -Dcinemarr.acceptance.videoProbe=true") | ltrimstr(" "))
+  | .environment.JAVA_TOOL_OPTIONS = (((.environment.JAVA_TOOL_OPTIONS // "") + " -Dcinemarr.acceptance.enabled=true -Dcinemarr.acceptance.videoProbe=true" + (if $display == "true" then " -Dcinemarr.acceptance.displayProbe=true" else "" end)) | ltrimstr(" "))
   | .environment.ONLINE_MODE = "FALSE"
   | .environment.ENFORCE_SECURE_PROFILE = "FALSE"
   | .environment.SPAWN_MONSTERS = "FALSE"
@@ -388,6 +423,7 @@ baseline_diagnostics=$(command_output 'cinemarr diagnostics')
 [[ "$baseline_diagnostics" == *'Plex=ready;'* && "$baseline_diagnostics" == *'activeStreams=0/'* ]] \
   || { echo "$label did not start from an idle, ready video service: $baseline_diagnostics" >&2; exit 1; }
 send_command 'setblock -1 100 -1 air'
+remove_display_scene
 sleep 2
 # A prior interrupted acceptance run can leave its temporary TV registered.
 # Remove the bounded test position first, then define the baseline which this
@@ -412,7 +448,6 @@ export CINEMARR_VIDEO_CONTROL_GATE=${CINEMARR_VIDEO_CONTROL_GATE:-true}
 export CINEMARR_VIDEO_FOLLOWER_SMALL_WINDOW=${CINEMARR_VIDEO_FOLLOWER_SMALL_WINDOW:-true}
 export CINEMARR_LIVE_PLEX_GATE=true
 export CINEMARR_ACCEPTANCE_SERVER_HOST="$server_host"
-export CINEMARR_GATE_OUTPUT_ROOT="$repo_root/build/discopanel-real-plex/$label"
 export CINEMARR_LIVE_VIDEO_SECTION_ID=${CINEMARR_LIVE_VIDEO_SECTION_ID:-1}
 # shellcheck source=run-dedicated-server-gate.sh
 source "$repo_root/scripts/run-dedicated-server-gate.sh" "$label"
@@ -435,6 +470,7 @@ wait_for_log 'Acceptance Quick TV:' 60
 
 command_output "cinemarr tv unregister $acceptance_tv_id" >/dev/null
 command_output 'setblock -1 100 -1 air' >/dev/null
+remove_display_scene
 sleep 3
 for _ in {1..20}; do
   diagnostics=$(command_output 'cinemarr diagnostics')

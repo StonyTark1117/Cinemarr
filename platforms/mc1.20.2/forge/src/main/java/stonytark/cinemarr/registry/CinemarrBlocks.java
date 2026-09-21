@@ -40,4 +40,5 @@ public final class CinemarrBlocks {
     public static ScreenPixelBlock screenPixel() { return SCREEN_PIXEL.get(); }
     public static Block redstoneReceiver() { return REDSTONE_RECEIVER.get(); }
     private CinemarrBlocks() {}
+    public static net.minecraft.world.level.block.Block tvController() { return TV_CONTROLLER.get(); }
 }

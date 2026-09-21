@@ -74,6 +74,8 @@ final class LegacyClientState implements LegacyNetwork.ClientListener {
         } else if (type == LegacyPacketTypes.ERROR && minecraft.thePlayer != null) {
             if (ProtocolLimits.browsePressureProbeEnabled()) Cinemarr.LOGGER.info("Acceptance video request error: message={}", ((LegacyPacketTypes.ErrorMessage) message).message());
             minecraft.thePlayer.addChatMessage(new ChatComponentText("Cinemarr: " + ((LegacyPacketTypes.ErrorMessage) message).message()));
+            if (minecraft.currentScreen instanceof stonytark.cinemarr.core.video.DisplaySettingsFeedback)
+                ((stonytark.cinemarr.core.video.DisplaySettingsFeedback)minecraft.currentScreen).showError(((LegacyPacketTypes.ErrorMessage)message).message());
             if(minecraft.currentScreen instanceof LegacyVideoScreen)
                 ((LegacyVideoScreen)minecraft.currentScreen).showError(((LegacyPacketTypes.ErrorMessage)message).message());
         }
@@ -157,11 +159,13 @@ final class LegacyClientState implements LegacyNetwork.ClientListener {
         if (!ProtocolLimits.videoProbeEnabled()) return;
         if (type == LegacyPacketTypes.VIDEO_SESSION_STATE) {
             VideoPackets.SessionState state = (VideoPackets.SessionState) payload;
+            if (ProtocolLimits.displayProbeEnabled()) Cinemarr.LOGGER.info("Acceptance TV display: {}", stonytark.cinemarr.core.video.DisplayAcceptance.describe(state));
+            if (!stonytark.cinemarr.core.video.DisplayAcceptance.primary(state)) return;
             if (state.item() != null) acceptanceVideoLastItemKey = state.item().key();
-            Cinemarr.LOGGER.info("Acceptance video session: controller={} session={} generation={} status={} item={} positionMs={} canControl={} streams={} audio={} subtitle={} durationMs={} message={}",
+            Cinemarr.LOGGER.info("Acceptance video session: controller={} session={} generation={} status={} item={} positionMs={} canControl={} streams={} audio={} subtitle={} timeline={} timelineGeneration={} durationMs={} message={}",
                     state.controllerPos(), state.sessionId(), state.generation(), state.status(),
                     state.item() == null ? "" : state.item().key(), state.positionMs(), state.canControl(),
-                    state.streams().size(), state.selectedAudioStreamId(), state.selectedSubtitleStreamId(), state.durationMs(), state.message());
+                    state.streams().size(), state.selectedAudioStreamId(), state.selectedSubtitleStreamId(), state.timelineId(), state.timelineGeneration(), state.durationMs(), state.message());
             acceptanceVideoController = state.controllerPos();
             if (!ProtocolLimits.videoProbeLeader() || !state.canControl()) return;
             if (!acceptanceVideoTuneSent) {
@@ -218,6 +222,14 @@ final class LegacyClientState implements LegacyNetwork.ClientListener {
         if (!ProtocolLimits.videoProbeEnabled()) return;
         if (operation.isEmpty()) return;
         if (operation.length() == 0 || !operation.startsWith("video:")) return;
+        if (ProtocolLimits.displayProbeEnabled() && operation.startsWith("video:display:")) {
+            try {
+                VideoPackets.SessionCommand command = stonytark.cinemarr.core.video.DisplayAcceptance.command(LegacyVideoClientState.INSTANCE.televisions(), operation);
+                if (command != null) LegacyVideoClientState.INSTANCE.command(command);
+            } catch (RuntimeException invalid) { Cinemarr.LOGGER.info("Acceptance display command failed: {}", invalid.getMessage()); }
+            return;
+        }
+
         VideoPackets.SessionState state = LegacyVideoClientState.INSTANCE.session(acceptanceVideoController);
         if (operation.startsWith("video:browse-pressure:") && ProtocolLimits.browsePressureProbeEnabled()) {
             VideoPackets.LibraryList libraries = LegacyVideoClientState.INSTANCE.libraries();
@@ -226,6 +238,10 @@ final class LegacyClientState implements LegacyNetwork.ClientListener {
             LegacyVideoClientState.INSTANCE.browse(libraries.libraries().get(0).id(), "", query, 0);
             Cinemarr.LOGGER.info("Acceptance browse pressure sent: query={}", query);
             return;
+        }
+        if (ProtocolLimits.displayProbeEnabled() && "video:open-display-controller".equals(operation)) {
+            state = stonytark.cinemarr.core.video.DisplayAcceptance.custom(LegacyVideoClientState.INSTANCE.televisions(), 0);
+            operation = "video:open-ui";
         }
         if ("video:open-ui".equals(operation)) {
             if (state == null) { Cinemarr.LOGGER.info("Acceptance video UI request unavailable: no session state"); return; }

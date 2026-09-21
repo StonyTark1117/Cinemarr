@@ -16,6 +16,13 @@ SOURCES = (
 
 
 class PlaybackPublicationLayoutTest(unittest.TestCase):
+    def test_display_updates_reach_all_viewers_after_validation(self):
+        for path in SOURCES:
+            text = (ROOT / path).read_text()
+            layout.verify_display_publication(text, path)
+            with self.assertRaises(SystemExit):
+                layout.verify_display_publication(text.replace('recipients(television, player)', 'java.util.Collections.singleton(player)'), path)
+
     def test_all_families_bind_transport_to_both_identities(self):
         for path in SOURCES:
             with self.subTest(path=path):

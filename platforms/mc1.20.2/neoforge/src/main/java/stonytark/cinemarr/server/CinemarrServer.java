@@ -145,13 +145,14 @@ public final class CinemarrServer {
                     || television.renditionWidth() != 256 || television.renditionHeight() != 144) throw new IllegalStateException("Quick TV acceptance construction did not persist its geometry and rendition");
             Cinemarr.LOGGER.info("Acceptance Quick TV: controller={} preset=144p dimensions=16x9 rendition=256x144 owner={}", controller.asLong(), player.getGameProfile().getName());
         }
-        for (int x = -9; x <= 9; x++) for (int z = 1; z <= 8; z++) {
+        for (int x = -9; x <= 9; x++) for (int z = 1; z <= (ProtocolLimits.displayProbeEnabled() ? 14 : 8); z++) {
             level.setBlockAndUpdate(new BlockPos(x, 99, z), Blocks.SMOOTH_STONE.defaultBlockState());
             for (int y = 100; y <= 109; y++) level.setBlockAndUpdate(new BlockPos(x, y, z), Blocks.AIR.defaultBlockState());
         }
         level.setDayTime(6000);
+        AcceptanceDisplaySetup.prepare(level, player, manager);
         double cameraX = stonytark.cinemarr.core.protocol.ProtocolLimits.videoProbeCameraX(player.getGameProfile().getName());
-        player.teleportTo(level, cameraX, 100.0, 7.5, 180.0F, 0.0F);
-        player.lookAt(EntityAnchorArgument.Anchor.EYES, Vec3.atCenterOf(new BlockPos(0, 104, 0)));
+        player.teleportTo(level, cameraX, 100.0, (ProtocolLimits.displayProbeEnabled()?12.5:7.5), 180.0F, 0.0F);
+        player.lookAt(EntityAnchorArgument.Anchor.EYES, Vec3.atCenterOf(new BlockPos(0, ProtocolLimits.displayProbeEnabled() ? 107 : 104, 0)));
     }
 }

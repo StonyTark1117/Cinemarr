@@ -10,6 +10,13 @@ spec.loader.exec_module(owner)
 
 
 class StreamChangeTests(unittest.TestCase):
+    def test_owner_actions_follow_timeline_revision_not_media_revision(self):
+        text = ('Acceptance video session: controller=1 session=tv generation=3 status=PAUSED '
+                'item=movie positionMs=12000 canControl=true streams=2 audio=1 subtitle=-1 '
+                'timeline=party timelineGeneration=8 durationMs=300000 message=Paused')
+        self.assertEqual(8, owner.states(text)[0]['generation'])
+        self.assertEqual(3, owner.states(text.replace(' timeline=party timelineGeneration=8', ''))[0]['generation'])
+
     def setUp(self):
         self.before = dict(generation=3, status='PAUSED', positionMs=84388, audio=205039, subtitle=-1)
         self.subtitle = dict(self.before, generation=4, subtitle=205040)

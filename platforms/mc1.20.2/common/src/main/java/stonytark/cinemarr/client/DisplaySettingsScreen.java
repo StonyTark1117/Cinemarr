@@ -6,29 +6,102 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import stonytark.cinemarr.core.protocol.VideoPackets;
-import stonytark.cinemarr.core.video.DisplaySettingsDraft;
-import stonytark.cinemarr.core.video.PixelMapping;
-import stonytark.cinemarr.core.video.PresentationMode;
-import stonytark.cinemarr.core.video.ResolutionChoice;
+import stonytark.cinemarr.core.video.DisplaySettingsEditor;
+import stonytark.cinemarr.core.video.DisplaySettingsFeedback;
 import stonytark.cinemarr.core.video.TvDisplaySettings;
 
-/** Display settings page for the 1.20.2 GUI API. */
-public final class DisplaySettingsScreen extends Screen {
-    private final long controllerPos; private final CinemarrVideoClientState state; private final CinemarrVideoScreen parent;
-    private DisplaySettingsDraft draft; private EditBox widthBox,heightBox; private String error="";
-    public DisplaySettingsScreen(long pos,CinemarrVideoClientState state,CinemarrVideoScreen parent){super(Component.literal("Display Settings"));controllerPos=pos;this.state=state;this.parent=parent;}
-    @Override protected void init(){
-        VideoPackets.SessionState current=state.session(controllerPos); TvDisplaySettings settings=current==null?TvDisplaySettings.defaults(PresentationMode.FIT):current.displaySettings(); draft=new DisplaySettingsDraft(settings);
-        int left=Math.max(4,(width-312)/2),y=28;
-        for(PresentationMode mode:PresentationMode.values())addRenderableWidget(Button.builder(Component.literal(mode.name()),b->draft.layout(mode)).bounds(left+mode.ordinal()*72,y,68,20).build());
-        for(PixelMapping mapping:PixelMapping.values()){Button b=Button.builder(Component.literal(mapping==PixelMapping.DETAILED?"Detailed":"One/block"),v->draft.mapping(mapping)).bounds(left+mapping.ordinal()*100,y+26,96,20).build();b.active=settings.origin()!=TvDisplaySettings.Origin.QUICK;addRenderableWidget(b);}
-        Button auto=Button.builder(Component.literal("Auto"),b->draft.resolution(ResolutionChoice.AUTO)).bounds(left,y+52,70,20).build();auto.active=settings.origin()!=TvDisplaySettings.Origin.QUICK;addRenderableWidget(auto);
-        Button preset=Button.builder(Component.literal("1080p"),b->draft.resolution(ResolutionChoice.preset("1080p"))).bounds(left+74,y+52,70,20).build();preset.active=settings.origin()!=TvDisplaySettings.Origin.QUICK;addRenderableWidget(preset);
-        widthBox=new EditBox(font,left+148,y+52,72,20,Component.literal("Width"));heightBox=new EditBox(font,left+224,y+52,72,20,Component.literal("Height"));widthBox.setMaxLength(4);heightBox.setMaxLength(4);addRenderableWidget(widthBox);addRenderableWidget(heightBox);
-        Button custom=Button.builder(Component.literal("Custom"),b->applyCustom()).bounds(left+148,y+76,72,20).build();custom.active=settings.origin()!=TvDisplaySettings.Origin.QUICK;addRenderableWidget(custom);
-        addRenderableWidget(Button.builder(Component.literal("Apply"),b->apply()).bounds(left+140,205,72,20).build()); addRenderableWidget(Button.builder(Component.literal("Cancel"),b->minecraft.setScreen(parent)).bounds(left+216,205,72,20).build());
+/** 1.20.2 display adapter; draft and command ownership live in the shared editor. */
+public final class DisplaySettingsScreen extends Screen implements DisplaySettingsFeedback {
+    private final long controllerPos;
+    private final CinemarrVideoClientState state;
+    private final CinemarrVideoScreen parent;
+    private final DisplaySettingsEditor editor = new DisplaySettingsEditor();
+    private EditBox widthBox, heightBox;
+    private Button layoutButton, mappingButton, qualityButton, applyButton, cancelButton;
+
+    public DisplaySettingsScreen(long pos, CinemarrVideoClientState state, CinemarrVideoScreen parent) {
+        super(Component.literal("Display Settings"));
+        controllerPos = pos; this.state = state; this.parent = parent;
     }
-    private void applyCustom(){try{draft.resolution(ResolutionChoice.custom(Integer.parseInt(widthBox.getValue().trim()),Integer.parseInt(heightBox.getValue().trim())));error=draft.error();}catch(RuntimeException e){error=e.getMessage()==null?"Invalid resolution":e.getMessage();}}
-    private void apply(){try{TvDisplaySettings next=draft.apply();VideoPackets.SessionState c=state.session(controllerPos);if(c==null){error="TV state is unavailable";return;}state.command(new VideoPackets.SessionCommand(VideoPackets.SessionAction.SET_DISPLAY,controllerPos,"",c.item()==null?"":c.item().key(),"",c.presentationMode(),c.timelineGeneration(),CinemarrVideoPlayback.authoritativePositionMsLocal(c),c.selectedAudioStreamId(),c.selectedSubtitleStreamId()).withDisplay(next));minecraft.setScreen(parent);}catch(RuntimeException e){error=e.getMessage()==null?"Unable to apply settings":e.getMessage();}}
-    @Override public void render(GuiGraphics g,int mx,int my,float partial){renderBackground(g,mx,my,partial);super.render(g,mx,my,partial);g.drawCenteredString(font,title,width/2,8,0xffffffff);VideoPackets.SessionState v=state.session(controllerPos);String e=v==null?"Actual: unavailable":"Actual: "+v.effectiveWidth()+"x"+v.effectiveHeight()+"  Screen: "+v.screenWidth()+"x"+v.screenHeight();g.drawCenteredString(font,e,width/2,156,0xffa0d8ff);if(!error.isEmpty())g.drawCenteredString(font,error,width/2,180,0xffff8080);}
+    @Override protected void init() {
+        boolean widthFocused = widthBox != null && widthBox.isFocused();
+        boolean heightFocused = heightBox != null && heightBox.isFocused();
+        observe();
+        int left = Math.max(4, (width - 304) / 2);
+        layoutButton = button(left, 28, 304, editor.layoutLabel(), () -> editor.nextLayout());
+        mappingButton = button(left, 52, 304, editor.mappingLabel(), () -> editor.nextMapping());
+        qualityButton = button(left, 76, 304, editor.resolutionLabel(), () -> editor.nextResolution());
+        widthBox = field(widthBox, left + 40, editor.width(), "Width");
+        heightBox = field(heightBox, left + 190, editor.height(), "Height");
+        applyButton = button(left + 148, 212, 74, "Apply", () -> apply());
+        cancelButton = button(left + 228, 212, 76, "Cancel", () -> back());
+        refresh();
+        if (stonytark.cinemarr.core.protocol.ProtocolLimits.displayProbeEnabled())
+            stonytark.cinemarr.Cinemarr.LOGGER.info("Acceptance display UI: width={} height={} editable={} qualityEditable={}", width, height, editor.editable(), editor.qualityEditable());
+        if (widthFocused) setFocused(widthBox);
+        else if (heightFocused) setFocused(heightBox);
+    }
+    private Button button(int x, int y, int w, String text, Runnable action) {
+        return addRenderableWidget(Button.builder(Component.literal(text), b -> { action.run(); refresh(); }).bounds(x, y, w, 20).build());
+    }
+    private EditBox field(EditBox old, int x, String value, String label) {
+        EditBox box = old;
+        if (box == null) {
+            box = new EditBox(font, x, 102, 108, 20, Component.literal(label));
+            box.setMaxLength(4); box.setValue(value);
+        } else { box.setX(x); box.setY(102); }
+        addRenderableWidget(box);
+        return box;
+    }
+    private void observe() {
+        VideoPackets.SessionState current = state.session(controllerPos);
+        editor.observe(current == null ? null : current.displaySettings(), current != null && current.canControl(), System.currentTimeMillis());
+    }
+    @Override public void tick() {
+        editor.dimensions(widthBox.getValue(), heightBox.getValue());
+        observe();
+        if (editor.applied()) { back(); return; }
+        refresh();
+    }
+    private void refresh() {
+        if (layoutButton == null) return;
+        layoutButton.setMessage(Component.literal(editor.layoutLabel())); layoutButton.active = editor.editable();
+        mappingButton.setMessage(Component.literal(editor.mappingLabel())); mappingButton.active = editor.qualityEditable();
+        qualityButton.setMessage(Component.literal(editor.resolutionLabel())); qualityButton.active = editor.qualityEditable();
+        widthBox.active = heightBox.active = editor.customEditable();
+        widthBox.setEditable(editor.customEditable()); heightBox.setEditable(editor.customEditable());
+        applyButton.active = editor.editable(); cancelButton.active = !editor.pending();
+    }
+    private void apply() {
+        try {
+            observe(); editor.dimensions(widthBox.getValue(), heightBox.getValue());
+            VideoPackets.SessionState current = state.session(controllerPos);
+            TvDisplaySettings requested = editor.submit(System.currentTimeMillis());
+            state.command(new VideoPackets.SessionCommand(VideoPackets.SessionAction.SET_DISPLAY, controllerPos,
+                    "", current.item() == null ? "" : current.item().key(), "", current.presentationMode(),
+                    current.timelineGeneration(), CinemarrVideoPlayback.authoritativePositionMsLocal(current),
+                    current.selectedAudioStreamId(), current.selectedSubtitleStreamId()).withDisplay(requested));
+        } catch (RuntimeException failure) { showError(failure.getMessage()); }
+    }
+    @Override public void showError(String message) { editor.fail(message); refresh(); }
+    private void back() { if (!editor.pending()) CinemarrClientUi.showScreen(parent); }
+    @Override public void onClose() { back(); }
+    @Override public boolean isPauseScreen() { return false; }
+    @Override public void render(GuiGraphics g, int mx, int my, float partial) {
+        renderBackground(g, mx, my, partial);
+        super.render(g, mx, my, partial);
+        g.drawCenteredString(font, title, width / 2, 8, 0xffffffff);
+        int left = Math.max(4, (width - 304) / 2);
+        g.drawString(font, "W:", left + 18, 108, 0xffffffff, false);
+        g.drawString(font, "H:", left + 168, 108, 0xffffffff, false);
+        g.drawCenteredString(font, "Pixel mode: one color per screen block", width / 2, 130, 0xffa0d8ff);
+        VideoPackets.SessionState current = state.session(controllerPos);
+        String actual = current == null || current.effectiveWidth() == 0 ? "pending" : current.effectiveWidth() + "x" + current.effectiveHeight();
+        String screen = current == null ? "unknown" : current.screenWidth() + "x" + current.screenHeight();
+        g.drawCenteredString(font, "Actual: " + actual + "   Screen: " + screen, width / 2, 144, 0xffa0d8ff);
+        String requested = editor.resolutionLabel() + (editor.customEditable() ? " " + widthBox.getValue() + "x" + heightBox.getValue() : "");
+        g.drawCenteredString(font, requested, width / 2, 158, 0xffa0d8ff);
+        java.util.List<net.minecraft.util.FormattedCharSequence> lines = font.split(Component.literal(editor.message()), 304);
+        for (int i = 0; i < Math.min(3, lines.size()); i++) g.drawCenteredString(font, lines.get(i), width / 2, 173 + i * 10, 0xffffb36b);
+    }
 }

@@ -29,6 +29,13 @@ def verify_stream_change(before, after, kind, expected_position, tolerance=0):
                            + " selection, preserve the other stream and retain the playback cursor/state")
 
 
+def states(value):
+    pattern = re.compile(r"Acceptance video session:.*?generation=([0-9]+) status=([A-Z_]+) item=.*? positionMs=([0-9]+) canControl=true streams=([0-9]+) audio=(-?[0-9]+) subtitle=(-?[0-9]+)(?: timeline=\S+ timelineGeneration=([0-9]+))?")
+    return [{"generation": int(m[6] or m[0]), "status": m[1], "positionMs": int(m[2]),
+             "streams": int(m[3]), "audio": int(m[4]), "subtitle": int(m[5])}
+            for m in pattern.findall(value)]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--log", type=Path, required=True)
@@ -57,13 +64,6 @@ def main():
     control = args.log.with_name(args.log.name.removesuffix(".console.log") + ".control")
     if not args.log.name.endswith(".audio-leader.console.log") or not control.is_file() or control.is_symlink():
         raise RuntimeError("Owner UI reopening requires the exact existing leader control file")
-    pattern = re.compile(r"Acceptance video session:.*?generation=([0-9]+) status=([A-Z_]+) item=.*? positionMs=([0-9]+) canControl=true streams=([0-9]+) audio=(-?[0-9]+) subtitle=(-?[0-9]+)")
-
-    def states(value):
-        return [{"generation": int(m[0]), "status": m[1], "positionMs": int(m[2]),
-                 "streams": int(m[3]), "audio": int(m[4]), "subtitle": int(m[5])}
-                for m in pattern.findall(value)]
-
     def capture(name):
         path = args.output / (name + ".png")
         desktop.capture(path)

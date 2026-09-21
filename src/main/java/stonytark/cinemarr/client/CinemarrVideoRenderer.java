@@ -50,8 +50,8 @@ public final class CinemarrVideoRenderer {
             CinemarrVideoTexture displayTexture=pipeline.texture().forDisplay(state);MeshCache mesh=updateMesh(state);PresentationTransform transform=PresentationTransform.create(displayTexture.width(),displayTexture.height(),state.screenWidth(),state.screenHeight(),state.displaySettings().mapping()==stonytark.cinemarr.core.video.PixelMapping.ONE_PIXEL_PER_BLOCK?stonytark.cinemarr.core.video.PresentationMode.STRETCH:state.presentationMode());
             RenderType type=RenderType.entityCutoutNoCull(displayTexture.location());used.add(type);VertexConsumer vertices=buffers.getBuffer(type);
             for(ScreenMaskMesher.Rectangle rectangle:mesh.rectangles)draw(vertices,matrix,state,rectangle,transform,displayTexture.width(),displayTexture.height());
-            if(ProtocolLimits.videoProbeEnabled()&&!pipeline.lastFrameSha256().equals(acceptanceFrames.put(state.televisionId(),pipeline.lastFrameSha256())))Cinemarr.LOGGER.info(
-                    "Acceptance video rendered: television={} frameSha256={} ptsUs={} rectangles={}",state.televisionId(),pipeline.lastFrameSha256(),pipeline.lastPresentedUs(),mesh.rectangles.size());
+            if(ProtocolLimits.videoProbeEnabled()&&!(pipeline.lastFrameSha256()+":"+state.displaySettings().revision()).equals(acceptanceFrames.put(state.televisionId(),pipeline.lastFrameSha256()+":"+state.displaySettings().revision())))Cinemarr.LOGGER.info(
+                    "Acceptance video rendered: television={} frameSha256={} ptsUs={} rectangles={} revision={} raster={}x{} decoded={}x{}",state.televisionId(),pipeline.lastFrameSha256(),pipeline.lastPresentedUs(),mesh.rectangles.size(),state.displaySettings().revision(),displayTexture.width(),displayTexture.height(),pipeline.texture().width(),pipeline.texture().height());
         }
         for(RenderType type:used)buffers.endBatch(type);meshes.keySet().retainAll(visible);acceptanceFrames.keySet().retainAll(visible);
     }

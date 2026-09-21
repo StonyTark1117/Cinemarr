@@ -37,6 +37,7 @@ jobs:
           python3 scripts/test-post-reconnect-capture.py
           python3 scripts/test-video-resource-reload.py
           python3 scripts/test-video-terminal.py
+          python3 scripts/test-video-display.py
           python3 scripts/test-legacy-world-change.py
           python3 scripts/test-video-browse-pressure.py
           python3 scripts/test-video-segment-pressure.py
@@ -166,6 +167,21 @@ jobs:
           CINEMARR_LEGACY_DECODE_STALL_MS: '10000'
           CINEMARR_MODERN_AUDIO_SETUP_STALL_MS: '250'
         run: bash scripts/run-dedicated-server-gate.sh ${{ matrix.runtime }}
+      - name: Validate independent-TV display streams
+        env:
+          CINEMARR_ALSA_PCM_TYPE: pulse
+          CINEMARR_GATE_OUTPUT_ROOT: ${{ github.workspace }}/build/video-display-gate
+          CINEMARR_VIDEO_CLIENT_GATE: 'true'
+          CINEMARR_VIDEO_DISPLAY_GATE: 'true'
+        run: bash scripts/run-dedicated-server-gate.sh ${{ matrix.runtime }}
+      - name: Validate Quilt independent-TV display streams
+        if: ${{ matrix.quilt != '' }}
+        env:
+          CINEMARR_ALSA_PCM_TYPE: pulse
+          CINEMARR_GATE_OUTPUT_ROOT: ${{ github.workspace }}/build/video-display-gate
+          CINEMARR_VIDEO_CLIENT_GATE: 'true'
+          CINEMARR_VIDEO_DISPLAY_GATE: 'true'
+        run: bash scripts/run-dedicated-server-gate.sh ${{ matrix.quilt }}
       - name: Validate terminal and queue lifecycle
         if: ${{ matrix.runtime == '1.7.10-forge' || matrix.runtime == '1.21.1-neoforge' }}
         env:
@@ -282,6 +298,10 @@ jobs:
             build/fabric-loader-0.19.2-gate/**/*.json
             build/fabric-loader-0.19.2-gate/**/*.tsv
             build/fabric-loader-0.19.2-gate/**/*.png
+            build/video-display-gate/**/*.log
+            build/video-display-gate/**/*.json
+            build/video-display-gate/**/*.png
+            build/video-display-gate/**/*.s16le
             build/gametest-gate.log
 
   release-gate:

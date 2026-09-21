@@ -127,11 +127,13 @@ public final class CinemarrClientState {
         if (!ProtocolLimits.videoProbeEnabled()) return;
         if (payload instanceof VideoPayloads.SessionState value) {
             VideoPackets.SessionState state = value.value();
+            if (ProtocolLimits.displayProbeEnabled()) Cinemarr.LOGGER.info("Acceptance TV display: {}", stonytark.cinemarr.core.video.DisplayAcceptance.describe(state));
+            if (!stonytark.cinemarr.core.video.DisplayAcceptance.primary(state)) return;
             if (state.item() != null) acceptanceVideoLastItemKey = state.item().key();
-            Cinemarr.LOGGER.info("Acceptance video session: controller={} session={} generation={} status={} item={} positionMs={} canControl={} streams={} audio={} subtitle={} durationMs={} message={}",
+            Cinemarr.LOGGER.info("Acceptance video session: controller={} session={} generation={} status={} item={} positionMs={} canControl={} streams={} audio={} subtitle={} timeline={} timelineGeneration={} durationMs={} message={}",
                     state.controllerPos(), state.sessionId(), state.generation(), state.status(),
                     state.item() == null ? "" : state.item().key(), state.positionMs(), state.canControl(),
-                    state.streams().size(), state.selectedAudioStreamId(), state.selectedSubtitleStreamId(), state.durationMs(), state.message());
+                    state.streams().size(), state.selectedAudioStreamId(), state.selectedSubtitleStreamId(), state.timelineId(), state.timelineGeneration(), state.durationMs(), state.message());
             acceptanceVideoController = state.controllerPos();
             if (!ProtocolLimits.videoProbeLeader() || !state.canControl()) return;
             if (!acceptanceVideoTuneSent) {
@@ -184,6 +186,14 @@ public final class CinemarrClientState {
         if (!ProtocolLimits.videoProbeEnabled()) return;
         String operation = acceptanceControl.poll();
         if (operation.isEmpty() || !operation.startsWith("video:")) return;
+        if (ProtocolLimits.displayProbeEnabled() && operation.startsWith("video:display:")) {
+            try {
+                VideoPackets.SessionCommand displayCommand = stonytark.cinemarr.core.video.DisplayAcceptance.command(CinemarrVideoClientState.INSTANCE.televisions(), operation);
+                if (displayCommand != null) CinemarrVideoClientState.INSTANCE.command(displayCommand);
+            } catch (RuntimeException invalid) { Cinemarr.LOGGER.info("Acceptance display command failed: {}", invalid.getMessage()); }
+            return;
+        }
+
         VideoPackets.SessionState state = CinemarrVideoClientState.INSTANCE.session(acceptanceVideoController);
         if (operation.startsWith("video:browse-pressure:") && ProtocolLimits.browsePressureProbeEnabled()) {
             VideoPackets.LibraryList libraries = CinemarrVideoClientState.INSTANCE.libraries();
@@ -192,6 +202,10 @@ public final class CinemarrClientState {
             CinemarrVideoClientState.INSTANCE.browse(libraries.libraries().get(0).id(), "", query, 0);
             Cinemarr.LOGGER.info("Acceptance browse pressure sent: query={}", query);
             return;
+        }
+        if (ProtocolLimits.displayProbeEnabled() && "video:open-display-controller".equals(operation)) {
+            state = stonytark.cinemarr.core.video.DisplayAcceptance.custom(CinemarrVideoClientState.INSTANCE.televisions(), 0);
+            operation = "video:open-ui";
         }
         if ("video:open-ui".equals(operation)) {
             if (state == null) { Cinemarr.LOGGER.info("Acceptance video UI request unavailable: no session state"); return; }

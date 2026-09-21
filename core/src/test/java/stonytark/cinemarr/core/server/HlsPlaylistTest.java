@@ -1,11 +1,22 @@
 package stonytark.cinemarr.core.server;
 
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class HlsPlaylistTest {
+    @Test void effectiveDimensionsComeFromSelectedMediaNotRequestedBounds() {
+        assertArrayEquals(new int[] {160, 90}, HlsPlaylist.firstVariantDimensions(
+                "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=100,RESOLUTION=160x90,CODECS=avc1\nsmall.m3u8\n"
+                + "#EXT-X-STREAM-INF:RESOLUTION=1920x1080\nlarge.m3u8\n"));
+        assertArrayEquals(new int[] {0, 0}, HlsPlaylist.firstVariantDimensions(
+                "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=100\nmedia.m3u8\n"));
+        assertThrows(IllegalArgumentException.class, () -> HlsPlaylist.firstVariantDimensions(
+                "#EXTM3U\n#EXT-X-STREAM-INF:RESOLUTION=999999999x999999999\nmedia.m3u8\n"));
+    }
+
     @Test void parsesDurationsWithEmptyAndDescriptiveTitles() {
         assertEquals(2_500, HlsPlaylist.durationMillis("#EXTINF:2.500,"));
         assertEquals(8_000, HlsPlaylist.durationMillis("#EXTINF:8, nodesc"));

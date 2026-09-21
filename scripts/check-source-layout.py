@@ -90,11 +90,21 @@ def verify_stream_identity_transport(text: str, label: str) -> None:
         raise SystemExit(f"{label} must distinguish stale transport feedback from ownership errors")
 
 
+def verify_display_publication(text: str, label: str) -> None:
+    branch = text.split("command.action() == VideoPackets.SessionAction.SET_DISPLAY", 1)[1].split("return;", 1)[0]
+    compact = re.sub(r"\s+", "", branch)
+    if "recipients(television,player))sendCurrent(recipient,television,displayNow)" not in compact:
+        raise SystemExit(f"{label} must acknowledge display settings to every viewer of the target TV")
+    if compact.index(".updateDisplay(") > compact.index("recipients("):
+        raise SystemExit(f"{label} must validate and commit display settings before publication")
+
+
 def main() -> None:
     for path in ("src/main/java/stonytark/cinemarr/server/ServerVideoManager.java",
                  "platforms/mc26/common/src/main/java/stonytark/cinemarr/server/ServerVideoManager.java",
                  "platforms/mc1.7.10/forge/src/main/java/stonytark/cinemarr/server/LegacyVideoManager.java"):
         source = (ROOT / path).read_text("utf-8")
+        verify_display_publication(source, path)
         normalized = re.sub(r"\s+", "", source).replace("1024L", "1024")
         if "(64,2L*1024*1024,256,8L*1024*1024,1024,16L*1024*1024)" not in normalized:
             raise SystemExit("server egress byte budgets drifted: " + path)

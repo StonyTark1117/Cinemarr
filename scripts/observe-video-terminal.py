@@ -18,8 +18,18 @@ QUEUE = re.compile(r'Acceptance video queue: session=(\S+) generation=(\d+) entr
 
 
 def states(text):
-    return [dict(session=m[0], generation=int(m[1]), status=m[2], item=m[3], position=int(m[4]),
-                 owner=m[5] == 'true', duration=int(m[6]), message=m[7].split(']]>', 1)[0]) for m in STATE.findall(text)]
+    result = []
+    for match in STATE.finditer(text):
+        m = match.groups()
+        timeline = re.search(r' timeline=(\S+) timelineGeneration=(\d+)', match.group(0))
+        # Queue commands and EOS advance the shared timeline. Media streams
+        # have independent IDs/revisions and cannot be compared to queue IDs.
+        result.append(dict(session=timeline[1] if timeline else m[0],
+                           generation=int(timeline[2] if timeline else m[1]),
+                           stream=m[0], streamGeneration=int(m[1]), status=m[2], item=m[3],
+                           position=int(m[4]), owner=m[5] == 'true', duration=int(m[6]),
+                           message=m[7].split(']]>', 1)[0]))
+    return result
 
 
 def queues(text):
@@ -31,6 +41,7 @@ def same_playback(pair, status, after_generation=-1, item=None, session=None):
         return False
     leader, follower = pair['leader'][-1], pair['follower'][-1]
     return (leader['session'] == follower['session'] and leader['generation'] == follower['generation']
+            and leader['stream'] == follower['stream'] and leader['streamGeneration'] == follower['streamGeneration']
             and leader['generation'] > after_generation and leader['status'] == follower['status'] == status
             and leader['owner'] and not follower['owner'] and leader['item'] == follower['item']
             and (item is None or leader['item'] == item)

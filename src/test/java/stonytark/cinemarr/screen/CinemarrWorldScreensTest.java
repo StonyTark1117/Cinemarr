@@ -42,6 +42,32 @@ class CinemarrWorldScreensTest {
                 fallback.television(controller).displaySettings().origin());
     }
 
+    @Test void displayEditorRequestAppliesOnceAndSurvivesPersistence() {
+        CinemarrWorldScreens data = new CinemarrWorldScreens();
+        BlockPos controller = new BlockPos(0, 0, 1);
+        for (int x = 0; x < 2; x++) for (int y = 0; y < 2; y++)
+            data.putPixel(new BlockPos(x, y, 0), Direction.NORTH);
+        assertTrue(data.activate(controller, UUID.randomUUID()).success());
+        var editor = new stonytark.cinemarr.core.video.DisplaySettingsEditor();
+        editor.observe(data.television(controller).displaySettings(), true, 0);
+        editor.nextLayout(); editor.nextMapping(); editor.nextResolution();
+        var request = editor.submit(1);
+        data.updateDisplay(controller, request);
+        var accepted = data.television(controller).displaySettings();
+        assertEquals(request.revision() + 1, accepted.revision());
+        editor.observe(accepted, true, 2);
+        assertTrue(editor.applied());
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
+                () -> data.updateDisplay(controller, request));
+        assertEquals(accepted.revision(), data.television(controller).displaySettings().revision());
+        var saved = CinemarrWorldScreens.load(data.save(new CompoundTag(), null), null)
+                .television(controller).displaySettings();
+        assertEquals(accepted.revision(), saved.revision());
+        assertEquals(accepted.layout(), saved.layout());
+        assertEquals(accepted.mapping(), saved.mapping());
+        assertEquals(accepted.resolution(), saved.resolution());
+    }
+
     @Test void onePersistedTelevisionIsDiscoverableFromEveryScreenChunk() {
         CinemarrWorldScreens data=new CinemarrWorldScreens(); UUID owner=UUID.randomUUID();
         for(int x=0;x<17;x++)data.putPixel(new BlockPos(x,0,0),Direction.NORTH);

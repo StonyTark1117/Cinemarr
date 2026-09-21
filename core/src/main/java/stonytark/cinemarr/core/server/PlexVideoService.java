@@ -186,6 +186,7 @@ public final class PlexVideoService {
         if (session == null) throw new IllegalArgumentException("Session required");
         URL currentUrl = session.playlistUrl;
         String current = session.playlist;
+        int[] actualDimensions = {0, 0};
         for (int hop = 0; hop <= 4; hop++) {
             if (HlsPlaylist.isMediaPlaylist(current)) {
                 List<HlsPlaylist.MediaSegment> segments;
@@ -197,12 +198,13 @@ public final class PlexVideoService {
                 }
                 if (segments.isEmpty()) throw new PlexException(PlexException.Kind.INVALID_RESPONSE,
                         "Plex HLS media playlist has no playable segments");
-                return new MediaPlaylist(session.id, currentUrl, segments);
+                return new MediaPlaylist(session.id, currentUrl, segments, actualDimensions[0], actualDimensions[1]);
             }
             String reference;
             if (hop == 4) break;
             try {
                 reference = HlsPlaylist.firstVariantReference(current);
+                actualDimensions = HlsPlaylist.firstVariantDimensions(current);
             } catch (IllegalArgumentException malformed) {
                 throw new PlexException(PlexException.Kind.INVALID_RESPONSE,
                         "Plex returned an HLS playlist without a playable media variant", malformed);
@@ -491,12 +493,19 @@ public final class PlexVideoService {
         private final URL playlistUrl;
         private final List<HlsPlaylist.MediaSegment> segments;
 
+        private final int width, height;
         MediaPlaylist(UUID sessionId, URL playlistUrl, List<HlsPlaylist.MediaSegment> segments) {
+            this(sessionId, playlistUrl, segments, 0, 0);
+        }
+        MediaPlaylist(UUID sessionId, URL playlistUrl, List<HlsPlaylist.MediaSegment> segments, int width, int height) {
+            this.width = width; this.height = height;
             this.sessionId = sessionId;
             this.playlistUrl = playlistUrl;
             this.segments = immutable(segments);
         }
 
+        public int width() { return width; }
+        public int height() { return height; }
         public List<HlsPlaylist.MediaSegment> segments() { return segments; }
     }
 }

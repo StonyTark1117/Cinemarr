@@ -654,6 +654,12 @@ tasks.register('verifyVideoFaultRecovery', Exec) {
     commandLine 'python3', 'scripts/test-video-fault-recovery.py'
 }
 
+tasks.register('verifyVideoDisplayEvidence', Exec) {
+    group = 'verification'
+    description = 'Rejects mixed identities, stale settings and sibling stream restarts in display acceptance.'
+    commandLine 'python3', 'scripts/test-video-display.py'
+}
+
 tasks.named('verifyAllTargets') {
     dependsOn tasks.named('verifySourceLayout'), tasks.named('verifyTargetManifest'),
             tasks.named('verifyReleaseHygiene'), tasks.named('verifyPcmCaptureAlignment'),
@@ -663,7 +669,7 @@ tasks.named('verifyAllTargets') {
             tasks.named('verifyPackagedClientInputs'), tasks.named('verifyNativeBundleEvidence'), tasks.named('verifyOwnerTimeline'),
             tasks.named('verifyPostReconnectCapture'), tasks.named('verifyVideoResourceReload'),
             tasks.named('verifyVideoTerminal'), tasks.named('verifyLegacyWorldChange'), tasks.named('verifyVideoBrowsePressure'),
-            tasks.named('verifyVideoSegmentPressure'), tasks.named('verifyVideoFaultRecovery')
+            tasks.named('verifyVideoSegmentPressure'), tasks.named('verifyVideoFaultRecovery'), tasks.named('verifyVideoDisplayEvidence')
 }
 
 def expectedArtifactCount = targetManifest.expected.artifacts as int
@@ -785,7 +791,7 @@ tasks.register('releaseMatrixGate') {
     group = 'verification'
     description = 'Builds and inspects all 16 artifacts, runs GameTests, all 21 runtimes and required supplements; direct review and remote CI remain separate.'
     dependsOn('inspectReleaseArtifacts', verifyGameTests, 'verifyRuntimeMatrix',
-            'verifyQuiltModMenuRuntimes', 'verifyFabricLoaderMinimumRuntimes')
+            'verifyQuiltModMenuRuntimes', 'verifyFabricLoaderMinimumRuntimes', 'verifyVideoDisplayRuntimes')
 }
 
 tasks.register('inspectReleaseArtifacts', Exec) {
@@ -806,6 +812,18 @@ tasks.register('verifyDedicatedServers', Exec) {
     environment('CINEMARR_VIDEO_CLIENT_GATE', 'true')
     environment('CINEMARR_VIDEO_CONTROL_GATE', 'true')
     commandLine('bash', 'scripts/run-dedicated-server-gate.sh', '1.21.1-neoforge')
+}
+
+tasks.register('verifyVideoDisplayRuntimes', Exec) {
+    group = 'verification'
+    description = 'Exercises independent custom-TV streams, Quick presets and paused display changes on all 21 profiles.'
+    mustRunAfter('verifyRuntimeMatrix', 'verifyQuiltModMenuRuntimes', 'verifyFabricLoaderMinimumRuntimes')
+    workingDir(layout.projectDirectory)
+    environment('CINEMARR_GATE_OUTPUT_ROOT', layout.buildDirectory.dir('video-display-gate').get().asFile.absolutePath)
+    environment('CINEMARR_ALSA_PCM_TYPE', 'pulse')
+    environment('CINEMARR_VIDEO_CLIENT_GATE', 'true')
+    environment('CINEMARR_VIDEO_DISPLAY_GATE', 'true')
+    commandLine('bash', 'scripts/run-dedicated-server-gate.sh', 'all')
 }
 
 tasks.register('verifyRuntimeMatrix', Exec) {

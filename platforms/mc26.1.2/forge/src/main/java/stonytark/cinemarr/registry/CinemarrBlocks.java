@@ -40,4 +40,5 @@ public final class CinemarrBlocks {
 
     public static void register(BusGroup bus) { BLOCKS.register(bus); }
     private CinemarrBlocks() {}
+    public static net.minecraft.world.level.block.Block tvController() { return TV_CONTROLLER.get(); }
 }

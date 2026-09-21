@@ -31,6 +31,18 @@ def pair(**kwargs):
 
 
 class TerminalTests(unittest.TestCase):
+    def test_queue_matching_uses_timeline_not_independent_tv_stream_identity(self):
+        text = state(session='tv-stream', generation=3).replace(
+            'durationMs=', 'timeline=party timelineGeneration=17 durationMs=')
+        row = probe.states(text)[0]
+        self.assertEqual(('party', 17), (row['session'], row['generation']))
+        self.assertEqual(('tv-stream', 3), (row['stream'], row['streamGeneration']))
+        rows = {role: probe.states(text.replace('canControl=true', 'canControl=' + str(role == 'leader').lower()))
+                for role in ('leader', 'follower')}
+        self.assertTrue(probe.same_playback(rows, 'PLAYING', 16, '9001', 'party'))
+        rows['follower'][0]['streamGeneration'] += 1
+        self.assertFalse(probe.same_playback(rows, 'PLAYING', 16, '9001', 'party'))
+
     def test_idle_empty_item_is_latest_not_hidden_by_old_playing(self):
         rows = probe.states(state() + state(status='IDLE', item='', generation=6))
         self.assertEqual(2, len(rows))

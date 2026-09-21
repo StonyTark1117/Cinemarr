@@ -44,8 +44,8 @@ public final class CinemarrVideoRenderer {
                 Matrix4f matrix=entry.pose();
                 for(ScreenMaskMesher.Rectangle rectangle:mesh.rectangles)draw(vertices,matrix,state,rectangle,transform,sourceWidth,sourceHeight);
             });
-            if(ProtocolLimits.videoProbeEnabled()&&!pipeline.lastFrameSha256().equals(acceptanceFrames.put(state.televisionId(),pipeline.lastFrameSha256())))Cinemarr.LOGGER.info(
-                    "Acceptance video rendered: television={} frameSha256={} ptsUs={} rectangles={}",state.televisionId(),pipeline.lastFrameSha256(),pipeline.lastPresentedUs(),mesh.rectangles.size());
+            if(ProtocolLimits.videoProbeEnabled()&&!(pipeline.lastFrameSha256()+":"+state.displaySettings().revision()).equals(acceptanceFrames.put(state.televisionId(),pipeline.lastFrameSha256()+":"+state.displaySettings().revision())))Cinemarr.LOGGER.info(
+                    "Acceptance video rendered: television={} frameSha256={} ptsUs={} rectangles={} revision={} raster={}x{} decoded={}x{}",state.televisionId(),pipeline.lastFrameSha256(),pipeline.lastPresentedUs(),mesh.rectangles.size(),state.displaySettings().revision(),displayTexture.width(),displayTexture.height(),pipeline.texture().width(),pipeline.texture().height());
         }
         pose.popPose();meshes.keySet().retainAll(visible);acceptanceFrames.keySet().retainAll(visible);
     }

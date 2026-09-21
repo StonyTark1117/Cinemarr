@@ -47,6 +47,8 @@ public final class ActiveVideoMedia {
     // Downloads serialize on this instance. Server-thread metadata reads must
     // never acquire that monitor across Plex I/O or materialization retries.
     // The cache has its own short-held monitor; it never performs network I/O.
+    public int effectiveWidth() { return playlist.width(); }
+    public int effectiveHeight() { return playlist.height(); }
     public int segmentCount() { return segments.size(); }
     public int cachedSegments() { return cache.size(); }
     public long cachedBytes() { return cache.retainedBytes(); }

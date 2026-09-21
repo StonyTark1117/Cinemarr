@@ -28,4 +28,5 @@ public final class CinemarrBlocks {
     public static Block redstoneReceiver(){return REDSTONE_RECEIVER;}
     private static ResourceLocation id(String path){return new ResourceLocation(Cinemarr.MODID,path);}
     private CinemarrBlocks(){}
+    public static net.minecraft.world.level.block.Block tvController() { return TV_CONTROLLER; }
 }

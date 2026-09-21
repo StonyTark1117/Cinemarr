@@ -134,8 +134,8 @@ public final class CinemarrVideoPlayback implements AutoCloseable {
         lastPresentedUs = previous.lastPresentedUs;
         lastFrameSha256 = previous.lastFrameSha256;
         if (ProtocolLimits.videoProbeEnabled()) Cinemarr.LOGGER.info(
-                "Acceptance paused frame retained: generation={} frameSha256={} ptsUs={}",
-                next.generation(), lastFrameSha256, lastPresentedUs);
+                "Acceptance paused frame retained: generation={} frameSha256={} ptsUs={} streamGeneration={}",
+                next.timelineGeneration(), lastFrameSha256, lastPresentedUs, next.generation());
         return true;
     }
 

@@ -75,6 +75,13 @@ audio_client_gate=${CINEMARR_AUDIO_CLIENT_GATE:-false}
 audio_scenario_gate=${CINEMARR_AUDIO_SCENARIO_GATE:-false}
 video_client_gate=${CINEMARR_VIDEO_CLIENT_GATE:-false}
 video_control_gate=${CINEMARR_VIDEO_CONTROL_GATE:-false}
+video_display_gate=${CINEMARR_VIDEO_DISPLAY_GATE:-false}
+if [[ "$video_display_gate" != true && "$video_display_gate" != false ]]; then
+  echo 'CINEMARR_VIDEO_DISPLAY_GATE must be true or false' >&2; exit 2
+fi
+if [[ "$video_display_gate" == true && "$video_client_gate" != true ]]; then
+  echo 'Display acceptance requires CINEMARR_VIDEO_CLIENT_GATE=true' >&2; exit 2
+fi
 video_terminal_gate=${CINEMARR_VIDEO_TERMINAL_GATE:-false}
 video_pressure_gate=${CINEMARR_VIDEO_PRESSURE_GATE:-false}
 video_adverse_network_gate=${CINEMARR_VIDEO_ADVERSE_NETWORK_GATE:-false}
@@ -155,7 +162,7 @@ if [[ "$video_adverse_network_gate" == true && "$live_plex_gate" == true ]]; the
   echo "CINEMARR_VIDEO_ADVERSE_NETWORK_GATE requires the deterministic fault-injection Plex service" >&2
   exit 2
 fi
-if [[ "$video_control_gate" == true && -z "${CINEMARR_GATE_VIDEO_DURATION_SECONDS+x}" ]]; then
+if [[ ( "$video_control_gate" == true || "$video_display_gate" == true ) && -z "${CINEMARR_GATE_VIDEO_DURATION_SECONDS+x}" ]]; then
   # The control sequence deliberately waits for stable playback between pause,
   # resume, seek, stream replacement, reconnect and resource reloads. The cold
   # hosted legacy run reached 300 seconds during its post-reload window. Give
@@ -810,6 +817,7 @@ start_audio_client() {
   fi
   if [[ "$video_client_gate" == "true" ]]; then
     java_options+=" -Dcinemarr.acceptance.videoProbe=true -Dcinemarr.acceptance.videoLeader=$leader -Dcinemarr.acceptance.audioControlFile=$control_file"
+    if [[ "$video_display_gate" == true ]]; then java_options+=' -Dcinemarr.acceptance.displayProbe=true'; fi
     if [[ "$video_pressure_gate" == true ]]; then java_options+=' -Dcinemarr.acceptance.browsePressureProbe=true'; fi
     if [[ "$video_pressure_gate" == true && "$role" == peer ]]; then
       java_options+=' -Dcinemarr.acceptance.segmentPressurePeer=true'
@@ -2281,6 +2289,11 @@ run_two_client_video() {
     fi
   fi
 
+  if (( result == 0 )) && [[ "$video_display_gate" == true ]]; then
+    python3 "$repo_root/scripts/observe-video-display.py" \
+      --leader-log "$leader_log" --follower-log "$follower_log" --gate-pid "$$" \
+      --output "$output_root/$label.video-display" || result=1
+  fi
   if (( result == 0 )) && [[ "$video_pressure_gate" == true ]]; then
     run_video_pressure_scenarios "$label" "$sink_leader" "$sink_follower" "$leader_pid" "$follower_pid" || result=1
   fi
@@ -2958,6 +2971,7 @@ run_target() {
   [[ "$label" == *-fabric && -n "$fabric_loader_version" ]] && runtime_args+=(-PcinemarrFabricLoaderVersion="$fabric_loader_version")
   if [[ "$video_client_gate" == "true" ]]; then
     server_java_options='-Dcinemarr.acceptance.enabled=true -Dcinemarr.acceptance.videoProbe=true'
+    if [[ "$video_display_gate" == true ]]; then server_java_options+=' -Dcinemarr.acceptance.displayProbe=true'; fi
     if [[ "$video_terminal_gate" == true && "$label" == '1.7.10-forge' ]]; then
       server_java_options+=' -Dcinemarr.acceptance.worldChangeProbe=true'
     fi

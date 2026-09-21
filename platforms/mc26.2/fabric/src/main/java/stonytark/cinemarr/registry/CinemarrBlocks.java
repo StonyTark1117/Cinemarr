@@ -36,4 +36,5 @@ public final class CinemarrBlocks {
     }
     public static void register(){}
     private CinemarrBlocks(){}
+    public static net.minecraft.world.level.block.Block tvController() { return TV_CONTROLLER; }
 }

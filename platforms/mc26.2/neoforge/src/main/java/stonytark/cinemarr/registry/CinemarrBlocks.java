@@ -37,4 +37,5 @@ public final class CinemarrBlocks {
                 .mapColor(MapColor.COLOR_BLACK).strength(2.0F, 6.0F).sound(SoundType.METAL)));
     }
     private CinemarrBlocks() {}
+    public static net.minecraft.world.level.block.Block tvController() { return TV_CONTROLLER.get(); }
 }

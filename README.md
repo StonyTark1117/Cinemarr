@@ -44,6 +44,40 @@ Implemented release foundations include:
 
 Supported packaged native targets are Linux x86-64, Linux ARM64, and Windows x86-64. Linux clients require the standard libudev, libdrm, and libva runtime libraries; see [compatibility](docs/COMPATIBILITY.md). macOS is not supported by the 1.0 artifact set.
 
+## Display Settings
+
+Open a TV controller and select **Display**. The TV owner or an operator can
+change its picture; other viewers can inspect the settings. Apply waits for
+server confirmation. Cancel leaves the TV unchanged.
+
+The screen's block dimensions, pixel mapping and requested stream quality are
+separate settings:
+
+- **Fit** preserves the whole picture with bars, **Fill** crops to cover the
+  screen, and **Stretch** uses the whole screen without preserving aspect ratio.
+- **Detailed** displays the decoded picture. **One pixel per block** samples one
+  color for each block in the screen's bounding rectangle; holes remain holes.
+  A 4×4 screen therefore has a 4×4 displayed raster in pixel mode, regardless of
+  the requested stream quality.
+- **Auto**, presets from **144p to 8K**, and **Custom** specify a stream bounding
+  box. Custom dimensions must be whole numbers from 2 to 8192 and fit the
+  decoded-frame memory budget. Source aspect ratio, source quality and server
+  limits can reduce the actual result. **Actual** shows the selected HLS
+  rendition dimensions when available; **pending** means they are not known.
+
+Quick TVs keep their construction preset and Detailed mapping. Their layout
+remains adjustable. Changing a custom TV's quality replaces that TV's stream;
+layout and mapping changes redraw it without restarting playback. Paused or
+idle quality changes take effect when its stream next starts.
+
+TVs in one watch party share playback position and controls, but each active TV
+uses a separate stream slot. Additional viewers of the same TV share that slot.
+When the configured stream limit is full, another TV waits for capacity. Its
+playback joins the current party position when capacity becomes available.
+
+These integrated controls are still undergoing the complete 1.0 acceptance
+matrix described above; the development build is not yet certified.
+
 ## Configuration
 
 NeoForge 20.2.93 (Minecraft 1.20.2) acceptance requires

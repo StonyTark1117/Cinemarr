@@ -58,6 +58,28 @@ public final class HlsPlaylist {
         throw new IllegalArgumentException("HLS master playlist has no playable variant");
     }
 
+    /** Advertised dimensions of the selected variant; absent metadata stays unknown. */
+    public static int[] firstVariantDimensions(String playlist) {
+        if (playlist == null) throw new IllegalArgumentException("HLS playlist is required");
+        String attributes = null;
+        for (String line : playlist.split("\\r?\\n")) {
+            String value = line.trim();
+            if (value.startsWith(STREAM_INF)) attributes = value.substring(STREAM_INF.length());
+            else if (attributes != null && !value.isEmpty() && !value.startsWith("#")) {
+                java.util.regex.Matcher match = java.util.regex.Pattern.compile("(?:^|,)RESOLUTION=([0-9]+)x([0-9]+)(?:,|$)").matcher(attributes);
+                if (!match.find()) return new int[] {0, 0};
+                try {
+                    int width = Integer.parseInt(match.group(1)), height = Integer.parseInt(match.group(2));
+                    stonytark.cinemarr.core.client.DecodedBufferBudget.rgbaBytes(width, height);
+                    return new int[] {width, height};
+                } catch (IllegalArgumentException invalid) {
+                    throw new IllegalArgumentException("HLS variant dimensions exceed the decoder budget", invalid);
+                }
+            }
+        }
+        return new int[] {0, 0};
+    }
+
     /**
      * Returns the playable suffix of a Plex HLS playlist for a transcode
      * started at {@code offsetMs}. Plex retains pre-seek entries in the

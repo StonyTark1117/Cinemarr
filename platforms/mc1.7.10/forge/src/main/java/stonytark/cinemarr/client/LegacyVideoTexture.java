@@ -21,7 +21,9 @@ final class LegacyVideoTexture implements AutoCloseable {
     }
     public LegacyVideoTexture forDisplay(stonytark.cinemarr.core.protocol.VideoPackets.SessionState state) {
         if (state.displaySettings().mapping() == stonytark.cinemarr.core.video.PixelMapping.DETAILED) {
-            Derived old=derived.remove(state.televisionId()); if(old!=null)old.texture.close(); return this;
+            Derived old=derived.remove(state.televisionId()); if(old!=null)old.texture.close();
+            if(derived.isEmpty())presented.releaseRaster();
+            return this;
         }
         if (source == null) return this;
         Derived value=derived.get(state.televisionId());

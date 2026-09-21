@@ -35,6 +35,38 @@ An automated pass does not replace direct image review, byte-identical rebuild
 proof, exact packaged real-Plex/native acceptance, security review or final-SHA
 remote CI and artifact parity.
 
+## Independent-TV display supplement
+
+`verifyVideoDisplayRuntimes` runs all 21 runtime profiles with
+`CINEMARR_VIDEO_DISPLAY_GATE=true` and `CINEMARR_VIDEO_CLIENT_GATE=true`.
+It is also required by `releaseMatrixGate` and the hosted profile matrix.
+Use a fresh `CINEMARR_GATE_OUTPUT_ROOT` for each manual attempt.
+
+The scene contains two custom TVs and one Quick TV. Both clients must agree
+on each TV's settings and stream identity; the TVs must have distinct streams
+on one shared timeline. The observer checks target-only quality replacement,
+paused mapping/layout redraws, resume, and the real Display Settings page at
+320×240, including owner Apply and the follower's read-only view. A phase
+requires matching renderer receipts with the expected revision and raster
+size before capture. The enclosing gate measures physical audio after resume
+and validates client cleanup and original PNG integrity.
+
+For the separate exact-artifact real-Plex display pass, set
+`CINEMARR_VIDEO_DISPLAY_GATE=true`, `CINEMARR_VIDEO_CONTROL_GATE=false`, and a
+fresh `CINEMARR_GATE_OUTPUT_ROOT` beneath this checkout's `build/` directory
+before running `run-discopanel-real-plex-gate.sh` for each representative.
+The wrapper enables the same scene on the managed server and removes its two
+custom controllers and 32 test pixels during normal and failure cleanup.
+It verifies the baseline registered-TV count and idle media state afterward.
+This supplements the ordinary full-controller/reconnect real-Plex pass.
+
+The fake service currently advertises 160×90 for every requested rendition.
+That deliberately verifies requested-versus-actual reporting, but does not
+prove Plex quality negotiation. Exact packaged real-Plex multi-TV acceptance
+and deeper raster/capacity/failure supplements remain separate requirements.
+The report marks direct image review as pending; automated state assertions
+must not be described as visual acceptance.
+
 ## Supplementary deterministic network-fault recovery
 
 Run on both `1.7.10-forge` and `1.21.1-neoforge` in separate fresh output roots:

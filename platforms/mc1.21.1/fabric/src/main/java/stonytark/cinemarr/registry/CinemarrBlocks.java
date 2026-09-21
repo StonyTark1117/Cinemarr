@@ -52,4 +52,5 @@ public final class CinemarrBlocks {
 
     private static ResourceLocation id(String path) { return ResourceLocation.fromNamespaceAndPath(Cinemarr.MODID, path); }
     private CinemarrBlocks() {}
+    public static net.minecraft.world.level.block.Block tvController() { return TV_CONTROLLER; }
 }

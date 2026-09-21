@@ -16,13 +16,49 @@ from png_capture import read_capture, validate_closed_profile
 
 
 class PrivateWindowTests(unittest.TestCase):
-    def test_close_can_wait_for_a_window_to_become_visible(self):
-        self.run.side_effect = [subprocess.CalledProcessError(1, ['xdotool']),
-                                SimpleNamespace(stdout='111\n')]
-        with patch('private_minecraft_window.time.sleep'):
-            window = PrivateMinecraftWindow(self.log, 42, wait_seconds=10)
-        self.assertEqual('111', window.window)
-        self.assertEqual(3, self.run.call_count)
+    def test_blank_title_no_name_matches_still_reaches_class_discovery(self):
+        def command(argv, **kwargs):
+            if argv[:2] == ("xdotool", "search"):
+                if "--class" in argv:
+                    return SimpleNamespace(stdout="111\n")
+                raise subprocess.CalledProcessError(1, argv)
+            if argv[:3] == ("xwininfo", "-root", "-tree"):
+                return SimpleNamespace(stdout="xwininfo: Window id: 0x100 (root)\n")
+            if argv[:2] == ("xwininfo", "-id"):
+                return SimpleNamespace(stdout="Map State: IsViewable\n")
+            raise AssertionError(argv)
+        self.run.side_effect = command
+        window = PrivateMinecraftWindow(self.log, 42)
+        self.assertEqual("111", window.window)
+
+    def test_name_and_class_discovery_deduplicate_same_window(self):
+        def command(argv, **kwargs):
+            if argv == ("xdotool", "search", "--name", ".+"):
+                raise subprocess.CalledProcessError(1, argv)
+            if argv[:2] == ("xdotool", "search"):
+                return SimpleNamespace(stdout="111\n")
+            if argv[:3] == ("xwininfo", "-root", "-tree"):
+                return SimpleNamespace(stdout="xwininfo: Window id: 0x100 (root)\n")
+            if argv[:2] == ("xwininfo", "-id"):
+                return SimpleNamespace(stdout="Map State: IsViewable\n")
+            raise AssertionError(argv)
+        self.run.side_effect = command
+        self.assertEqual("111", PrivateMinecraftWindow(self.log, 42).window)
+
+    def test_unmapped_class_window_is_not_captured(self):
+        def command(argv, **kwargs):
+            if argv[:2] == ("xdotool", "search"):
+                if "--class" in argv:
+                    return SimpleNamespace(stdout="111\n")
+                raise subprocess.CalledProcessError(1, argv)
+            if argv[:3] == ("xwininfo", "-root", "-tree"):
+                return SimpleNamespace(stdout="xwininfo: Window id: 0x100 (root)\n")
+            if argv[:2] == ("xwininfo", "-id"):
+                return SimpleNamespace(stdout="Map State: IsUnmapped\n")
+            raise AssertionError(argv)
+        self.run.side_effect = command
+        with self.assertRaisesRegex(RuntimeError, "visible"):
+            PrivateMinecraftWindow(self.log, 42)
 
     def test_window_wait_does_not_retry_ambiguity_or_x_failure(self):
         for result in (SimpleNamespace(stdout='111\n222\n'),

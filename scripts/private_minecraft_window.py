@@ -40,7 +40,7 @@ class PrivateMinecraftWindow:
                 # `.*` also matches the private X root window on some xdotool
                 # builds. Require a non-empty name so the root cannot become
                 # a second apparent Minecraft client.
-                windows = self.run("xdotool", "search", "--name", ".+").splitlines()
+                windows = self.search( "--name", ".+").splitlines()
                 # Do not capture a native client during the short interval
                 # between XCreateWindow and XMapWindow.  Conversely, accept
                 # clients whose WM metadata omits the EWMH visible hint.
@@ -73,7 +73,7 @@ class PrivateMinecraftWindow:
                     # that case enumerate all visible windows once and remove
                     # the display root by its authoritative X11 window ID.
                     try:
-                        candidates = self.run("xdotool", "search", "--onlyvisible", "--name", ".*").splitlines()
+                        candidates = self.search( "--onlyvisible", "--name", ".*").splitlines()
                         # LWJGL/Fabric can leave WM_NAME empty while still
                         # exposing a mapped GL surface. Query the X11 class as
                         # an independent discovery signal before falling back
@@ -85,13 +85,26 @@ class PrivateMinecraftWindow:
                             # Query class metadata without --onlyvisible and
                             # let the mapped-state checks below decide whether
                             # the candidate is capturable.
-                            candidates.extend(self.run("xdotool", "search", "--class", ".*").splitlines())
+                            candidates.extend(self.search( "--class", ".*").splitlines())
                         except subprocess.CalledProcessError:
                             pass
                         tree = self.run("xwininfo", "-root", "-tree")
                         root_line = tree.splitlines()[0]
                         root = int(root_line.split("Window id:", 1)[1].split()[0], 16)
-                        windows = [value for value in candidates if int(value) != root]
+                        windows = []
+                        for value in dict.fromkeys(candidates):
+                            if int(value) == root:
+                                continue
+                            info = self.run("xwininfo", "-id", value)
+                            if "Map State:" not in info or "IsViewable" in info:
+                                windows.append(value)
+                            elif "IsUnmapped" in info:
+                                ambiguous_since.pop(value, None)
+                            else:
+                                now = time.monotonic()
+                                first_seen = ambiguous_since.setdefault(value, now)
+                                if now - first_seen >= 1.0:
+                                    windows.append(value)
                         if not windows:
                             # Some Fabric clients expose no EWMH-visible name
                             # even after mapping. Inspect the X tree directly,
@@ -114,6 +127,7 @@ class PrivateMinecraftWindow:
                                         windows.append(window)
                     except (IndexError, ValueError, subprocess.CalledProcessError):
                         windows = []
+                windows = list(dict.fromkeys(windows))
                 if len(windows) > 1:
                     # CI runners can expose transient helper windows on the
                     # same display. Keep only X clients descended from this
@@ -188,6 +202,16 @@ class PrivateMinecraftWindow:
                 or Path(os.fsdecode(argv[0])).name != "Xvfb"
                 or self.display.encode() not in argv or self.geometry.encode() not in argv):
             raise RuntimeError("Private X server no longer has the required ownership and identity")
+
+    def search(self, *arguments):
+        # xdotool uses exit 1 for no matches. That is a discovery result, not
+        # an X failure: blank-title clients must still reach class/tree lookup.
+        try:
+            return self.run("xdotool", "search", *arguments)
+        except subprocess.CalledProcessError as error:
+            if error.returncode == 1:
+                return ""
+            raise
 
     def run(self, *command):
         self.validate()

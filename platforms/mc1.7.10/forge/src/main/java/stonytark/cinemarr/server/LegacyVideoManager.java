@@ -280,13 +280,33 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
         if (lifecycleProbe) {
             return;
         }
-        for (int x = -9; x <= 9; x++) for (int z = 1; z <= 8; z++) {
+        for (int x = -9; x <= 9; x++) for (int z = 1; z <= (ProtocolLimits.displayProbeEnabled() ? 14 : 8); z++) {
             world.setBlock(x, 99, z, net.minecraft.init.Blocks.stone, 0, 3);
             for (int y = 100; y <= 109; y++) world.setBlockToAir(x, y, z);
         }
+        if (ProtocolLimits.displayProbeEnabled() && "CinemarrVideoA".equals(player.getCommandSenderName())) {
+            for (int index = 0; index < 2; index++) {
+                int x = index == 0 ? -7 : 4;
+                long customController = LegacyBlockPos.pack(x, 110, 3);
+                if (screens.television(customController) == null) {
+                    for (int dx = 0; dx < 4; dx++) for (int dy = 0; dy < 4; dy++) {
+                        world.setBlock(x + dx, 110 + dy, 2, LegacyBlocks.SCREEN_PIXEL, 3, 3);
+                        screens.putPixel(x + dx, 110 + dy, 2, stonytark.cinemarr.core.screen.ScreenFacing.SOUTH);
+                    }
+                    world.setBlock(x, 110, 3, LegacyBlocks.TV_CONTROLLER, 0, 3);
+                    if (!screens.activate(x, 110, 3, player.getUniqueID()).success()) throw new IllegalStateException("Custom TV acceptance activation failed");
+                    TvDisplaySettings old = screens.television(customController).displaySettings();
+                    screens.updateDisplay(customController, new TvDisplaySettings(old.origin(), PresentationMode.FIT,
+                            index == 0 ? stonytark.cinemarr.core.video.PixelMapping.ONE_PIXEL_PER_BLOCK : stonytark.cinemarr.core.video.PixelMapping.DETAILED,
+                            stonytark.cinemarr.core.video.ResolutionChoice.preset(index == 0 ? "144p" : "480p"), old.revision()));
+                }
+                command(player, new VideoPackets.SessionCommand(VideoPackets.SessionAction.TUNE, customController,
+                        "", "", "cinemarr-acceptance", PresentationMode.FIT, 0, 0, -1, -1));
+            }
+        }
         world.setWorldTime(6000L);
         double cameraX = stonytark.cinemarr.core.protocol.ProtocolLimits.videoProbeCameraX(player.getCommandSenderName());
-        player.playerNetServerHandler.setPlayerLocation(cameraX, 100.0D, 7.5D, 180.0F, 0.0F);
+        player.playerNetServerHandler.setPlayerLocation(cameraX, 100.0D, ProtocolLimits.displayProbeEnabled() ? 12.5D : 7.5D, 180.0F, ProtocolLimits.displayProbeEnabled() ? -22.0F : 0.0F);
     }
 
     private void synchronizeTracking(EntityPlayerMP player) {
@@ -386,7 +406,8 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
             if (command.action() == VideoPackets.SessionAction.SET_DISPLAY) {
                 if(command.displaySettings()==null)throw new IllegalArgumentException("Missing display settings");
                 LegacyWorldScreens.get((WorldServer) player.worldObj).updateDisplay(command.controllerPos(),command.displaySettings());
-                sendCurrent(player,television,System.currentTimeMillis());
+                long displayNow = System.currentTimeMillis();
+                for (EntityPlayerMP recipient : recipients(television, player)) sendCurrent(recipient, television, displayNow);
                 return;
             }
             String requested = command.sessionName().trim().isEmpty() ? television.sessionName() : command.sessionName();
@@ -884,7 +905,7 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
                 stream==null?television.id():stream.id(), stream==null?0:stream.generation(), status, state.item(), state.positionMs(), state.item() == null ? 0 : state.item().durationMs(),
                 state.paused(), mode, television.width(), television.height(), television.mask(), television.facing(), television.plane(),
                 television.minimumU(), television.minimumV(), streams, media == null ? selected.audioId : media.audioId,
-                media == null ? selected.subtitleId : media.subtitleId, state.serverEpochMs(), canControl(player, television), message).withDisplay(television.displaySettings(),media==null?0:media.dimensions.width(),media==null?0:media.dimensions.height()).withTimeline(state.id(),state.generation()));
+                media == null ? selected.subtitleId : media.subtitleId, state.serverEpochMs(), canControl(player, television), message).withDisplay(television.displaySettings(),media==null?0:media.effectiveWidth(),media==null?0:media.effectiveHeight()).withTimeline(state.id(),state.generation()));
     }
     private void sendIdle(EntityPlayerMP player, LegacyWorldScreens.Television television, String message) {
         send(player, LegacyPacketTypes.VIDEO_SESSION_STATE, new VideoPackets.SessionState(television.id(), television.controllerPos(),

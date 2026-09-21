@@ -37,10 +37,10 @@ final class LegacyVideoRenderer {
             for (ScreenMaskMesher.Rectangle rectangle : mesh.rectangles) draw(television, rectangle, transform,
                     displayTexture.width(), displayTexture.height());
             GL11.glEnd();
-            if (ProtocolLimits.videoProbeEnabled() && !pipeline.lastFrameSha256().equals(
-                    acceptanceFrames.put(television.televisionId(), pipeline.lastFrameSha256()))) {
-                Cinemarr.LOGGER.info("Acceptance video rendered: television={} frameSha256={} ptsUs={} rectangles={}",
-                        television.televisionId(), pipeline.lastFrameSha256(), pipeline.lastPresentedUs(), mesh.rectangles.size());
+            if (ProtocolLimits.videoProbeEnabled() && !(pipeline.lastFrameSha256()+":"+television.displaySettings().revision()).equals(
+                    acceptanceFrames.put(television.televisionId(), pipeline.lastFrameSha256()+":"+television.displaySettings().revision()))) {
+                Cinemarr.LOGGER.info("Acceptance video rendered: television={} frameSha256={} ptsUs={} rectangles={} revision={} raster={}x{} decoded={}x{}",
+                        television.televisionId(), pipeline.lastFrameSha256(), pipeline.lastPresentedUs(), mesh.rectangles.size(), television.displaySettings().revision(), displayTexture.width(), displayTexture.height(), pipeline.texture().width(), pipeline.texture().height());
             }
         }
         GL11.glPopMatrix(); GL11.glPopAttrib();
