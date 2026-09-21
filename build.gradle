@@ -658,7 +658,13 @@ tasks.register('verifyVideoDisplayEvidence', Exec) {
     group = 'verification'
     description = 'Rejects mixed identities, stale settings and sibling stream restarts in display acceptance.'
     commandLine 'python3', 'scripts/test-video-display.py'
-    dependsOn 'verifyBlockRasterCapture', 'verifyVideoCapacityEvidence'
+    dependsOn 'verifyBlockRasterCapture', 'verifyVideoCapacityEvidence', 'verifyVideoDisplayAudio'
+}
+
+tasks.register('verifyVideoDisplayAudio', Exec) {
+    group = 'verification'
+    description = 'Requires fresh identity-bound A/V from every playing TV without confusing capacity waiters.'
+    commandLine 'python3', 'scripts/test-video-audio-stability.py'
 }
 
 tasks.register('verifyVideoCapacityEvidence', Exec) {

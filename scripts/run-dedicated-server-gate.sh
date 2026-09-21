@@ -1002,6 +1002,12 @@ wait_for_video_audio_pair_stable() {
   local follower_pid=$3
   local leader_log="$output_root/$label.audio-leader.console.log"
   local follower_log="$output_root/$label.audio-follower.console.log"
+  if [[ "${video_display_gate:-false}" == true ]]; then
+    python3 "$repo_root/scripts/wait-video-display-audio.py" \
+      --leader-log "$leader_log" --follower-log "$follower_log" \
+      --leader-pid "$leader_pid" --follower-pid "$follower_pid"
+    return $?
+  fi
   local deadline=$((SECONDS + 180))
   local stable_since=-1
   local signature="" previous_signature=""

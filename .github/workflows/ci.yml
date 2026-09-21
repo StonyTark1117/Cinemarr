@@ -40,6 +40,7 @@ jobs:
           python3 scripts/test-video-display.py
           python3 scripts/test-block-raster-capture.py
           python3 scripts/test-video-capacity.py
+          python3 scripts/test-video-audio-stability.py
           python3 scripts/test-legacy-world-change.py
           python3 scripts/test-video-browse-pressure.py
           python3 scripts/test-video-segment-pressure.py

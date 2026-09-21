@@ -44,6 +44,12 @@ public final class CinemarrVideoAudio {
     private final Queue<DecodedAudioFrame> pending =
             new PriorityQueue<>(Comparator.comparingLong(DecodedAudioFrame::presentationTimeUs));
     private VideoStreamIdentity identity;
+    private String acceptanceIdentity() {
+        if (identity == null) return " identity=unbound";
+        return " timeline=" + identity.timelineId() + " timelineGeneration=" + identity.timelineGeneration()
+                + " stream=" + identity.streamId() + " streamGeneration=" + identity.streamGeneration();
+    }
+
     private VideoPcmAudioStream stream;
     private ChannelAccess.ChannelHandle channel;
     private boolean channelPending;
@@ -104,7 +110,7 @@ public final class CinemarrVideoAudio {
                     stableTicks = 0;
                     if (++driftTicks >= REBUFFER_DRIFT_TICKS) {
                         if (ProtocolLimits.videoProbeEnabled()) Cinemarr.LOGGER.info(
-                                "Acceptance video audio rebuffer: driftMs={} targetMs={} audioMs={}",
+                                "Acceptance video audio rebuffer: driftMs={} targetMs={} audioMs={}" + acceptanceIdentity(),
                                 driftUs / 1_000L, targetUs / 1_000L, audioTimelineUs / 1_000L);
                         resetChannel();
                         caughtUpTicks = 0;
@@ -142,7 +148,7 @@ public final class CinemarrVideoAudio {
         if (ProtocolLimits.videoProbeEnabled() && System.currentTimeMillis() - lastAcceptanceLogMs >= 1_000) {
             lastAcceptanceLogMs = System.currentTimeMillis();
             long acceptanceAudioUs = audioTimelineNanos == Long.MIN_VALUE ? 0L : audioTimelineUs;
-            Cinemarr.LOGGER.info("Acceptance video audio timeline: wallEpochMs={} targetMs={} videoMs={} audioMs={} physicalAudioMs={} driftMs={} javaBufferMs={} timelineGapMs={} timelineTrimmedMs={} pendingFrames={} pendingFirstMs={} decodedFrames={} starvations={} underruns={}",
+            Cinemarr.LOGGER.info("Acceptance video audio timeline: wallEpochMs={} targetMs={} videoMs={} audioMs={} physicalAudioMs={} driftMs={} javaBufferMs={} timelineGapMs={} timelineTrimmedMs={} pendingFrames={} pendingFirstMs={} decodedFrames={} starvations={} underruns={}" + acceptanceIdentity(),
                     lastAcceptanceLogMs,
                     targetUs / 1_000L, playback.lastPresentedUs() / 1_000L,
                     acceptanceAudioUs / 1_000L,
@@ -206,7 +212,7 @@ public final class CinemarrVideoAudio {
         driftTicks = 0;
         stableTicks = 0;
         if (ProtocolLimits.videoProbeEnabled()) {
-            Cinemarr.LOGGER.info("Acceptance video audio scheduled: targetMs={} mediaStartMs={} silenceMs={} bufferedMs={} timelineGapMs={} timelineTrimmedMs={}",
+            Cinemarr.LOGGER.info("Acceptance video audio scheduled: targetMs={} mediaStartMs={} silenceMs={} bufferedMs={} timelineGapMs={} timelineTrimmedMs={}" + acceptanceIdentity(),
                     targetUs / 1_000L, scheduledStartUs / 1_000L, (scheduledStartUs - targetUs) / 1_000L,
                     startingStream.bufferedMs(), startingStream.timelineGapMs(), startingStream.timelineTrimmedMs());
         }

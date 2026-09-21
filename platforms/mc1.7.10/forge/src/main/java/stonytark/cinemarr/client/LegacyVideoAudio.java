@@ -50,6 +50,12 @@ final class LegacyVideoAudio {
     private final Queue<LegacyDecodedAudioFrame> pending = new ArrayDeque<LegacyDecodedAudioFrame>();
     private final Queue<OpenAlBuffer> backendBuffers = new ArrayDeque<OpenAlBuffer>();
     private VideoStreamIdentity identity;
+    private String acceptanceIdentity() {
+        if (identity == null) return " identity=unbound";
+        return " timeline=" + identity.timelineId() + " timelineGeneration=" + identity.timelineGeneration()
+                + " stream=" + identity.streamId() + " streamGeneration=" + identity.streamGeneration();
+    }
+
     private SoundSystem soundSystem;
     private AudioFormat format;
     private int source;
@@ -180,7 +186,7 @@ final class LegacyVideoAudio {
             long cursorMediaUs = started ? scheduledStartUs + Math.max(0L, backendPlayedUs - programOffsetUs) : 0L;
             long wallClockMediaUs = started ? wallClockAudioMediaUs(scheduledStartUs, mediaBoundaryLocalUs,
                     sourcePaused ? sourcePausedAtUs : nowUs) : 0L;
-            Cinemarr.LOGGER.info("Acceptance legacy video audio timeline: targetMs={} videoMs={} scheduledMs={} backendPlayedMs={} cursorMediaMs={} wallClockMediaMs={} audioMediaMs={} driftMs={} started={} stableTicks={} pendingFrames={} underruns={}",
+            Cinemarr.LOGGER.info("Acceptance legacy video audio timeline: targetMs={} videoMs={} scheduledMs={} backendPlayedMs={} cursorMediaMs={} wallClockMediaMs={} audioMediaMs={} driftMs={} started={} stableTicks={} pendingFrames={} underruns={}" + acceptanceIdentity(),
                     targetUs / 1_000L, playback.lastPresentedUs() / 1_000L, scheduledStartUs / 1_000L,
                     backendPlayedUs / 1_000L, cursorMediaUs / 1_000L, wallClockMediaUs / 1_000L,
                     wallClockMediaUs / 1_000L, (wallClockMediaUs - targetUs) / 1_000L,
@@ -248,7 +254,7 @@ final class LegacyVideoAudio {
         activationGraceUntilMs=System.currentTimeMillis()+1_000L;
         started = true; driftTicks = 0; stableTicks = targetUs >= scheduledStartUs ? 1 : 0;
         if (ProtocolLimits.videoProbeEnabled()) Cinemarr.LOGGER.info(
-                "Acceptance legacy video audio scheduled: framePtsMs={} targetMs={} leadMs={} backendPlayedMs={} extraSilenceMs={} queuedMs={}",
+                "Acceptance legacy video audio scheduled: framePtsMs={} targetMs={} leadMs={} backendPlayedMs={} extraSilenceMs={} queuedMs={}" + acceptanceIdentity(),
                 scheduledStartUs / 1_000L, targetUs / 1_000L, Math.max(0L, scheduledStartUs - targetUs) / 1_000L,
                 playedUs / 1_000L, additionalSilenceUs / 1_000L, preparedDurationUs / 1_000L);
     }
@@ -292,7 +298,7 @@ final class LegacyVideoAudio {
 
     private void rebuffer(long targetUs, long audioMediaUs, String reason) {
         if (ProtocolLimits.videoProbeEnabled()) Cinemarr.LOGGER.info(
-                "Acceptance legacy video audio rebuffer: reason={} driftMs={} targetMs={} audioMs={}",
+                "Acceptance legacy video audio rebuffer: reason={} driftMs={} targetMs={} audioMs={}" + acceptanceIdentity(),
                 reason, (audioMediaUs - targetUs) / 1_000L, targetUs / 1_000L, audioMediaUs / 1_000L);
         stopSource();
     }
