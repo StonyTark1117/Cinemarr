@@ -13,6 +13,17 @@ spec = importlib.util.spec_from_file_location('display', Path(__file__).with_nam
 display = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(display)
 
+QUEUED_QUALITIES = ('240p', '720p', '480p')
+FAILURE_QUALITY = '240p'
+RECOVERY_QUALITY = '720p'
+
+
+def require_clean_logs(texts):
+    display.require_clean_transfer_logs(texts)
+    for role, text in texts.items():
+        if 'Acceptance display command failed:' in text:
+            raise RuntimeError('Capacity fixture command was rejected: '+role)
+
 
 def compatible(leader, follower):
     return (len(leader) == 3 and leader.keys() == follower.keys()
@@ -58,7 +69,7 @@ def main():
         while True:
             for desktop in desktops.values(): desktop.validate()
             current_logs = texts()
-            display.require_clean_transfer_logs(current_logs)
+            require_clean_logs(current_logs)
             pair = {role: display.states(text) for role, text in current_logs.items()}
             if compatible(pair['leader'], pair['follower']) and predicate(pair['leader']):
                 active = {tv: s for tv, s in pair['leader'].items() if s['status'] == 'PLAYING'}
@@ -111,7 +122,7 @@ def main():
         controller_capture('capacity-full', customs.index(queued), initial[queued]['controller'])
         baseline_starts = starts()
         current = initial
-        for preset in ('240p', '360p', '480p'):
+        for preset in QUEUED_QUALITIES:
             command(customs.index(queued), 'quality-'+preset)
             after = wait(lambda s: s[queued]['revision'] == current[queued]['revision']+1
                          and s[queued]['requested']==preset and s[queued]['streamState']=='WAITING')
@@ -121,7 +132,7 @@ def main():
         capture('queued-latest-quality', current)
         command(customs.index(active), 'tune-idle')
         admitted = wait(lambda s: s[active]['status']=='IDLE' and s[queued]['status']=='PLAYING'
-                        and s[queued]['requested']=='480p' and s[queued]['streamGeneration']>current[queued]['streamGeneration'])
+                        and s[queued]['requested']==QUEUED_QUALITIES[-1] and s[queued]['streamGeneration']>current[queued]['streamGeneration'])
         if not stream_unchanged(current, admitted, quick): raise RuntimeError('Admission restarted healthy sibling')
         for role,text in texts().items():
             rendered=display.rendered(text)
@@ -136,8 +147,8 @@ def main():
             raise RuntimeError('Cancelling a queued TV changed active streams')
         capture('queue-cancelled', cancelled)
         args.fault_state.write_text('starts-rejected\n')
-        command(customs.index(queued), 'quality-240p')
-        failed = wait(lambda s: s[queued]['streamState']=='FAILED' and s[queued]['requested']=='240p')
+        command(customs.index(queued), 'quality-'+FAILURE_QUALITY)
+        failed = wait(lambda s: s[queued]['streamState']=='FAILED' and s[queued]['requested']==FAILURE_QUALITY)
         if not all(stream_unchanged(cancelled, failed, tv) for tv in (quick, queued)) or failed[queued]['status']!='PLAYING':
             raise RuntimeError('Failed replacement discarded working media or affected its sibling')
         failed_starts=starts()
@@ -152,8 +163,8 @@ def main():
         capture('failed-replacement-keeps-playing', failed)
         controller_capture('failed-replacement', customs.index(queued), failed[queued]['controller'])
         args.fault_state.write_text('online\n')
-        command(customs.index(queued), 'quality-360p')
-        recovered=wait(lambda s: s[queued]['streamState']=='READY' and s[queued]['requested']=='360p'
+        command(customs.index(queued), 'quality-'+RECOVERY_QUALITY)
+        recovered=wait(lambda s: s[queued]['streamState']=='READY' and s[queued]['requested']==RECOVERY_QUALITY
                        and s[queued]['streamGeneration']>failed[queued]['streamGeneration'])
         if not stream_unchanged(failed,recovered,quick): raise RuntimeError('Explicit replacement recovery restarted its sibling')
         capture('explicit-replacement-recovery', recovered)

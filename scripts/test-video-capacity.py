@@ -6,6 +6,7 @@ import sys
 import tempfile
 import time
 import unittest
+import re
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -16,6 +17,18 @@ spec.loader.exec_module(capacity)
 
 
 class CapacityEvidenceTests(unittest.TestCase):
+    def test_fixture_qualities_exist_in_the_actual_java_preset_catalog(self):
+        source=(ROOT.parent/'core/src/main/java/stonytark/cinemarr/core/screen/QuickTvPreset.java').read_text()
+        presets=set(re.findall(r'P[A-Z0-9]+\("([^"]+)"',source))
+        choices=set(capacity.QUEUED_QUALITIES) | {capacity.FAILURE_QUALITY,capacity.RECOVERY_QUALITY}
+        self.assertTrue(choices <= presets, 'Runtime fixture requested an unsupported preset')
+        self.assertNotEqual(capacity.FAILURE_QUALITY,capacity.RECOVERY_QUALITY)
+
+    def test_rejected_fixture_command_fails_without_waiting_for_timeout(self):
+        capacity.require_clean_logs({'leader':'ordinary diagnostic','follower':''})
+        with self.assertRaisesRegex(RuntimeError,'fixture command was rejected'):
+            capacity.require_clean_logs({'leader':'Acceptance display command failed: Unknown quick TV preset: 360p'})
+
     def test_both_viewers_must_agree_on_every_tv_and_queue_state(self):
         leader = {str(i): {'owner':'true', 'stream':str(i), 'streamState':'WAITING' if i==2 else 'READY'} for i in range(3)}
         follower = {tv:dict(state,owner='false') for tv,state in leader.items()}
