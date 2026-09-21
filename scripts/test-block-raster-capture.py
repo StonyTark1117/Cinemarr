@@ -11,12 +11,13 @@ class RasterCaptureTests(unittest.TestCase):
         annotation = {'phase': 'paused', 'role': 'leader', 'television': 'tv',
                       'capture': 'paused-leader.png', 'captureSha256': 'a'*64, 'sourceSha256': 'b'*64,
                       'layout': 'FIT', 'sourceWidth': 2, 'sourceHeight': 1, 'screenWidth': 4, 'screenHeight': 4}
-        report = {'phases': [{'phase': 'paused', 'televisions': {'tv': {'status': 'PAUSED',
+        report = {'completed': True, 'phases': [{'phase': 'paused', 'televisions': {'tv': {'status': 'PAUSED',
                   'mapping': 'ONE_PIXEL_PER_BLOCK', 'revision': 2, 'layout': 'FIT', 'screen': '4x4'}},
                   'rendered': {'leader': {'tv': {'sha256': 'b'*64, 'revision': 2, 'width': 4, 'height': 4,
                                                'decodedWidth': 2, 'decodedHeight': 1}}}}],
                   'captures': [{'path': 'paused-leader.png', 'sha256': 'a'*64}]}
         bind_evidence(annotation, report)
+        with self.assertRaises(ValueError): bind_evidence(annotation, dict(report, completed=False))
         for field, value in (('sourceSha256', 'c'*64), ('captureSha256', 'c'*64), ('layout', 'FILL'), ('screenWidth', 5)):
             wrong = dict(annotation, **{field: value})
             with self.assertRaises(ValueError): bind_evidence(wrong, report)

@@ -3,6 +3,8 @@ import math
 
 
 def bind_evidence(annotation, report):
+    if report.get('completed') is not True:
+        raise ValueError('A failed or incomplete display scenario cannot certify raster acceptance')
     phases = [p for p in report['phases'] if p['phase'] == annotation['phase']]
     if len(phases) != 1 or annotation['role'] not in ('leader', 'follower'):
         raise ValueError('Exactly one recorded phase and a known client role are required')

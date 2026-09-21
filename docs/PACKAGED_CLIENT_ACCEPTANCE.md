@@ -378,3 +378,38 @@ direct review. Run the observer regressions with `./gradlew verifyVideoResourceR
 This test exposed a real context-destruction crash in the previous legacy JAR.
 The fix must pass fresh runtime and exact-byte acceptance before that lifecycle
 operation can be certified; see [release acceptance](RELEASE_ACCEPTANCE.md).
+
+### Original block-raster evidence
+
+The display supplement writes `display.json`, original private-window PNGs,
+and content-addressed paused source frames under `frames/<sha256>.rgba`.
+`completed: false` preserves partial results after a failed scenario and cannot
+certify raster acceptance. A successful scenario still requires the enclosing
+physical-audio gate and direct visual review.
+
+For each representative rendering adapter, annotate the physical corners of the
+left custom screen in the original paused pixel-mode Fit, Fill and Stretch
+captures. Use top-left, top-right, bottom-right, bottom-left image coordinates;
+do not choose corners by optimizing color agreement. Record any cell hidden by
+the controller with an explicit reason. At least three quarters of the screen's
+cells must remain visible, with five distinct interior samples per cell.
+
+An annotation JSON contains `phase`, `role`, `television`, `capture`,
+`captureSha256`, `sourceRgba`, `sourceSha256`, `sourceWidth`, `sourceHeight`,
+`screenWidth`, `screenHeight`, `layout`, `corners`, and optional `excludedCells`
+(entries with `cell: [x, y]` and `reason`). Paths are relative to the annotation.
+The phase, hashes, dimensions, layout and TV revision must match `display.json`.
+Run:
+
+```sh
+python3 scripts/verify-block-raster-capture.py annotation.json \
+  --evidence display.json --output raster-measurements.json
+```
+
+The checker retains every measured color and pixel coordinate. It allows at
+most ten levels of source/color-conversion error per channel and two levels of
+within-cell variation. It refuses to overwrite an earlier measurement file.
+Review the original images and the physical-corner annotations alongside the
+measurements; a successful numeric comparison alone does not close visual
+acceptance. This checker supplements the mask, sparse geometry and allocation
+coverage; it does not claim that a rectangular screenshot proves those cases.
