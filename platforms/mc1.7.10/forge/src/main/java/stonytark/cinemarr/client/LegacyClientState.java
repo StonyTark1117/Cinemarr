@@ -222,6 +222,9 @@ final class LegacyClientState implements LegacyNetwork.ClientListener {
         if (!ProtocolLimits.videoProbeEnabled()) return;
         if (operation.isEmpty()) return;
         if (operation.length() == 0 || !operation.startsWith("video:")) return;
+        // Acceptance capture preparation must establish a clear view before
+        // any legacy screen transition, including the world-view probe.
+        Minecraft.getMinecraft().gameSettings.showDebugInfo = false;
         if ("video:world-view".equals(operation)) {
             Minecraft.getMinecraft().displayGuiScreen(null);
             Cinemarr.LOGGER.info("Acceptance video world view: screen=none");
@@ -252,9 +255,6 @@ final class LegacyClientState implements LegacyNetwork.ClientListener {
         }
         if ("video:open-ui".equals(operation)) {
             if (state == null) { Cinemarr.LOGGER.info("Acceptance video UI request unavailable: no session state"); return; }
-            // F3+T also toggles the legacy debug overlay. Acceptance capture
-            // preparation must establish a clear view, not blindly toggle F3.
-            Minecraft.getMinecraft().gameSettings.showDebugInfo = false;
             Minecraft.getMinecraft().displayGuiScreen(new LegacyVideoScreen(state.controllerPos(), LegacyVideoClientState.INSTANCE));
             // Match OPEN_VIDEO_SCREEN: a cached library list alone does not
             // initialize the newly opened controller's selected library.
