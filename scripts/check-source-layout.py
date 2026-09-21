@@ -43,6 +43,8 @@ def verify_playback_publication(text: str, label: str) -> None:
         raise SystemExit(f"{label} must publish the returned current snapshot in all five completion paths")
     if normalized.count("playbackMetadataGenerations.put(restored.id(),restored.playbackGeneration());") != 2:
         raise SystemExit(f"{label} must bind both restore paths to the restored playback revision")
+    if "tv.height(),viewers,metadataMatches(timeline)),now)" not in normalized:
+        raise SystemExit(f"{label} must defer TV admission until matching playback metadata is ready")
     if "metadataMatches(state)" not in normalized:
         raise SystemExit(f"{label} must guard checkpoints by playback revision")
     if 'state.paused()?"Paused":"Playing"' in normalized or "state.playbackMessage()" not in normalized:

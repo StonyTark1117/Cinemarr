@@ -85,6 +85,41 @@ class TelevisionStreamPoolTest {
         return DEFAULTS.apply(0, PresentationMode.FIT, PixelMapping.DETAILED, ResolutionChoice.preset(preset));
     }
 
+    @Test void publishedTimelineWaitsForMatchingMetadataBeforeAdmission() throws Exception {
+        try (Fixture f = new Fixture(1)) {
+            UUID tv = UUID.randomUUID();
+            VideoSessionCoordinator.Snapshot prepared = f.timeline.snapshot("party", 1000);
+            // PLAY has returned on a worker, but its main-thread metadata callback is delayed.
+            f.pool.update(new TelevisionStreamPool.Request(tv, prepared, DEFAULTS, 16, 9,
+                    new HashSet<>(Arrays.asList(VIEWER)), false), 1000);
+            for (long now = 1000; now < 5000; now += 1000) f.pool.tick(now);
+            assertTrue(f.work.queued.isEmpty());
+            assertTrue(f.starts.isEmpty());
+            assertEquals("", f.pool.message(tv));
+            assertNotNull(f.timeline.applyPlaybackMetadataIfCurrent(prepared, 5000, () -> {}));
+            f.update(tv, DEFAULTS, 5000, VIEWER);
+            f.pool.tick(5000);
+            f.work.next();
+            assertEquals(1, f.starts.size());
+            assertEquals(14_000, f.starts.get(0).timeline.positionMs());
+            assertTrue(f.pool.snapshot(tv, 5000).transcoding());
+        }
+    }
+
+    @Test void stopWhileMetadataIsPendingRetiresTheExistingStream() throws Exception {
+        try (Fixture f = new Fixture(1)) {
+            UUID tv = UUID.randomUUID();
+            f.start(tv);
+            VideoSessionCoordinator.Snapshot stopped = f.timeline.stop("party", 2000);
+            f.pool.update(new TelevisionStreamPool.Request(tv, stopped, DEFAULTS, 16, 9,
+                    new HashSet<>(Arrays.asList(VIEWER)), false), 2000);
+            f.pool.tick(2000);
+            assertFalse(f.pool.snapshot(tv, 2000).transcoding());
+            assertTrue(f.work.queued.isEmpty());
+            assertEquals(1, f.starts.size());
+        }
+    }
+
     @Test void sameTvViewersShareOneStreamAndDifferentTvsHaveDistinctIdentities() throws Exception {
         try (Fixture f = new Fixture(2)) {
             UUID first = UUID.randomUUID(), second = UUID.randomUUID();

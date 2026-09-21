@@ -548,7 +548,7 @@ public final class ServerVideoManager implements AutoCloseable {
             if(timeline==null)continue;
             retained.add(tv.id());Set<UUID> viewers=new HashSet<UUID>();
             for(Map.Entry<UUID,Map<UUID,Long>> entry:visibleTelevisions.entrySet())if(entry.getValue().containsKey(tv.id()))viewers.add(entry.getKey());
-            tvStreams.update(new TelevisionStreamPool.Request(tv.id(),timeline,tv.displaySettings(),tv.width(),tv.height(),viewers),now);
+            tvStreams.update(new TelevisionStreamPool.Request(tv.id(),timeline,tv.displaySettings(),tv.width(),tv.height(),viewers,metadataMatches(timeline)),now);
             VideoSessionCoordinator.Snapshot stream=tvStreams.snapshot(tv.id(),now);
             ActiveVideoMedia media=stream==null?null:active.get(key(stream.id(),stream.generation()));
             if(media!=null)media.updateTimeline(now,timeline.positionMs(),timeline.paused(),workers,failure->{if(!closed)Cinemarr.LOGGER.warn("Unable to report Plex video timeline: {}",SecretRedactor.message(failure,CinemarrSettings.plexToken(),CinemarrSettings.plexUrl()));});

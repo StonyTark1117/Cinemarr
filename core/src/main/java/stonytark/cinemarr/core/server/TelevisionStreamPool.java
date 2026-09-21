@@ -17,8 +17,14 @@ public final class TelevisionStreamPool implements AutoCloseable {
         public final TvDisplaySettings display;
         public final int width, height;
         public final Set<UUID> viewers;
+        // A worker may publish the timeline before its main-thread metadata commit.
+        public final boolean metadataReady;
         public Request(UUID tv, VideoSessionCoordinator.Snapshot timeline, TvDisplaySettings display, int width, int height, Set<UUID> viewers) {
+            this(tv, timeline, display, width, height, viewers, true);
+        }
+        public Request(UUID tv, VideoSessionCoordinator.Snapshot timeline, TvDisplaySettings display, int width, int height, Set<UUID> viewers, boolean metadataReady) {
             if(tv==null||timeline==null||display==null||width<1||height<1||viewers==null)throw new IllegalArgumentException("Invalid TV stream request");
+            this.metadataReady=metadataReady;
             televisionId=tv;this.timeline=timeline;this.display=display;this.width=width;this.height=height;
             this.viewers=Collections.unmodifiableSet(new HashSet<UUID>(viewers));
         }
@@ -31,7 +37,7 @@ public final class TelevisionStreamPool implements AutoCloseable {
                     && timeline.playbackGeneration() == other.timeline.playbackGeneration()
                     && timeline.generation() == other.timeline.generation();
         }
-        boolean eligible() { return timeline.item()!=null&&!timeline.paused()&&timeline.transcoding()&&!viewers.isEmpty(); }
+        boolean eligible() { return metadataReady&&timeline.item()!=null&&!timeline.paused()&&timeline.transcoding()&&!viewers.isEmpty(); }
     }
     private static final class Entry {
         Request desired, applied, starting, failed;
