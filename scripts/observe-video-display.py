@@ -41,6 +41,13 @@ def matching(leader, follower, status):
             and len({s['stream'] for s in values}) == 3)
 
 
+def streams_advanced(before, after):
+    """The shared PAUSED clock can arrive before each TV retires its media."""
+    return before.keys() == after.keys() and all(
+        after[tv]['stream'] == before[tv]['stream']
+        and after[tv]['streamGeneration'] > before[tv]['streamGeneration'] for tv in before)
+
+
 def unchanged_siblings(before, after, target):
     return before.keys() == after.keys() and all(
         all(before[tv][key] == after[tv][key] for key in ('timeline', 'timelineGeneration', 'stream', 'streamGeneration', 'revision'))
@@ -162,7 +169,8 @@ def main():
     if not unchanged_siblings(initial, changed, target): raise RuntimeError('Quality change restarted a sibling TV')
     capture('quality', changed)
     publish(control, 'video:pause')
-    paused = wait('PAUSED', lambda x: x[target]['timelineGeneration'] > changed[target]['timelineGeneration'])
+    paused = wait('PAUSED', lambda x: x[target]['timelineGeneration'] > changed[target]['timelineGeneration']
+                  and streams_advanced(changed, x))
     capture('paused', paused)
     publish(control, 'video:display:0:mapping')
     mapped = wait('PAUSED', lambda x: x[target]['revision'] == paused[target]['revision'] + 1
@@ -187,6 +195,9 @@ def main():
             time.sleep(.1)
 
     def ui_capture(role, name):
+        # Widget callbacks can precede the next rendered frame. Preserve the
+        # settled screen, rather than a stale image from before the click.
+        time.sleep(.3)
         path = args.output / (name + '-' + role + '.png')
         desktops[role].capture(path)
         captures.append({'path': path.name, 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()})

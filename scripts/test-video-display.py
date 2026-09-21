@@ -31,6 +31,15 @@ class DisplayTests(unittest.TestCase):
             follower['tv1'][field] = value
             self.assertFalse(display.matching(leader, follower, 'PLAYING'), field)
 
+    def test_pause_requires_every_tv_media_retirement_not_just_shared_clock(self):
+        before = display.states(''.join(line(i) for i in range(3)))
+        transitional = display.states(''.join(line(i, generation=4 if i != 2 else 3) for i in range(3)))
+        self.assertFalse(display.streams_advanced(before, transitional))
+        transitional['tv2']['streamGeneration'] = 4
+        self.assertTrue(display.streams_advanced(before, transitional))
+        transitional['tv2']['stream'] = 'different-tv'
+        self.assertFalse(display.streams_advanced(before, transitional))
+
     def test_local_change_cannot_restart_or_revise_sibling(self):
         before = display.states(''.join(line(i) for i in range(3)))
         after = display.states(''.join(line(i, generation=4 if i == 0 else 3) for i in range(3)))
