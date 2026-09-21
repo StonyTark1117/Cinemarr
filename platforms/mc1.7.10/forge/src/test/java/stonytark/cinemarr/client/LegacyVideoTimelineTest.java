@@ -16,6 +16,27 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LegacyVideoTimelineTest {
+    @Test void retiringAStreamCancelsItsQueuedWindowWithoutRefillingSiblingBudget() {
+        stonytark.cinemarr.core.client.SegmentRequestPacer pacer = new stonytark.cinemarr.core.client.SegmentRequestPacer();
+        LegacyVideoClientState.StreamState retired = new LegacyVideoClientState.StreamState(
+                new LegacyVideoClientState.StreamKey(UUID.randomUUID(), 1), pacer);
+        LegacyVideoClientState.StreamState sibling = new LegacyVideoClientState.StreamState(
+                new LegacyVideoClientState.StreamKey(UUID.randomUUID(), 1), pacer);
+        for (int i = 0; i < 4; i++) pacer.enqueue(i, now -> {});
+        pacer.tick(1000);
+        java.util.List<String> sent = new java.util.ArrayList<String>();
+        pacer.enqueue(retired.key().identity, now -> sent.add("retired"));
+        pacer.enqueue(sibling.key().identity, now -> sent.add("sibling"));
+        retired.reset();
+        assertEquals(1, pacer.pendingStreams());
+        pacer.tick(1000);
+        assertTrue(sent.isEmpty());
+        pacer.tick(1032);
+        assertEquals(java.util.Collections.singletonList("sibling"), sent);
+        sibling.reset();
+        assertEquals(0, pacer.pendingStreams());
+    }
+
 
     @Test void manifestRefreshPreservesInFlightAndDeferredTransfers() throws Exception {
         for (boolean inFlight : new boolean[] { true, false }) {

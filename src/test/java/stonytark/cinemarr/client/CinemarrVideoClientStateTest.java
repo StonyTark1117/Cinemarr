@@ -155,6 +155,35 @@ class CinemarrVideoClientStateTest {
         } finally { state.reset(); }
     }
 
+    @Test void replacingOneTvCancelsItsQueuedRequestWithoutRefillingTheSharedBudget() throws Exception {
+        CinemarrVideoClientState state = CinemarrVideoClientState.INSTANCE; state.reset();
+        UUID firstTv = UUID.randomUUID(), secondTv = UUID.randomUUID();
+        UUID firstId = UUID.randomUUID(), secondId = UUID.randomUUID();
+        VideoPackets.SessionState first = session(1, firstTv, firstId, 1, true);
+        VideoPackets.SessionState second = session(2, secondTv, secondId, 1, true);
+        try {
+            state.accept(new VideoPayloads.SessionState(first));
+            state.accept(new VideoPayloads.SessionState(second));
+            var old = state.stream(new CinemarrVideoClientState.StreamKey(first.identity()));
+            var sibling = state.stream(new CinemarrVideoClientState.StreamKey(second.identity()));
+            var pacer = (stonytark.cinemarr.core.client.SegmentRequestPacer) transferField(old, "requestPacer");
+            assertTrue(pacer == transferField(sibling, "requestPacer"));
+            for (int i = 0; i < 4; i++) pacer.enqueue(i, now -> {});
+            pacer.tick(1000);
+            java.util.List<String> sent = new java.util.ArrayList<>();
+            pacer.enqueue(first.identity(), now -> sent.add("retired"));
+            pacer.enqueue(second.identity(), now -> sent.add("sibling"));
+            state.accept(new VideoPayloads.SessionState(session(1, firstTv, firstId, 2, true)));
+            assertEquals(1, pacer.pendingStreams());
+            pacer.tick(1000);
+            assertTrue(sent.isEmpty(), "A quality replacement must not replenish the connection budget");
+            pacer.tick(1032);
+            assertEquals(java.util.List.of("sibling"), sent);
+            state.reset();
+            assertEquals(0, pacer.pendingStreams());
+        } finally { state.reset(); }
+    }
+
     @Test void sharedTimelineRevisionRetiresTheOldPipelineEvenIfStreamFieldsMatch() {
         CinemarrVideoClientState state = CinemarrVideoClientState.INSTANCE; state.reset();
         UUID party = UUID.randomUUID(), tv = UUID.randomUUID(), stream = UUID.randomUUID();

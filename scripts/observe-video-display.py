@@ -27,6 +27,12 @@ def states(text):
     return latest
 
 
+def require_clean_transfer_logs(texts):
+    for role, text in texts.items():
+        if 'Invalid or excessive segment request' in text:
+            raise RuntimeError('Ordinary display playback exceeded the server transfer budget: ' + role)
+
+
 def matching(leader, follower, status):
     if len(leader) != 3 or leader.keys() != follower.keys():
         return False
@@ -135,6 +141,7 @@ def main():
         while True:
             for desktop in desktops.values(): desktop.validate()
             texts = {r: p.read_text(errors='replace') for r, p in logs.items()}
+            require_clean_transfer_logs(texts)
             pair = {r: states(t) for r, t in texts.items()}
             if matching(pair['leader'], pair['follower'], status) and predicate(pair['leader']) and all(
                     render_matches(pair[r], rendered(texts[r]), decoded(texts[r])) for r in texts):

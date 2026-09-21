@@ -3,6 +3,7 @@ package stonytark.cinemarr.client;
 import stonytark.cinemarr.core.client.VideoSegmentAssembler;
 import stonytark.cinemarr.core.client.TransferWindowFlow;
 import stonytark.cinemarr.core.client.SegmentPrefetchPolicy;
+import stonytark.cinemarr.core.client.SegmentRequestPacer;
 import stonytark.cinemarr.core.library.QueuedVideo;
 import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.core.protocol.VideoPackets;
@@ -26,6 +27,7 @@ import stonytark.cinemarr.core.protocol.VideoStreamIdentity;
 /** Visible legacy televisions and one compressed stream per TV stream generation. */
 final class LegacyVideoClientState {
     static final LegacyVideoClientState INSTANCE = new LegacyVideoClientState();
+    private final SegmentRequestPacer requestPacer = new SegmentRequestPacer();
     private final Map<Long, VideoPackets.SessionState> televisions = new LinkedHashMap<Long, VideoPackets.SessionState>();
     private final Map<StreamKey, StreamState> streams = new LinkedHashMap<StreamKey, StreamState>();
     private final Map<UUID, List<QueuedVideo>> queues = new LinkedHashMap<UUID, List<QueuedVideo>>();
@@ -61,7 +63,7 @@ final class LegacyVideoClientState {
         televisions.put(value.controllerPos(), value);
         if (value.item() != null && !value.sessionId().equals(new UUID(0, 0))) {
             StreamKey key = new StreamKey(value.identity()); StreamState stream = streams.get(key);
-            if (stream == null) { stream = new StreamState(key); streams.put(key, stream); } stream.session(value);
+            if (stream == null) { stream = new StreamState(key, requestPacer); streams.put(key, stream); } stream.session(value);
         }
         pruneStreams();
     }
@@ -81,7 +83,7 @@ final class LegacyVideoClientState {
     void reset() {
         libraries = new VideoPackets.LibraryList(Collections.<VideoPackets.LibrarySummary>emptyList());
         browse = new VideoPackets.BrowseResults("", "", "", 0, false, Collections.<stonytark.cinemarr.core.library.VideoMediaItem>emptyList());
-        televisions.clear(); queues.clear(); for (StreamState stream : streams.values()) stream.reset(); streams.clear();
+        televisions.clear(); queues.clear(); for (StreamState stream : streams.values()) stream.reset(); streams.clear(); requestPacer.reset();
     }
     void requestLibraries() { LegacyNetwork.sendToServer(LegacyPacketTypes.VIDEO_LIBRARY_LIST_REQUEST, LegacyPacketTypes.EmptyRequest.INSTANCE); }
     void browse(String library, String parent, String query, int page) { LegacyNetwork.sendToServer(LegacyPacketTypes.VIDEO_BROWSE_REQUEST, new VideoPackets.BrowseRequest(library, parent, query, page)); }
@@ -119,6 +121,7 @@ final class LegacyVideoClientState {
 
     static final class StreamState {
         private final StreamKey key;
+        private final SegmentRequestPacer requestPacer;
         private final VideoSegmentAssembler assembler = new VideoSegmentAssembler();
         private final Queue<VideoSegmentAssembler.CompletedSegment> ready = new ArrayDeque<VideoSegmentAssembler.CompletedSegment>();
         private VideoPackets.SessionState session;
@@ -129,7 +132,8 @@ final class LegacyVideoClientState {
         private long readyBytes;
         private int deferredSegment = -1;
         private boolean finalSegmentReceived;
-        StreamState(StreamKey key) { this.key = key; }
+        StreamState(StreamKey key) { this(key, new SegmentRequestPacer()); }
+        StreamState(StreamKey key, SegmentRequestPacer requestPacer) { this.key = key; this.requestPacer = requestPacer; }
         void session(VideoPackets.SessionState value) { session = value; }
         VideoPackets.SessionState session() { return session; }
         StreamKey key() { return key; }
@@ -148,6 +152,7 @@ final class LegacyVideoClientState {
         void chunk(VideoPackets.SegmentChunk value) {
             if (!key.identity.equals(value.identity()) || manifest == null || value.requestId() != requestId
                     || value.segmentIndex() != requestedSegment || value.totalChunks() < 1) return;
+            if (value.chunkIndex() >= currentWindowStart) requestPacer.cancel(key.identity);
             requestSentAt = System.currentTimeMillis(); requestRetries = 0;
             if (totalChunks == 0) { totalChunks = value.totalChunks(); assembler.begin(value.identity(), value.requestId(),
                     value.segmentIndex(), value.totalChunks(), value.segmentSha256(), value.presentationTimeMs(), value.keyframe()); }
@@ -188,17 +193,21 @@ final class LegacyVideoClientState {
             deferredSegment = -1; requestedSegment = segment;
             currentWindowStart = firstChunk;
             if (firstChunk == 0) { totalChunks = 0; requestId++; }
-            requestSentAt = System.currentTimeMillis();
-            LegacyNetwork.sendToServer(LegacyPacketTypes.VIDEO_SEGMENT_REQUEST,
-                    new VideoPackets.SegmentRequest(key.identity, requestId, segment, firstChunk, 8));
+            sendRequest(new VideoPackets.SegmentRequest(key.identity, requestId, segment, firstChunk, 8));
+        }
+        private void sendRequest(final VideoPackets.SegmentRequest request) {
+            requestSentAt = 0L;
+            requestPacer.enqueue(key.identity, sentAt -> {
+                requestSentAt = sentAt;
+                LegacyNetwork.sendToServer(LegacyPacketTypes.VIDEO_SEGMENT_REQUEST, request);
+            });
         }
         void tick(long now) {
+            requestPacer.tick(now);
             if (requestedSegment < 0 || requestSentAt == 0L || now - requestSentAt < 1_500L) return;
             if (requestRetries++ < 3) {
-                requestSentAt = now;
-                LegacyNetwork.sendToServer(LegacyPacketTypes.VIDEO_SEGMENT_REQUEST,
-                        new VideoPackets.SegmentRequest(key.identity, requestId,
-                                requestedSegment, currentWindowStart, 8));
+                sendRequest(new VideoPackets.SegmentRequest(key.identity, requestId,
+                        requestedSegment, currentWindowStart, 8));
                 return;
             }
             assembler.reset(); requestedSegment = -1; requestSentAt = 0L; requestRetries = 0;
@@ -226,7 +235,7 @@ final class LegacyVideoClientState {
         private boolean canRequestAnother() { return SegmentPrefetchPolicy.allowsAnother(ready.size(), readyBytes); }
         private void clearReady() { ready.clear(); readyBytes = 0L; }
         boolean inputExhausted() { return finalSegmentReceived && ready.isEmpty() && requestedSegment < 0 && deferredSegment < 0; }
-        void reset() { assembler.reset(); clearReady(); manifest = null; requestedSegment = -1; lastCompletedSegment = -1;
+        void reset() { requestPacer.cancel(key.identity); assembler.reset(); clearReady(); manifest = null; requestedSegment = -1; lastCompletedSegment = -1;
             currentWindowStart = totalChunks = 0; deferredSegment = -1;
             requestSentAt = 0L; requestRetries = 0; finalSegmentReceived = false; }
         VideoSegmentAssembler.CompletedSegment pollSegment() {
