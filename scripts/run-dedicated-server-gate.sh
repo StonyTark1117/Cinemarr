@@ -408,10 +408,14 @@ start_fake_plex() {
       echo "CINEMARR_GATE_VIDEO_DURATION_SECONDS must be an integer of at least 60" >&2
       return 1
     fi
+    local program_source="sine=frequency=997:sample_rate=48000:duration=${fake_video_duration_seconds}"
+    if [[ "$video_display_gate" == true ]]; then
+      program_source="aevalsrc=0.04*(sin(2*PI*997*t)+sin(2*PI*1543*t)+sin(2*PI*2347*t)):s=48000:d=${fake_video_duration_seconds}"
+    fi
     fake_plex_video_dir=$(mktemp -d "$output_root/fake-plex-video.XXXXXX")
     ffmpeg -hide_banner -loglevel error -y \
       -f lavfi -i "testsrc2=size=160x90:rate=5:duration=${fake_video_duration_seconds}" \
-      -f lavfi -i "sine=frequency=997:sample_rate=48000:duration=${fake_video_duration_seconds}" \
+      -f lavfi -i "$program_source" \
       -filter_complex "[1:a]volume='if(lt(mod(t,3),2.25),1.4,0.3)':eval=frame[a]" \
       -map 0:v -map '[a]' -c:v libx264 -preset ultrafast -tune zerolatency \
       -profile:v baseline -pix_fmt yuv420p -g 5 -keyint_min 5 -sc_threshold 0 \
@@ -1111,13 +1115,15 @@ audio_capture_is_audible() {
   local raw=$1
   local metrics=$2
   local mean samples
+  local program_filter='highpass=f=970,lowpass=f=1025'
+  if [[ "$video_display_gate" == true ]]; then program_filter='highpass=f=940,lowpass=f=2450'; fi
   if [[ "$live_plex_gate" == true ]]; then
     ffmpeg -hide_banner -loglevel info -f s16le -ar 48000 -ac 2 -i "$raw" \
       -af 'silenceremove=start_periods=1:start_duration=0.5:start_threshold=-55dB:stop_periods=-1:stop_duration=1:stop_threshold=-55dB,volumedetect' \
       -f null - > /dev/null 2> "$metrics" || return 1
   else
     ffmpeg -hide_banner -loglevel info -f s16le -ar 48000 -ac 2 -i "$raw" \
-      -af 'highpass=f=970,lowpass=f=1025,silenceremove=start_periods=1:start_duration=1:start_threshold=-55dB:stop_periods=-1:stop_duration=1:stop_threshold=-55dB,volumedetect' \
+      -af "${program_filter},silenceremove=start_periods=1:start_duration=1:start_threshold=-55dB:stop_periods=-1:stop_duration=1:stop_threshold=-55dB,volumedetect" \
       -f null - > /dev/null 2> "$metrics" || return 1
   fi
   mean=$(sed -n 's/.*mean_volume: \([^ ]*\) dB.*/\1/p' "$metrics" | tail -n 1)
@@ -2217,6 +2223,8 @@ run_two_client_video() {
   local module leader_pid follower_pid common_frame fatal_report result=0 clients_ready=0
   local disconnect_line
   local sync_script="$repo_root/scripts/compare-pcm-sync.py"
+  local sync_args=()
+  if [[ "$video_display_gate" == true && "$live_plex_gate" != true ]]; then sync_args+=(--multitv-tone-fixture); fi
   if [[ "$live_plex_gate" == true ]]; then
     sync_script="$repo_root/scripts/compare-live-pcm-sync.py"
   fi
@@ -2404,7 +2412,7 @@ run_two_client_video() {
     result=1
   fi
   if (( result == 0 )) && ! python3 "$sync_script" \
-      "$raw_leader" "$raw_follower" > "$sync_evidence"; then
+      "$raw_leader" "$raw_follower" "${sync_args[@]}" > "$sync_evidence"; then
     echo "$label: client video-program audio captures were not synchronized; see $sync_evidence" >&2
     result=1
   fi

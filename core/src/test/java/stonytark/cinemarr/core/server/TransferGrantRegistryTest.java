@@ -12,6 +12,25 @@ import stonytark.cinemarr.core.protocol.VideoPackets;
 import stonytark.cinemarr.core.protocol.ProtocolLimits;
 
 final class TransferGrantRegistryTest {
+    @Test void lateAcknowledgementsAreDistinguishedWithoutReleasingActiveWindows() {
+        TransferGrantRegistry registry=new TransferGrantRegistry(100);
+        UUID client=UUID.randomUUID(), session=UUID.randomUUID();
+        VideoPackets.SegmentRequest first=new VideoPackets.SegmentRequest(session,1,1,0,0,8);
+        assertTrue(registry.tryAcquire(client,first,0));
+        assertTrue(registry.restartManifest(client,session,1));
+        assertEquals(TransferGrantRegistry.AcknowledgementDecision.RETIRED,registry.acknowledgeDecision(client,acknowledgement(first),1));
+        assertEquals(0,registry.size());
+        VideoPackets.SegmentRequest second=new VideoPackets.SegmentRequest(session,1,2,0,0,8);
+        assertTrue(registry.tryAcquire(client,second,2));
+        assertEquals(TransferGrantRegistry.AcknowledgementDecision.INVALID,registry.acknowledgeDecision(client,acknowledgement(first),3));
+        assertTrue(registry.owns(client,second,3));
+        assertEquals(TransferGrantRegistry.AcknowledgementDecision.ACCEPTED,registry.acknowledgeDecision(client,acknowledgement(second),4));
+        assertEquals(TransferGrantRegistry.AcknowledgementDecision.RETIRED,registry.acknowledgeDecision(client,acknowledgement(second),5));
+        assertTrue(registry.tryAcquire(client,second,6));
+        assertEquals(TransferGrantRegistry.AcknowledgementDecision.RETIRED,registry.acknowledgeDecision(client,acknowledgement(second),106));
+        assertEquals(0,registry.size());
+    }
+
     @Test void manifestRecoveryRetiresAbandonedWindowBeforeItsThirtySecondExpiry() {
         TransferGrantRegistry registry = new TransferGrantRegistry(30_000);
         UUID client = UUID.randomUUID(), session = UUID.randomUUID(), otherClient = UUID.randomUUID();

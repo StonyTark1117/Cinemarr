@@ -24,6 +24,7 @@ jobs:
           python3 scripts/test-target-matrix.py
           python3 scripts/test-canonicalize-release-jar.py
           python3 scripts/test-align-pcm-captures.py
+          python3 scripts/test-compare-pcm-sync.py
           python3 scripts/test-redact-evidence-values.py
           python3 scripts/test-log-marker-polling.py
           python3 scripts/test-legacy-probe-player-state.py

@@ -82,6 +82,10 @@ class DisplayTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             display.require_clean_transfer_logs({'leader': 'Cinemarr: Invalid or excessive segment request'})
 
+    def test_display_playback_cannot_hide_invalid_acknowledgements(self):
+        with self.assertRaises(RuntimeError):
+            display.require_clean_transfer_logs({'follower': 'Cinemarr: Invalid video buffer acknowledgement'})
+
     def test_malformed_evidence_is_rejected_and_latest_state_wins(self):
         with self.assertRaises(ValueError): display.states('Acceptance TV display: television=tv\n')
         self.assertEqual(5, display.states(line(1) + line(1, generation=5))['tv1']['streamGeneration'])

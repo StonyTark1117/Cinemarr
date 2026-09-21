@@ -637,7 +637,8 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
             error(player, "Invalid video buffer acknowledgement"); return;
         }
         if (!isCurrentViewer(value.identity(), player.getUniqueID())) return;
-        if (!transferGrants.acknowledge(player.getUniqueID(), value, System.currentTimeMillis()))
+        if (transferGrants.acknowledgeDecision(player.getUniqueID(), value, System.currentTimeMillis())
+                == TransferGrantRegistry.AcknowledgementDecision.INVALID)
             transportError(player, value.sessionId(), value.generation(), "Invalid video buffer acknowledgement");
     }
     private void pruneRetiredTransfers() {

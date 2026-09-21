@@ -8,24 +8,32 @@ from array import array
 from pathlib import Path
 
 
-def envelope(path: Path, window_frames: int = 480, frequency: float = 997.0) -> list[float]:
+MULTITV_TONES = (997.0, 1543.0, 2347.0)
+
+
+def envelope(path: Path, window_frames: int = 480, frequency: float = 997.0,
+             frequencies=None) -> list[float]:
     samples = array("h")
     samples.frombytes(path.read_bytes())
     if samples.itemsize != 2:
         raise RuntimeError("unexpected PCM sample width")
+    tones = frequencies or (frequency,)
+    basis = [([math.cos(2 * math.pi * hz * frame / 48000) for frame in range(window_frames)],
+              [math.sin(2 * math.pi * hz * frame / 48000) for frame in range(window_frames)])
+             for hz in tones]
     values = []
     window_samples = window_frames * 2
-    angular = 2.0 * math.pi * frequency / 48000.0
     for start in range(0, len(samples) - window_samples + 1, window_samples):
-        # Quadrature demodulation isolates the synthetic program tone from
-        # ordinary game audio, then retains its deliberately varying envelope.
-        in_phase = quadrature = 0.0
-        for frame in range(window_frames):
-            index = start + frame * 2
-            mono = (samples[index] + samples[index + 1]) * 0.5
-            in_phase += mono * math.cos(angular * frame)
-            quadrature += mono * math.sin(angular * frame)
-        values.append(math.hypot(in_phase, quadrature) / window_frames)
+        mono = [(samples[start + frame*2] + samples[start + frame*2+1]) * .5
+                for frame in range(window_frames)]
+        # Fixed carrier energy keeps the shared amplitude envelope measurable
+        # when two independently scheduled TVs cancel one narrow carrier.
+        power = 0.0
+        for cosines, sines in basis:
+            in_phase = sum(value * cosine for value, cosine in zip(mono, cosines))
+            quadrature = sum(value * sine for value, sine in zip(mono, sines))
+            power += in_phase*in_phase + quadrature*quadrature
+        values.append(math.sqrt(power) / window_frames)
     return values
 
 
@@ -57,10 +65,12 @@ def main() -> None:
     parser.add_argument("--maximum-lag-ms", type=int, default=200)
     parser.add_argument("--required-correlation", type=float, default=0.55)
     parser.add_argument("--required-lag-ms", type=float, default=150.0)
+    parser.add_argument("--multitv-tone-fixture", action="store_true")
     args = parser.parse_args()
 
-    left = envelope(args.left)
-    right = envelope(args.right)
+    tones = MULTITV_TONES if args.multitv_tone_fixture else (997.0,)
+    left = envelope(args.left, frequencies=tones)
+    right = envelope(args.right, frequencies=tones)
     sample_rate = 48000 / 480
     maximum_lag = round(args.maximum_lag_ms * sample_rate / 1000)
     best_lag, best_value = max(
@@ -71,6 +81,7 @@ def main() -> None:
     passed = best_value >= args.required_correlation and abs(lag_ms) <= args.required_lag_ms
     print(json.dumps({
         "correlation": round(best_value, 6),
+        "carrier_frequencies_hz": tones,
         "lag_ms": round(lag_ms, 3),
         "left_duration_seconds": round(len(left) / sample_rate, 3),
         "right_duration_seconds": round(len(right) / sample_rate, 3),

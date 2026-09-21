@@ -14,6 +14,7 @@ import stonytark.cinemarr.core.protocol.VideoStreamIdentity;
 /** One in-flight window per client/TV stream, under an explicit per-client bound. */
 public final class TransferGrantRegistry {
     public enum RequestDecision { FETCH, REPLAY, REJECT }
+    public enum AcknowledgementDecision { ACCEPTED, RETIRED, INVALID }
     public static final class Window {
         private final UUID client;
         private final VideoStreamIdentity identity;
@@ -75,11 +76,15 @@ public final class TransferGrantRegistry {
         if (grant != null && grant.matches(request)) remove(client, grant);
     }
     public synchronized boolean acknowledge(UUID client, VideoPackets.SegmentAcknowledgement value, long nowMs) {
+        return acknowledgeDecision(client, value, nowMs) == AcknowledgementDecision.ACCEPTED;
+    }
+    /** Late ACKs for retired/expired windows have no authority and need no user-facing error. */
+    public synchronized AcknowledgementDecision acknowledgeDecision(UUID client, VideoPackets.SegmentAcknowledgement value, long nowMs) {
         Grant grant = get(client, value.sessionId());
-        if (grant == null) return false;
-        if (grant.expired(nowMs, timeoutMs)) { remove(client, grant); return false; }
-        if (!grant.matches(value)) return false;
-        remove(client, grant); return true;
+        if (grant == null) return AcknowledgementDecision.RETIRED;
+        if (grant.expired(nowMs, timeoutMs)) { remove(client, grant); return AcknowledgementDecision.RETIRED; }
+        if (!grant.matches(value)) return AcknowledgementDecision.INVALID;
+        remove(client, grant); return AcknowledgementDecision.ACCEPTED;
     }
     public synchronized List<Window> expireWindows(long nowMs) {
         List<Window> expired = new ArrayList<Window>();

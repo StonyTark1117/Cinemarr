@@ -84,7 +84,7 @@ def verify_stream_identity_transport(text: str, label: str) -> None:
         raise SystemExit(f"{label} must reject obsolete media completion before reporting failures")
     acknowledgement = compact[compact.index("publicvoidacknowledge("):compact.index("privatebooleanisCurrentViewer(")]
     guard = "!isCurrentViewer(value.identity(),"
-    if guard not in acknowledgement or acknowledgement.index(guard) > acknowledgement.index("transferGrants.acknowledge("):
+    if guard not in acknowledgement or acknowledgement.index(guard) > acknowledgement.index("transferGrants.acknowledgeDecision("):
         raise SystemExit(f"{label} must validate both identities before releasing an acknowledged window")
     if "tvStreams.isSupersededViewer(" not in compact or "privatevoidtransportError(" not in compact:
         raise SystemExit(f"{label} must distinguish stale transport feedback from ownership errors")

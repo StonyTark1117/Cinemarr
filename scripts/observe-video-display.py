@@ -29,6 +29,8 @@ def states(text):
 
 def require_clean_transfer_logs(texts):
     for role, text in texts.items():
+        if 'Invalid video buffer acknowledgement' in text:
+            raise RuntimeError('Ordinary display playback produced an invalid transfer acknowledgement: ' + role)
         if 'Invalid or excessive segment request' in text:
             raise RuntimeError('Ordinary display playback exceeded the server transfer budget: ' + role)
 

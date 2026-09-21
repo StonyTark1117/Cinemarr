@@ -403,7 +403,8 @@ public final class ServerVideoManager implements AutoCloseable {
             error(player, "Invalid video buffer acknowledgement"); return;
         }
         if (!isCurrentViewer(value.identity(), player.getUUID())) return;
-        if (!transferGrants.acknowledge(player.getUUID(), value, System.currentTimeMillis()))
+        if (transferGrants.acknowledgeDecision(player.getUUID(), value, System.currentTimeMillis())
+                == TransferGrantRegistry.AcknowledgementDecision.INVALID)
             transportError(player, value.sessionId(), value.generation(), "Invalid video buffer acknowledgement");
     }
     private void pruneRetiredTransfers() {
