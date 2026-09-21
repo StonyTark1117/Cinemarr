@@ -189,6 +189,11 @@ public final class CinemarrClientState {
         if (!ProtocolLimits.videoProbeEnabled()) return;
         String operation = acceptanceControl.poll();
         if (operation.isEmpty() || !operation.startsWith("video:")) return;
+        if ("video:world-view".equals(operation)) {
+            Minecraft.getInstance().setScreen(null);
+            Cinemarr.LOGGER.info("Acceptance video world view: screen=none");
+            return;
+        }
         if (ProtocolLimits.displayProbeEnabled() && operation.startsWith("video:display:")) {
             try {
                 VideoPackets.SessionCommand displayCommand = stonytark.cinemarr.core.video.DisplayAcceptance.command(CinemarrVideoClientState.INSTANCE.televisions(), operation);

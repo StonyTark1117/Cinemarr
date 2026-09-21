@@ -87,15 +87,13 @@ def main():
 
     def world_view(role):
         offset = len(logs[role].read_text(errors='replace'))
-        display.publish(controls[role], 'video:open-ui')
+        display.publish(controls[role], 'video:world-view')
         deadline = time.monotonic() + 30
-        while 'Acceptance video UI screenshot:' not in logs[role].read_text(errors='replace')[offset:]:
+        while 'Acceptance video world view: screen=none' not in logs[role].read_text(errors='replace')[offset:]:
             desktops[role].validate()
             if time.monotonic() >= deadline:
-                raise RuntimeError('No fresh controller before world capture/reload')
+                raise RuntimeError('No fresh world-view acknowledgement before capture/reload')
             time.sleep(.1)
-        time.sleep(.3)
-        desktops[role].escape()
         time.sleep(.3)
 
     def capture(name, pair):

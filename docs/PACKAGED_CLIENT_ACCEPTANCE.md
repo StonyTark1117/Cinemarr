@@ -70,6 +70,13 @@ requires matching renderer receipts with the expected revision and raster
 size before capture. The enclosing gate measures physical audio after resume
 and validates client cleanup and original PNG integrity.
 
+The display case also requires shared seek, two resource/sound reloads per
+client and a clean follower reconnect with all three TVs active. Each lifecycle
+stage requires fresh identity-bound A/V and retains original world captures.
+An acceptance-only client command acknowledges screen closure before those
+captures. Display fixtures disable vanilla vignette for color calibration;
+normal main/control cases retain default graphics. Pixel tolerances are unchanged.
+
 For the separate exact-artifact real-Plex display pass, set
 `CINEMARR_VIDEO_DISPLAY_GATE=true`, `CINEMARR_VIDEO_CONTROL_GATE=false`, and a
 fresh `CINEMARR_GATE_OUTPUT_ROOT` beneath this checkout's `build/` directory

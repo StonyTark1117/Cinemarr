@@ -222,6 +222,11 @@ final class LegacyClientState implements LegacyNetwork.ClientListener {
         if (!ProtocolLimits.videoProbeEnabled()) return;
         if (operation.isEmpty()) return;
         if (operation.length() == 0 || !operation.startsWith("video:")) return;
+        if ("video:world-view".equals(operation)) {
+            Minecraft.getMinecraft().displayGuiScreen(null);
+            Cinemarr.LOGGER.info("Acceptance video world view: screen=none");
+            return;
+        }
         if (ProtocolLimits.displayProbeEnabled() && operation.startsWith("video:display:")) {
             try {
                 VideoPackets.SessionCommand command = stonytark.cinemarr.core.video.DisplayAcceptance.command(LegacyVideoClientState.INSTANCE.televisions(), operation);
