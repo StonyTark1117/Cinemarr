@@ -1402,6 +1402,13 @@ run_video_control_scenarios() {
   printf 'Stream selection chose audio=%s subtitle=%s and advanced generation %s to %s.\n' \
     "$target_audio" "$target_subtitle" "$old_generation" "$new_generation" >> "$evidence"
 
+  reconnect_video_follower "$label" "$target_dir" "$java_home" "$port" "$sink_follower" "$leader_pid" "$follower_pid" || return 1
+  printf 'Follower disconnect/reconnect restored the selected generation in render/audio logs; physical PCM and direct framebuffer review remain required.\n' >> "$evidence"
+}
+
+reconnect_video_follower() {
+  local label=$1 target_dir=$2 java_home=$3 port=$4 sink_follower=$5 leader_pid=$6 follower_pid=$7
+  local follower_log="$output_root/$label.audio-follower.console.log" first_follower
   first_follower=$(wc -l < "$follower_log")
   # Disconnect through the server before terminating the launcher. A process
   # kill alone cannot prove that the client released its render/audio resources.
@@ -1425,7 +1432,7 @@ run_video_control_scenarios() {
   video_scenario_follower_pid=$ready_audio_client_pid
   wait_for_video_audio_pair_stable "$label" "$leader_pid" "$video_scenario_follower_pid" \
     || { echo "$label: reconnected follower did not restore synchronized playback" >&2; return 1; }
-  printf 'Follower disconnect/reconnect restored the selected generation in render/audio logs; physical PCM and direct framebuffer review remain required.\n' >> "$evidence"
+
 }
 
 wait_for_fault_segment_requests() {
@@ -2333,6 +2340,22 @@ run_two_client_video() {
     fi
     if (( result == 0 )); then
       wait_for_video_audio_pair_stable "$label" "$leader_pid" "$follower_pid" || result=1
+    fi
+  fi
+  if (( result == 0 )) && [[ "$video_display_gate" == true && "$video_capacity_gate" != true ]]; then
+    python3 "$repo_root/scripts/observe-display-lifecycle.py" \
+      --leader-log "$leader_log" --follower-log "$follower_log" --gate-pid "$$" \
+      --output "$output_root/$label.display-lifecycle" || result=1
+    if (( result == 0 )); then
+      if reconnect_video_follower "$label" "$target_dir" "$java_home" "$port" "$sink_follower" "$leader_pid" "$follower_pid"; then
+        follower_pid=$video_scenario_follower_pid
+        python3 "$repo_root/scripts/observe-display-lifecycle.py" \
+          --leader-log "$leader_log" --follower-log "$follower_log" --gate-pid "$$" \
+          --after-reconnect "$output_root/$label.display-lifecycle/result.json" \
+          --output "$output_root/$label.display-reconnect" || result=1
+      else
+        result=1
+      fi
     fi
   fi
   if (( result == 0 )) && [[ "$video_pressure_gate" == true ]]; then

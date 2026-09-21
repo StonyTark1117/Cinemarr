@@ -444,7 +444,11 @@ fi
 
 export CINEMARR_GATE_LIBRARY_ONLY=true
 export CINEMARR_VIDEO_CLIENT_GATE=true
-export CINEMARR_VIDEO_CONTROL_GATE=${CINEMARR_VIDEO_CONTROL_GATE:-true}
+# The separate display case exercises three-TV seek/reload/reconnect itself.
+# The four ordinary control cases still run the full controller-widget suite.
+control_gate_default=true
+if [[ "$display_gate" == true ]]; then control_gate_default=false; fi
+export CINEMARR_VIDEO_CONTROL_GATE=${CINEMARR_VIDEO_CONTROL_GATE:-$control_gate_default}
 export CINEMARR_VIDEO_FOLLOWER_SMALL_WINDOW=${CINEMARR_VIDEO_FOLLOWER_SMALL_WINDOW:-true}
 export CINEMARR_LIVE_PLEX_GATE=true
 export CINEMARR_ACCEPTANCE_SERVER_HOST="$server_host"

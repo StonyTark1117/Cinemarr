@@ -6,6 +6,9 @@ import unittest
 spec = importlib.util.spec_from_file_location('display', Path(__file__).with_name('observe-video-display.py'))
 display = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(display)
+spec = importlib.util.spec_from_file_location('lifecycle', Path(__file__).with_name('observe-display-lifecycle.py'))
+lifecycle = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(lifecycle)
 
 
 def line(tv, owner=True, stream=None, generation=3):
@@ -15,6 +18,34 @@ def line(tv, owner=True, stream=None, generation=3):
 
 
 class DisplayTests(unittest.TestCase):
+    def test_seek_requires_replacement_of_every_tv_without_settings_changes(self):
+        before = display.states(''.join(line(i) for i in range(3)))
+        after = display.states(''.join(line(i, generation=4) for i in range(3)).replace('timelineGeneration=7', 'timelineGeneration=8'))
+        self.assertTrue(lifecycle.seek_replaced(before, after))
+        after['tv1']['streamGeneration'] = 3
+        self.assertFalse(lifecycle.seek_replaced(before, after))
+        after['tv1']['streamGeneration'] = 4
+        after['tv2']['mapping'] = 'ONE_PIXEL_PER_BLOCK'
+        self.assertFalse(lifecycle.seek_replaced(before, after))
+
+    def test_reload_requires_fresh_ordered_resource_and_sound_completion(self):
+        modern = 'Reloading ResourceManager: vanilla\nOpenAL initialized on device ALSA Default\nSound engine started\n'
+        self.assertIsNotNone(lifecycle.reload_complete(modern, False))
+        self.assertIsNone(lifecycle.reload_complete(modern, True))
+        self.assertIsNone(lifecycle.reload_complete('Sound engine started\n' + modern.split('OpenAL')[0], False))
+        self.assertIsNone(lifecycle.reload_complete(modern.replace('OpenAL initialized', 'Starting OpenAL'), False))
+        legacy = 'Reloading ResourceManager:\nSoundSystem shutting down...\nStarting up SoundSystem...\nOpenAL initialized.\nSound engine started\n'
+        self.assertIsNotNone(lifecycle.reload_complete(legacy, True))
+
+    def test_reload_requires_each_tv_to_render_a_new_frame(self):
+        before = {str(i): {'ptsUs': 100} for i in range(3)}
+        after = {str(i): {'ptsUs': 200} for i in range(3)}
+        self.assertTrue(lifecycle.all_advanced(before, after))
+        after['1']['ptsUs'] = 100
+        self.assertFalse(lifecycle.all_advanced(before, after))
+        del after['1']
+        self.assertFalse(lifecycle.all_advanced(before, after))
+
     def test_three_tvs_require_separate_streams_and_same_tv_viewers_share_identity(self):
         leader = display.states(''.join(line(i) for i in range(3)))
         follower = display.states(''.join(line(i, False) for i in range(3)))
