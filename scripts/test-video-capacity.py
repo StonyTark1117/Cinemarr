@@ -17,6 +17,16 @@ spec.loader.exec_module(capacity)
 
 
 class CapacityEvidenceTests(unittest.TestCase):
+    def test_admission_position_bound_rejects_missing_and_lagging_streams(self):
+        active = {'quick': {}, 'admitted': {}}
+        self.assertFalse(capacity.positions_aligned(active, {'quick': {'ptsUs': 20_000_000}}))
+        for delta, accepted in ((0, True), (300_000, True), (300_001, False), (-400_000, False)):
+            with self.subTest(delta=delta):
+                frames = {'quick': {'ptsUs': 20_000_000}, 'admitted': {'ptsUs': 20_000_000+delta},
+                          'retired': {'ptsUs': 0}}
+                self.assertEqual(capacity.positions_aligned(active, frames), accepted)
+        self.assertFalse(capacity.positions_aligned({}, {}))
+
     def test_fixture_qualities_exist_in_the_actual_java_preset_catalog(self):
         source=(ROOT.parent/'core/src/main/java/stonytark/cinemarr/core/screen/QuickTvPreset.java').read_text()
         presets=set(re.findall(r'P[A-Z0-9]+\("([^"]+)"',source))

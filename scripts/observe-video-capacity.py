@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import time
 from private_minecraft_window import PrivateMinecraftWindow
+from video_audio_stability import Stability
 
 spec = importlib.util.spec_from_file_location('display', Path(__file__).with_name('observe-video-display.py'))
 display = importlib.util.module_from_spec(spec)
@@ -37,6 +38,13 @@ def stream_unchanged(before, after, tv):
                for key in ('timeline', 'timelineGeneration', 'stream', 'streamGeneration'))
 
 
+def positions_aligned(active, rendered):
+    if not active or any(tv not in rendered for tv in active):
+        return False
+    positions = [rendered[tv]['ptsUs'] for tv in active]
+    return max(positions) - min(positions) <= 300_000
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--leader-log', type=Path, required=True)
@@ -64,18 +72,22 @@ def main():
 
     def texts(): return {role: path.read_text(errors='replace') for role, path in logs.items()}
 
-    def wait(predicate, seconds=120):
+    def wait(predicate, seconds=120, settle_audio=False):
+        stability = Stability(texts()) if settle_audio else None
         deadline = time.monotonic() + seconds
         while True:
             for desktop in desktops.values(): desktop.validate()
             current_logs = texts()
             require_clean_logs(current_logs)
+            audio_ready = stability is None or stability.update(current_logs, time.monotonic())
             pair = {role: display.states(text) for role, text in current_logs.items()}
             if compatible(pair['leader'], pair['follower']) and predicate(pair['leader']):
                 active = {tv: s for tv, s in pair['leader'].items() if s['status'] == 'PLAYING'}
                 if len(active) > 2: raise RuntimeError('Configured two-stream limit exceeded')
-                if all(display.render_matches(active, display.rendered(text), display.decoded(text))
-                       for text in current_logs.values()): return pair['leader']
+                if audio_ready and all(
+                        display.render_matches(active, display.rendered(text), display.decoded(text))
+                        and (not settle_audio or positions_aligned(active, display.rendered(text)))
+                        for text in current_logs.values()): return pair['leader']
             if time.monotonic() >= deadline: raise RuntimeError('Capacity/failure phase did not converge')
             time.sleep(.1)
 
@@ -140,12 +152,11 @@ def main():
         capture('queued-latest-quality', current)
         command(customs.index(active), 'tune-idle')
         admitted = wait(lambda s: s[active]['status']=='IDLE' and s[queued]['status']=='PLAYING'
-                        and s[queued]['requested']==QUEUED_QUALITIES[-1] and s[queued]['streamGeneration']>current[queued]['streamGeneration'])
+                        and s[queued]['requested']==QUEUED_QUALITIES[-1] and s[queued]['streamGeneration']>current[queued]['streamGeneration'],
+                        settle_audio=True)
         if not stream_unchanged(current, admitted, quick): raise RuntimeError('Admission restarted healthy sibling')
-        for role,text in texts().items():
-            rendered=display.rendered(text)
-            if abs(rendered[queued]['ptsUs']-rendered[quick]['ptsUs']) > 300_000:
-                raise RuntimeError('Capacity admission did not catch the current shared position: '+role)
+        # The bounded waiter requires eight fresh stable A/V seconds after admission
+        # and checks the 300 ms cross-TV bound on the same log snapshots it validates.
         capture('automatic-admission', admitted)
         command(customs.index(active), 'tune-party')
         waiting = wait(lambda s: s[active]['streamState']=='WAITING')
