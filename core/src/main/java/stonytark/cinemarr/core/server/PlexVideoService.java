@@ -191,7 +191,11 @@ public final class PlexVideoService {
             if (HlsPlaylist.isMediaPlaylist(current)) {
                 List<HlsPlaylist.MediaSegment> segments;
                 try {
-                    segments = HlsPlaylist.mediaSegments(current, offsetMs);
+                    // The upstream offset parameter is expressed in whole seconds.
+                    // Labeling its first frame with the unrounded request delays
+                    // each independently started TV by a different fraction of a
+                    // second, despite apparently matching client clock telemetry.
+                    segments = HlsPlaylist.mediaSegments(current, Math.max(0, offsetMs) / 1000 * 1000);
                 } catch (IllegalArgumentException malformed) {
                     throw new PlexException(PlexException.Kind.INVALID_RESPONSE,
                             "Plex returned a malformed HLS media playlist", malformed);

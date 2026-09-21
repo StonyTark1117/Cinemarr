@@ -2293,6 +2293,9 @@ run_two_client_video() {
     python3 "$repo_root/scripts/observe-video-display.py" \
       --leader-log "$leader_log" --follower-log "$follower_log" --gate-pid "$$" \
       --output "$output_root/$label.video-display" || result=1
+    if (( result == 0 )); then
+      wait_for_video_audio_pair_stable "$label" "$leader_pid" "$follower_pid" || result=1
+    fi
   fi
   if (( result == 0 )) && [[ "$video_pressure_gate" == true ]]; then
     run_video_pressure_scenarios "$label" "$sink_leader" "$sink_follower" "$leader_pid" "$follower_pid" || result=1

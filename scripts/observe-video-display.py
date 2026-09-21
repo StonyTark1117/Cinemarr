@@ -233,8 +233,15 @@ def main():
             def input_field(x, value):
                 desktop.click(x, 224)
                 desktop.run('xdotool', 'windowfocus', '--sync', desktop.window)
-                desktop.run('xdotool', 'key', '--clearmodifiers', 'ctrl+a')
-                desktop.run('xdotool', 'type', '--clearmodifiers', '--delay', '30', value)
+                # GLFW polls modifier state separately from queued key events.
+                # A fast Ctrl+A can therefore insert 'a' instead of selecting.
+                # The fields are limited to four characters; clear them with
+                # ordinary editing keys at a pace the game can consume.
+                time.sleep(.15)
+                desktop.run('xdotool', 'key', '--clearmodifiers', '--delay', '150',
+                            'End', 'BackSpace', 'BackSpace', 'BackSpace', 'BackSpace')
+                desktop.run('xdotool', 'type', '--clearmodifiers', '--delay', '150', value)
+                time.sleep(.15)
 
             for value, error, name in [('oops', 'Enter whole dimensions from 2 to 8192', 'malformed'),
                                        ('0', 'Resolution dimensions must be between 2 and 8192', 'out-of-range')]:

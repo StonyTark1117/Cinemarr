@@ -32,6 +32,25 @@ class PlexVideoServiceTest {
     private final AtomicReference<String> transcodePlaylist = new AtomicReference<>(
             "#EXTM3U\n#EXT-X-VERSION:3\n#EXTINF:2.0,\nsegment0.ts\n");
 
+    @Test void fractionalRequestsUseTheSameWholeSecondMediaAnchorAsTheUpstreamRequest() throws Exception {
+        StringBuilder playlist = new StringBuilder("#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:0\n");
+        for (int i = 0; i < 12; i++) playlist.append("#EXTINF:1,\nsegment").append(i).append(".ts\n");
+        transcodePlaylist.set(playlist.toString());
+        PlexVideoService service = new PlexVideoService(baseUrl, "secret-token");
+        VideoMediaItem movie = service.metadata("10");
+        for (long requested : new long[] {9250, 9750}) {
+            PlexVideoService.VideoSession session = service.start(movie,
+                    RenditionPolicy.choose(320, 180, 1920, 1080, 640, 360), requested, null, null);
+            assertTrue(transcodeQuery.get().contains("offset=9&"));
+            PlexVideoService.MediaPlaylist media = service.mediaPlaylist(session, requested);
+            assertEquals("segment9.ts", media.segments().get(0).uri());
+            assertEquals(9000, media.segments().get(0).presentationTimeMs(),
+                    "Equal source frames must not acquire different PTS when TVs start within the same second");
+            assertEquals(10000, media.segments().get(1).presentationTimeMs());
+            service.stop(session);
+        }
+    }
+
     @BeforeEach void start() throws Exception {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
