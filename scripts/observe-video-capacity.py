@@ -87,20 +87,28 @@ def main():
             desktop.capture(path)
             captures.append({'path': path.name, 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()})
 
-    def controller_capture(name, index, controller):
-        offset = len(args.leader_log.read_text(errors='replace'))
-        display.publish(control, 'video:open-display-controller' if index == 0 else 'video:open-second-display-controller')
+    def controller_capture(name, index, controller, role='leader'):
+        log = logs[role]
+        role_control = log.with_name(log.name.removesuffix('.console.log') + '.control')
+        if role_control.is_symlink() or not role_control.is_file():
+            raise RuntimeError('Missing owned capacity controller file')
+        offset = len(log.read_text(errors='replace'))
+        operation = ('video:open-ui' if index is None else
+                     'video:open-display-controller' if index == 0 else 'video:open-second-display-controller')
+        display.publish(role_control, operation)
         deadline = time.monotonic() + 30
         marker = 'Acceptance video UI request: controller=' + str(controller)
-        while marker not in args.leader_log.read_text(errors='replace')[offset:]:
-            desktops['leader'].validate()
-            if time.monotonic() >= deadline: raise RuntimeError('Capacity controller did not open')
+        while True:
+            observed = log.read_text(errors='replace')[offset:]
+            if marker in observed and 'Acceptance video UI screenshot:' in observed: break
+            desktops[role].validate()
+            if time.monotonic() >= deadline: raise RuntimeError('Capacity controller or screenshot acknowledgement missing: '+role)
             time.sleep(.1)
         time.sleep(.5)
-        path = args.output/(name+'-controller.png')
-        desktops['leader'].capture(path)
+        path = args.output/(name+'-controller-'+role+'.png')
+        desktops[role].capture(path)
         captures.append({'path':path.name,'sha256':hashlib.sha256(path.read_bytes()).hexdigest()})
-        desktops['leader'].escape()
+        desktops[role].escape()
         time.sleep(.3)
 
     def starts():
@@ -168,6 +176,10 @@ def main():
                        and s[queued]['streamGeneration']>failed[queued]['streamGeneration'])
         if not stream_unchanged(failed,recovered,quick): raise RuntimeError('Explicit replacement recovery restarted its sibling')
         capture('explicit-replacement-recovery', recovered)
+        # The enclosing closed-client audit requires a real controller capture
+        # from both clients, including the follower's read-only controller.
+        for role in ('leader', 'follower'):
+            controller_capture('final', None, recovered[quick]['controller'], role)
         completed=True
     finally:
         args.fault_state.write_text('online\n')
