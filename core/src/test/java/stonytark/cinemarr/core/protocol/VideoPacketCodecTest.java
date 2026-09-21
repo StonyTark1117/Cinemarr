@@ -29,6 +29,28 @@ class VideoPacketCodecTest {
         assertEquals(12,decoded.selectedAudioStreamId());assertEquals("English",decoded.streams().get(0).label());
     }
 
+    @Test void sparseMaximumBoundsRoundTripWithoutLosingHoles() {
+        java.util.List<stonytark.cinemarr.core.screen.ScreenPixel> pixels = new java.util.ArrayList<>();
+        for (int x=0;x<2048;x++) pixels.add(new stonytark.cinemarr.core.screen.ScreenPixel(x,0,0,ScreenFacing.NORTH));
+        for (int y=1;y<2048;y++) pixels.add(new stonytark.cinemarr.core.screen.ScreenPixel(2047,y,0,ScreenFacing.NORTH));
+        stonytark.cinemarr.core.screen.ScreenGeometry screen = stonytark.cinemarr.core.screen.ScreenTopology.analyze(
+                pixels, stonytark.cinemarr.core.screen.ScreenLimits.DEFAULTS);
+        assertEquals(4095, screen.pixelCount());
+        byte[] mask=screen.visibilityMask().toByteArray();
+        assertTrue(mask.length>8192);
+        VideoPackets.SessionState value=new VideoPackets.SessionState(UUID.randomUUID(),0,UUID.randomUUID(),1,
+                VideoPackets.SessionStatus.IDLE,null,0,0,false,PresentationMode.FIT,screen.width(),screen.height(),mask,
+                screen.facing(),0,screen.minimumU(),screen.minimumV(),java.util.Collections.emptyList(),-1,-1,0,true,"");
+        ByteArrayWireOutput out=new ByteArrayWireOutput();
+        VideoPackets.SESSION_STATE.encode(out,value);
+        assertTrue(out.toByteArray().length<1024*1024, "Fits the legacy envelope and modern clientbound payload");
+        assertArrayEquals(mask, VideoPackets.SESSION_STATE.decode(new ByteArrayWireInput(out.toByteArray())).visibilityMask());
+        assertThrows(ProtocolException.class,()->new ByteArrayWireOutput().writeByteArray(
+                new byte[ProtocolLimits.MAX_SCREEN_MASK_BYTES+1],ProtocolLimits.MAX_SCREEN_MASK_BYTES));
+        ByteArrayWireOutput hostile=new ByteArrayWireOutput();hostile.writeVarInt(ProtocolLimits.MAX_SCREEN_MASK_BYTES+1);
+        assertThrows(ProtocolException.class,()->new ByteArrayWireInput(hostile.toByteArray()).readByteArray(ProtocolLimits.MAX_SCREEN_MASK_BYTES));
+    }
+
     @Test void segmentManifestAndChunkRoundTrip() {
         UUID session=UUID.randomUUID();
         VideoPackets.SegmentManifest manifest=new VideoPackets.SegmentManifest(session,4,640,360,"mpegts","h264","aac",90000,true,

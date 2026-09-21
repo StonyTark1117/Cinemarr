@@ -65,6 +65,11 @@ separate settings:
   limits can reduce the actual result. **Actual** shows the selected HLS
   rendition dimensions when available; **pending** means they are not known.
 
+Large sparse screens count their full bounding rectangle toward picture memory,
+so their effective stream quality may be reduced. If a received picture still
+exceeds that limit, the client reports it and skips that TV's picture; lower its
+quality or switch to Detailed mapping to recover.
+
 Quick TVs keep their construction preset and Detailed mapping. Their layout
 remains adjustable. Changing a custom TV's quality replaces that TV's stream;
 layout and mapping changes redraw it without restarting playback. Paused or

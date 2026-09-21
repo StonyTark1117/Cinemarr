@@ -33,4 +33,17 @@ class PresentedFrameTest {
         assertEquals(DecodedBufferBudget.MAX_VIDEO_FRAME_BYTES / 4, frame.retainedBytes());
         assertThrows(IllegalArgumentException.class, () -> frame.accept(new byte[4], 0, 1));
     }
+
+    @Test void largerSourceReleasesAnIncompatibleRasterAndRejectsRedrawWithoutAllocating() {
+        PresentedFrame frame = new PresentedFrame();
+        frame.accept(new byte[4],1,1);
+        frame.raster(4,4,PresentationMode.STRETCH);
+        frame.accept(new byte[(int)DecodedBufferBudget.MAX_VIDEO_FRAME_BYTES],8192,4096);
+        assertEquals(DecodedBufferBudget.MAX_VIDEO_FRAME_BYTES,frame.retainedBytes());
+        assertFalse(frame.canRaster(4,4));
+        assertThrows(IllegalArgumentException.class,()->frame.raster(4,4,PresentationMode.STRETCH));
+        frame.accept(new byte[4],1,1);
+        assertTrue(frame.canRaster(4,4));
+        assertEquals(64,frame.raster(4,4,PresentationMode.STRETCH).length);
+    }
 }

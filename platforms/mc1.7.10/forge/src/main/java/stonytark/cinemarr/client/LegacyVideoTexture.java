@@ -11,11 +11,11 @@ final class LegacyVideoTexture implements AutoCloseable {
     private byte[] source;
     private final stonytark.cinemarr.core.video.PresentedFrame presented = new stonytark.cinemarr.core.video.PresentedFrame();
     private long frameRevision;
+    private boolean budgetErrorShown;
     private long evidenceRevision = -1;
     private final java.util.Map<java.util.UUID, Derived> derived = new java.util.HashMap<>();
     private static final class Derived {
         final LegacyVideoTexture texture = new LegacyVideoTexture();
-        byte[] raster;
         long revision = -1;
         int width, height;
         stonytark.cinemarr.core.video.PresentationMode layout;
@@ -29,14 +29,26 @@ final class LegacyVideoTexture implements AutoCloseable {
         if (state.displaySettings().mapping() == stonytark.cinemarr.core.video.PixelMapping.DETAILED) {
             Derived old=derived.remove(state.televisionId()); if(old!=null)old.texture.close();
             if(derived.isEmpty())presented.releaseRaster();
+            budgetErrorShown=false;
             return this;
         }
         if (source == null) return this;
+        if (!presented.canRaster(state.screenWidth(),state.screenHeight())) {
+            Derived old=derived.remove(state.televisionId()); if(old!=null)old.texture.close();
+            presented.releaseRaster();
+            if (!budgetErrorShown) {
+                budgetErrorShown=true;
+                String message="Cinemarr: A TV picture exceeds its memory limit. Lower stream quality or use Detailed mapping.";
+                if (net.minecraft.client.Minecraft.getMinecraft().thePlayer != null) net.minecraft.client.Minecraft.getMinecraft().thePlayer.addChatMessage(new net.minecraft.util.ChatComponentText(message));
+            }
+            return null;
+        }
+        budgetErrorShown=false;
         Derived value=derived.get(state.televisionId());
         if(value==null){value=new Derived();derived.put(state.televisionId(),value);}
         if(value.revision!=frameRevision||value.width!=state.screenWidth()||value.height!=state.screenHeight()||value.layout!=state.presentationMode()) {
-            value.raster=presented.raster(state.screenWidth(),state.screenHeight(),state.presentationMode());
-            value.texture.uploadRaw(state.screenWidth(),state.screenHeight(),value.raster,true);
+            byte[] raster=presented.raster(state.screenWidth(),state.screenHeight(),state.presentationMode());
+            value.texture.uploadRaw(state.screenWidth(),state.screenHeight(),raster,true);
             value.revision=frameRevision; value.width=state.screenWidth(); value.height=state.screenHeight(); value.layout=state.presentationMode();
         }
         return value.texture;
@@ -72,5 +84,5 @@ final class LegacyVideoTexture implements AutoCloseable {
     int width() { return width; }
     int height() { return height; }
     @Override public void close() {
-        for(Derived value:derived.values())value.texture.close();derived.clear();source=null;presented.clear(); if (textureId != 0) GL11.glDeleteTextures(textureId); textureId = width = height = 0; }
+        for(Derived value:derived.values())value.texture.close();derived.clear();source=null;presented.clear();budgetErrorShown=false; if (textureId != 0) GL11.glDeleteTextures(textureId); textureId = width = height = 0; }
 }

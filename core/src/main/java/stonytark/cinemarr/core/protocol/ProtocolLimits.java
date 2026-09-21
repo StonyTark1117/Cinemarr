@@ -30,7 +30,9 @@ public final class ProtocolLimits {
     public static final int MAX_VIDEO_SEGMENTS_PER_MANIFEST = 128;
     public static final int MAX_VIDEO_STREAM_OPTIONS = 64;
     public static final int MAX_VIDEO_QUEUE_ENTRIES = 500;
-    public static final int MAX_SCREEN_MASK_BYTES = 8_192;
+    // Sparse screens still need one visibility bit for every bounding cell.
+    // The 65,536 construction limit counts present blocks, not bounding area.
+    public static final int MAX_SCREEN_MASK_BYTES = 2_048 * 2_048 / 8;
     public static final int MAX_VIDEO_CHUNK_BYTES = 16_384;
     public static final long MAX_VIDEO_SEGMENT_LEAD_MS = 30_000L;
     /**

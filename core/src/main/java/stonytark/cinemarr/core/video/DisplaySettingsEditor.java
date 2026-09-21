@@ -95,6 +95,6 @@ public final class DisplaySettingsEditor {
         if (!canControl) return "Read only: owner or operator required";
         if (current.origin() == TvDisplaySettings.Origin.QUICK) return "Quick TV quality and mapping are locked";
         if (current.origin() == TvDisplaySettings.Origin.UNKNOWN) return "Load the controller to change quality";
-        return "Stream quality is bounded by source and server";
+        return "Quality is bounded by source, server and memory";
     }
 }
