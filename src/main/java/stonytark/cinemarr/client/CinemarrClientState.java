@@ -190,7 +190,7 @@ public final class CinemarrClientState {
         String operation = acceptanceControl.poll();
         if (operation.isEmpty() || !operation.startsWith("video:")) return;
         if ("video:world-view".equals(operation)) {
-            Minecraft.getInstance().setScreen(null);
+            CinemarrClientUi.showScreen(null);
             Cinemarr.LOGGER.info("Acceptance video world view: screen=none");
             return;
         }
