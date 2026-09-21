@@ -30,7 +30,7 @@ final class LegacyVideoRenderer {
             if (television.item() == null || television.status() == VideoPackets.SessionStatus.IDLE) continue;
             LegacyVideoPlayback pipeline = playback.pipeline(new LegacyVideoClientState.StreamKey(television.identity()));
             if (pipeline == null || !pipeline.texture().ready()) continue;
-            LegacyVideoTexture displayTexture=pipeline.texture().forDisplay(television);displayTexture.bind(); MeshCache mesh = mesh(television);
+            LegacyVideoTexture displayTexture=pipeline.texture().forDisplay(television);if(displayTexture==null)continue;displayTexture.bind(); MeshCache mesh = mesh(television);
             PresentationTransform transform = PresentationTransform.create(displayTexture.width(), displayTexture.height(),
                     television.screenWidth(), television.screenHeight(), television.displaySettings().mapping()==stonytark.cinemarr.core.video.PixelMapping.ONE_PIXEL_PER_BLOCK?stonytark.cinemarr.core.video.PresentationMode.STRETCH:television.presentationMode());
             GL11.glBegin(GL11.GL_QUADS);

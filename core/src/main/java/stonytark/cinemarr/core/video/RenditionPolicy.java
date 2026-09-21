@@ -23,10 +23,24 @@ public final class RenditionPolicy {
     public static Dimensions chooseForDisplay(int screenWidth, int screenHeight, ResolutionChoice request,
                                               int sourceWidth, int sourceHeight, int maximumWidth, int maximumHeight) {
         if (request == null) throw new IllegalArgumentException("Resolution is required");
-        if (request.kind() == ResolutionChoice.Kind.AUTO)
-            return choose(screenWidth, screenHeight, sourceWidth, sourceHeight, maximumWidth, maximumHeight);
-        return choose(17, 17, sourceWidth, sourceHeight,
-                Math.min(maximumWidth, request.width()), Math.min(maximumHeight, request.height()));
+        Dimensions chosen = request.kind() == ResolutionChoice.Kind.AUTO
+                ? choose(screenWidth, screenHeight, sourceWidth, sourceHeight, maximumWidth, maximumHeight)
+                : choose(17, 17, sourceWidth, sourceHeight,
+                        Math.min(maximumWidth, request.width()), Math.min(maximumHeight, request.height()));
+        // Reserve the entire bounding raster, including holes. Reserve in
+        // Detailed too: a later mapping toggle must not restart the stream.
+        long maximumPixels = PresentedFrame.maximumSourceBytes(screenWidth, screenHeight) / 4;
+        if (maximumPixels < 4) throw new IllegalArgumentException("Screen leaves no decoded-frame budget");
+        if ((long) chosen.width * chosen.height <= maximumPixels) return chosen;
+        double scale = Math.sqrt(maximumPixels / ((double) chosen.width * chosen.height));
+        int width = evenFloor(Math.max(2, (int) Math.floor(chosen.width * scale)));
+        int height = evenFloor(Math.max(2, (int) Math.floor(chosen.height * scale)));
+        // The minimum two-pixel axis can round upward for extreme aspect ratios.
+        if ((long) width * height > maximumPixels) {
+            if (width >= height) width = evenFloor((int) (maximumPixels / height));
+            else height = evenFloor((int) (maximumPixels / width));
+        }
+        return new Dimensions(width, height);
     }
 
     public static Dimensions choose(int screenWidth, int screenHeight, int sourceWidth, int sourceHeight,
