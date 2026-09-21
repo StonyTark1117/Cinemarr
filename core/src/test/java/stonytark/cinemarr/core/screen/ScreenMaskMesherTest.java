@@ -6,6 +6,8 @@ import java.util.BitSet;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ScreenMaskMesherTest {
     @Test void giantSolidScreenIsOneQuad() {
@@ -21,5 +23,31 @@ class ScreenMaskMesherTest {
         assertEquals(3,values.size());
         assertEquals(6,values.stream().mapToInt(value->value.width()*value.height()).sum());
         assertEquals(6,mask.cardinality());
+        assertExactCoverage(4,3,mask,values);
+    }
+
+    @Test void lShapeAndEnclosedHoleKeepExactCellsWithoutOverdraw() {
+        BitSet lShape = new BitSet(9);
+        for (int cell : new int[]{0,3,6,7,8}) lShape.set(cell);
+        assertExactCoverage(3,3,lShape,ScreenMaskMesher.mesh(3,3,lShape.toByteArray()));
+        BitSet hole = new BitSet(25);
+        hole.set(0,25); hole.clear(12);
+        assertExactCoverage(5,5,hole,ScreenMaskMesher.mesh(5,5,hole.toByteArray()));
+    }
+
+    private void assertExactCoverage(int width,int height,BitSet expected,List<ScreenMaskMesher.Rectangle> rectangles) {
+        BitSet actual = new BitSet(width*height);
+        for (ScreenMaskMesher.Rectangle rectangle : rectangles) {
+            assertTrue(rectangle.width()>0 && rectangle.height()>0);
+            assertTrue(rectangle.x()>=0 && rectangle.y()>=0
+                    && rectangle.x()+rectangle.width()<=width && rectangle.y()+rectangle.height()<=height);
+            for(int y=rectangle.y();y<rectangle.y()+rectangle.height();y++)
+                for(int x=rectangle.x();x<rectangle.x()+rectangle.width();x++) {
+                    int cell=y*width+x;
+                    assertFalse(actual.get(cell),"A visible block must not be drawn twice");
+                    actual.set(cell);
+                }
+        }
+        assertEquals(expected,actual,"Meshing must not move pixels or fill holes");
     }
 }

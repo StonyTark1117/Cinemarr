@@ -35,4 +35,38 @@ class BlockRasterizerTest {
         assertNotSame(source,BlockRasterizer.render(source,2,2,2,2,PresentationMode.STRETCH,source));
         assertThrows(IllegalArgumentException.class,()->BlockRasterizer.render(source,2,2,Integer.MAX_VALUE,2048,PresentationMode.FIT,null));
     }
+
+    @Test void nonSquareAndLineScreensHaveIndependentGoldenColors() {
+        // Hand-calculated from the four source corners, not PresentationTransform.
+        // Rows are width, height, x, y, and expected RGB. Check aspect bars,
+        // odd centers, extreme aspect ratios and both one-cell orientations.
+        golden(PresentationMode.FIT, new int[][] {
+                {16,9,0,4,0,0,0}, {16,9,7,4,128,99,128},
+                {17,11,2,5,0,0,0}, {17,11,3,5,128,0,128},
+                {17,11,8,5,128,128,128}, {17,11,13,5,128,255,128},
+                {2000,20,989,0,0,0,0}, {2000,20,990,0,255,0,0},
+                {2000,20,1000,10,129,140,140},
+                {1,17,0,7,0,0,0}, {1,17,0,8,128,128,128},
+                {17,1,7,0,0,0,0}, {17,1,8,0,128,128,128}});
+        golden(PresentationMode.FILL, new int[][] {
+                {16,9,7,4,128,112,128}, {17,11,8,5,128,128,128},
+                {2000,20,0,0,130,0,125}, {2000,20,1999,19,130,255,130},
+                {1,2048,0,0,128,128,0}, {1,2048,0,2047,128,128,255},
+                {2048,1,0,0,128,0,128}, {2048,1,2047,0,128,255,128}});
+        golden(PresentationMode.STRETCH, new int[][] {
+                {16,9,7,4,128,112,128}, {17,11,8,5,128,128,128},
+                {2000,20,999,9,128,127,115}, {2000,20,1000,10,128,128,140},
+                {1,2048,0,0,128,128,0}, {1,2048,0,2047,128,128,255},
+                {2048,1,0,0,128,0,128}, {2048,1,2047,0,128,255,128}});
+    }
+
+    private void golden(PresentationMode mode, int[][] cases) {
+        for (int[] value : cases) {
+            byte[] raster = BlockRasterizer.render(corners(),2,2,value[0],value[1],mode,null);
+            int offset = (value[3]*value[0]+value[2])*4;
+            assertArrayEquals(new byte[]{(byte)value[4],(byte)value[5],(byte)value[6],(byte)255},
+                    java.util.Arrays.copyOfRange(raster,offset,offset+4),
+                    mode+" "+java.util.Arrays.toString(value));
+        }
+    }
 }
