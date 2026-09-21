@@ -13,6 +13,34 @@ import static org.junit.jupiter.api.Assertions.*;
 class CinemarrVideoAudioIdentityTest {
     private final VideoStreamIdentity identity = new VideoStreamIdentity(UUID.randomUUID(), 4, UUID.randomUUID(), 9);
 
+    @Test void nativeEngineDestructionAfterResourceCallbackInvalidatesEveryOldChannelAttempt() throws Exception {
+        CinemarrVideoAudio[] players = {new CinemarrVideoAudio(), new CinemarrVideoAudio(), new CinemarrVideoAudio()};
+        long[] attempts = new long[players.length];
+        for (int i = 0; i < players.length; i++) {
+            CinemarrVideoAudio audio = players[i];
+            bind(audio, identity);
+            audio.audioEngineReloaded(); // An early Fabric resource callback.
+            pending(audio).add(new DecodedAudioFrame(100_000, 48_000, 2, new byte[8]));
+            set(audio, "underruns", 3); set(audio, "channelPending", true);
+            attempts[i] = (Long) get(audio, "channelAttempt");
+        }
+        stonytark.cinemarr.core.client.AudioEngineGeneration.destroying();
+        var observe = CinemarrVideoAudio.class.getDeclaredMethod("observeAudioEngineGeneration");
+        observe.setAccessible(true);
+        for (int i = 0; i < players.length; i++) {
+            CinemarrVideoAudio audio = players[i];
+            observe.invoke(audio);
+            assertFalse((Boolean) get(audio, "channelPending"));
+            assertTrue((Long) get(audio, "channelAttempt") > attempts[i]);
+            assertEquals(identity, get(audio, "identity"));
+            assertEquals(1, pending(audio).size());
+            assertEquals(3, audio.underruns(), "Native reload must preserve prior failure evidence");
+            long settledAttempt = (Long) get(audio, "channelAttempt");
+            observe.invoke(audio);
+            assertEquals(settledAttempt, get(audio, "channelAttempt"), "Stable engine must not reset channels repeatedly");
+        }
+    }
+
     @Test void anyIdentityChangeDiscardsPendingAudioAndInvalidatesDelayedChannelCreation() throws Exception {
         VideoStreamIdentity[] replacements = {
                 new VideoStreamIdentity(UUID.randomUUID(), 4, identity.streamId(), 9),

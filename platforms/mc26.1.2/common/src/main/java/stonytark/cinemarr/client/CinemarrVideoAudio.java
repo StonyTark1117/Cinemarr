@@ -67,10 +67,12 @@ public final class CinemarrVideoAudio {
     private volatile boolean physicalTimelineProbeQueued;
     private long lastAcceptanceLogMs;
     private boolean acceptanceSetupStallInjected;
+    private long audioEngineGeneration = stonytark.cinemarr.core.client.AudioEngineGeneration.current();
 
     public void tick(CinemarrVideoPlayback playback, VideoPackets.SessionState session) {
         if (session == null || session.item() == null || session.status() == VideoPackets.SessionStatus.IDLE) { reset(); return; }
         bindIdentity(session.identity());
+        observeAudioEngineGeneration();
         long targetUs = CinemarrVideoPlayback.authoritativePositionMsLocal(session) * 1_000L;
         boolean acceptMore = pending.size() < MAX_PENDING_FRAMES;
         if (stream != null) {
@@ -438,7 +440,17 @@ public final class CinemarrVideoAudio {
 
     public int underruns() { return underruns; }
     public boolean ready() { return stream != null && channel != null && !channel.isStopped() && stableTicks >= READY_STABLE_TICKS; }
-    public void audioEngineReloaded() { resetChannel(); }
+    private void observeAudioEngineGeneration() {
+        if (audioEngineGeneration != stonytark.cinemarr.core.client.AudioEngineGeneration.current())
+            audioEngineReloaded();
+    }
+    public void audioEngineReloaded() {
+        // A resource listener may run before SoundEngine destroys its channels.
+        // Observe the native lifetime before checking stopped/underflow state.
+        // Preserve genuine underruns and pending program data across the reload.
+        resetChannel();
+        audioEngineGeneration = stonytark.cinemarr.core.client.AudioEngineGeneration.current();
+    }
     public void reset() { resetChannel(); pending.clear(); identity=null; underruns=0;caughtUpTicks=0;lastAcceptanceLogMs=0; }
     private void resetChannel() {
         channelAttempt++;

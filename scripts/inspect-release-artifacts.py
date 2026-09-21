@@ -443,6 +443,8 @@ def verify_jar(path: Path, minecraft: str, loader: str, java: int, expected_majo
                 "stonytark/cinemarr/client/FfmpegVideoDecoder.class",
                 "stonytark/cinemarr/client/FfmpegHardwareVideoDecoder.class",
                 "stonytark/cinemarr/mixin/client/ChannelAccessor.class",
+                "stonytark/cinemarr/mixin/client/SoundEngineLifecycleMixin.class",
+                "stonytark/cinemarr/core/client/AudioEngineGeneration.class",
             }
             if required_modern - names:
                 fail(f"{filename} is missing modern runtime entries: {sorted(required_modern - names)}")
@@ -451,6 +453,8 @@ def verify_jar(path: Path, minecraft: str, loader: str, java: int, expected_majo
             mixin = json.loads(archive.read("cinemarr.mixins.json"))
             if "client.ChannelAccessor" not in mixin.get("client", []):
                 fail(f"{filename} does not register the synchronized audio Channel accessor")
+            if "client.SoundEngineLifecycleMixin" not in mixin.get("client", []):
+                fail(f"{filename} does not register native sound-engine lifetime tracking")
             # Forge 26.1.2 still embeds Mixin 0.8.7, whose highest declared
             # compatibility constant is JAVA_21. The classes themselves are
             # independently required to be Java 25 bytecode above.
