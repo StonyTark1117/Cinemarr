@@ -285,6 +285,9 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
             for (int y = 100; y <= 109; y++) world.setBlockToAir(x, y, z);
         }
         if (ProtocolLimits.displayProbeEnabled() && "CinemarrVideoA".equals(player.getCommandSenderName())) {
+            for (int x = -9; x <= 9; x++) for (int z = 1; z <= 14; z++) for (int y = 110; y <= 118; y++) {
+                if (!stonytark.cinemarr.core.video.DisplayAcceptance.sceneTvBlock(x, y, z)) world.setBlockToAir(x, y, z);
+            }
             for (int index = 0; index < 2; index++) {
                 int x = index == 0 ? -7 : 4;
                 long customController = LegacyBlockPos.pack(x, 110, 3);

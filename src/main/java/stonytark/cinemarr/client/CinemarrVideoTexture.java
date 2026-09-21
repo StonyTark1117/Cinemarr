@@ -14,6 +14,26 @@ public final class CinemarrVideoTexture implements AutoCloseable {
     private static final java.util.concurrent.atomic.AtomicLong IDS=new java.util.concurrent.atomic.AtomicLong();
     private final ResourceLocation location=VideoResourceLocations.create(Cinemarr.MODID,"dynamic/video_frame_"+Long.toUnsignedString(IDS.incrementAndGet(),36));
     private DynamicTexture texture;
+    private net.minecraft.client.renderer.RenderType pixelRenderType;
+    public net.minecraft.client.renderer.RenderType pixelRenderType() {
+        if (pixelRenderType == null) pixelRenderType = PixelRenderType.forTexture(location);
+        return pixelRenderType;
+    }
+    /** The beacon shader preserves vertex colors without directional entity lighting. */
+    private abstract static class PixelRenderType extends net.minecraft.client.renderer.RenderType {
+        private PixelRenderType() {
+            super("cinemarr_block_video", com.mojang.blaze3d.vertex.DefaultVertexFormat.BLOCK,
+                    com.mojang.blaze3d.vertex.VertexFormat.Mode.QUADS, 1536, false, false, () -> {}, () -> {});
+        }
+        static net.minecraft.client.renderer.RenderType forTexture(ResourceLocation texture) {
+            return create("cinemarr_block_video", com.mojang.blaze3d.vertex.DefaultVertexFormat.BLOCK,
+                    com.mojang.blaze3d.vertex.VertexFormat.Mode.QUADS, 1536, false, false,
+                    CompositeState.builder().setShaderState(RENDERTYPE_BEACON_BEAM_SHADER)
+                            .setTextureState(new TextureStateShard(texture, false, false))
+                            .setTransparencyState(NO_TRANSPARENCY).setCullState(NO_CULL)
+                            .setWriteMaskState(COLOR_DEPTH_WRITE).createCompositeState(false));
+        }
+    }
     private byte[] source;
     private final stonytark.cinemarr.core.video.PresentedFrame presented = new stonytark.cinemarr.core.video.PresentedFrame();
     private long frameRevision;
@@ -81,7 +101,7 @@ public final class CinemarrVideoTexture implements AutoCloseable {
     public ResourceLocation location(){return location;}
 
     @Override public void close() {
-        for(Derived value:derived.values())value.texture.close();derived.clear();source=null;presented.clear();
+        for(Derived value:derived.values())value.texture.close();derived.clear();source=null;presented.clear();pixelRenderType=null;
         if (texture != null) {
             Minecraft.getInstance().getTextureManager().release(location);
             texture = null;

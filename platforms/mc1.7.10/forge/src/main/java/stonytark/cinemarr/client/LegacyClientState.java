@@ -239,8 +239,10 @@ final class LegacyClientState implements LegacyNetwork.ClientListener {
             Cinemarr.LOGGER.info("Acceptance browse pressure sent: query={}", query);
             return;
         }
-        if (ProtocolLimits.displayProbeEnabled() && "video:open-display-controller".equals(operation)) {
-            state = stonytark.cinemarr.core.video.DisplayAcceptance.custom(LegacyVideoClientState.INSTANCE.televisions(), 0);
+        if (ProtocolLimits.displayProbeEnabled() && ("video:open-display-controller".equals(operation)
+                || "video:open-second-display-controller".equals(operation))) {
+            state = stonytark.cinemarr.core.video.DisplayAcceptance.custom(LegacyVideoClientState.INSTANCE.televisions(),
+                    "video:open-second-display-controller".equals(operation) ? 1 : 0);
             operation = "video:open-ui";
         }
         if ("video:open-ui".equals(operation)) {

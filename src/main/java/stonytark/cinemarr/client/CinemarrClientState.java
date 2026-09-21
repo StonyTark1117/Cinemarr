@@ -206,8 +206,10 @@ public final class CinemarrClientState {
             Cinemarr.LOGGER.info("Acceptance browse pressure sent: query={}", query);
             return;
         }
-        if (ProtocolLimits.displayProbeEnabled() && "video:open-display-controller".equals(operation)) {
-            state = stonytark.cinemarr.core.video.DisplayAcceptance.custom(CinemarrVideoClientState.INSTANCE.televisions(), 0);
+        if (ProtocolLimits.displayProbeEnabled() && ("video:open-display-controller".equals(operation)
+                || "video:open-second-display-controller".equals(operation))) {
+            state = stonytark.cinemarr.core.video.DisplayAcceptance.custom(CinemarrVideoClientState.INSTANCE.televisions(),
+                    "video:open-second-display-controller".equals(operation) ? 1 : 0);
             operation = "video:open-ui";
         }
         if ("video:open-ui".equals(operation)) {

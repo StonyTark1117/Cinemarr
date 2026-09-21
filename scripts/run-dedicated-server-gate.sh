@@ -88,6 +88,13 @@ video_adverse_network_gate=${CINEMARR_VIDEO_ADVERSE_NETWORK_GATE:-false}
 video_follower_first_gate=${CINEMARR_VIDEO_FOLLOWER_FIRST_GATE:-false}
 external_video_client_gate=${CINEMARR_EXTERNAL_VIDEO_CLIENT_GATE:-false}
 live_plex_gate=${CINEMARR_LIVE_PLEX_GATE:-false}
+video_capacity_gate=${CINEMARR_VIDEO_CAPACITY_GATE:-false}
+if [[ "$video_capacity_gate" != true && "$video_capacity_gate" != false ]]; then
+  echo 'CINEMARR_VIDEO_CAPACITY_GATE must be true or false' >&2; exit 2
+fi
+if [[ "$video_capacity_gate" == true && ( "$video_display_gate" != true || "$live_plex_gate" == true ) ]]; then
+  echo 'Capacity acceptance requires display acceptance and the controlled fake Plex service' >&2; exit 2
+fi
 if [[ "$video_pressure_gate" != true && "$video_pressure_gate" != false ]]; then
   echo 'CINEMARR_VIDEO_PRESSURE_GATE must be true or false' >&2; exit 2
 fi
@@ -2290,9 +2297,16 @@ run_two_client_video() {
   fi
 
   if (( result == 0 )) && [[ "$video_display_gate" == true ]]; then
-    python3 "$repo_root/scripts/observe-video-display.py" \
-      --leader-log "$leader_log" --follower-log "$follower_log" --gate-pid "$$" \
-      --output "$output_root/$label.video-display" || result=1
+    if [[ "$video_capacity_gate" == true ]]; then
+      python3 "$repo_root/scripts/observe-video-capacity.py" \
+        --leader-log "$leader_log" --follower-log "$follower_log" --gate-pid "$$" \
+        --fault-state "$fake_plex_state" --request-log "$fake_plex_request_log" \
+        --output "$output_root/$label.video-capacity" || result=1
+    else
+      python3 "$repo_root/scripts/observe-video-display.py" \
+        --leader-log "$leader_log" --follower-log "$follower_log" --gate-pid "$$" \
+        --output "$output_root/$label.video-display" || result=1
+    fi
     if (( result == 0 )); then
       wait_for_video_audio_pair_stable "$label" "$leader_pid" "$follower_pid" || result=1
     fi
@@ -2525,6 +2539,8 @@ install_fake_plex_config() {
   local label=$2
   local level_name=$3
   local fake_plex_port=$4
+  local stream_cap=4
+  if [[ "$video_capacity_gate" == true ]]; then stream_cap=2; fi
   active_config="$run_dir/$level_name/serverconfig/cinemarr-server.toml"
   active_config_backup=$(mktemp "$output_root/$label.config.XXXXXX")
   active_config_existed=0
@@ -2550,6 +2566,7 @@ install_fake_plex_config() {
       'quickTvBuildMode = "bounded"' \
       'maximumVideoWidth = 3840' \
       'maximumVideoHeight = 2160' \
+      "maximumConcurrentStreams = $stream_cap" \
       'maximumVideoBitrateKbps = 20000' > "$active_config"
     printf '%s\n' \
       '# Generated temporarily by the credentialed Cinemarr live-Plex gate.' \
@@ -2570,6 +2587,7 @@ install_fake_plex_config() {
       'quickTvBuildMode = "bounded"' \
       'maximumVideoWidth = 3840' \
       'maximumVideoHeight = 2160' \
+      "maximumConcurrentStreams = $stream_cap" \
       'maximumVideoBitrateKbps = 20000' > "$active_config"
     printf '%s\n' \
       '# Generated temporarily by the Cinemarr dedicated-server gate.' \

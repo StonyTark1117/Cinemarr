@@ -39,6 +39,7 @@ jobs:
           python3 scripts/test-video-terminal.py
           python3 scripts/test-video-display.py
           python3 scripts/test-block-raster-capture.py
+          python3 scripts/test-video-capacity.py
           python3 scripts/test-legacy-world-change.py
           python3 scripts/test-video-browse-pressure.py
           python3 scripts/test-video-segment-pressure.py
@@ -175,6 +176,15 @@ jobs:
           CINEMARR_VIDEO_CLIENT_GATE: 'true'
           CINEMARR_VIDEO_DISPLAY_GATE: 'true'
         run: bash scripts/run-dedicated-server-gate.sh ${{ matrix.runtime }}
+      - name: Validate TV stream capacity and replacement failure
+        if: ${{ contains(fromJSON('["1.7.10-forge", "1.21.1-neoforge", "26.1.2-fabric", "26.2-fabric"]'), matrix.runtime) }}
+        env:
+          CINEMARR_ALSA_PCM_TYPE: pulse
+          CINEMARR_GATE_OUTPUT_ROOT: ${{ github.workspace }}/build/video-capacity-gate
+          CINEMARR_VIDEO_CLIENT_GATE: 'true'
+          CINEMARR_VIDEO_DISPLAY_GATE: 'true'
+          CINEMARR_VIDEO_CAPACITY_GATE: 'true'
+        run: bash scripts/run-dedicated-server-gate.sh ${{ matrix.runtime }}
       - name: Validate Quilt independent-TV display streams
         if: ${{ matrix.quilt != '' }}
         env:
@@ -304,6 +314,11 @@ jobs:
             build/video-display-gate/**/*.png
             build/video-display-gate/**/*.s16le
             build/video-display-gate/**/*.rgba
+            build/video-capacity-gate/**/*.log
+            build/video-capacity-gate/**/*.txt
+            build/video-capacity-gate/**/*.json
+            build/video-capacity-gate/**/*.png
+            build/video-capacity-gate/**/*.s16le
             build/gametest-gate.log
 
   release-gate:

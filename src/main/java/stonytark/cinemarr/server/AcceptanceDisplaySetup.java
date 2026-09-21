@@ -18,6 +18,12 @@ public final class AcceptanceDisplaySetup {
         CinemarrWorldScreens screens = CinemarrWorldScreens.get(level);
         CinemarrWorldScreens.Television quick = screens.television(new BlockPos(-1, 100, -1));
         if (quick == null || !quick.owner().equals(player.getUUID())) return;
+        // Generated hills and tree canopies must not occlude the upper TVs.
+        // Preserve their blocks on reconnect so clearing cannot unregister them.
+        for (int x = -9; x <= 9; x++) for (int z = 1; z <= 14; z++) for (int y = 110; y <= 118; y++) {
+            if (!DisplayAcceptance.sceneTvBlock(x, y, z))
+                level.setBlockAndUpdate(new BlockPos(x, y, z), net.minecraft.world.level.block.Blocks.AIR.defaultBlockState());
+        }
         for (int index = 0; index < 2; index++) {
             int x = index == 0 ? -7 : 4;
             BlockPos controller = new BlockPos(x, 110, 3);

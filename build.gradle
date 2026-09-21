@@ -658,7 +658,13 @@ tasks.register('verifyVideoDisplayEvidence', Exec) {
     group = 'verification'
     description = 'Rejects mixed identities, stale settings and sibling stream restarts in display acceptance.'
     commandLine 'python3', 'scripts/test-video-display.py'
-    dependsOn 'verifyBlockRasterCapture'
+    dependsOn 'verifyBlockRasterCapture', 'verifyVideoCapacityEvidence'
+}
+
+tasks.register('verifyVideoCapacityEvidence', Exec) {
+    group = 'verification'
+    description = 'Checks capacity evidence identities and isolated replacement-failure injection.'
+    commandLine 'python3', 'scripts/test-video-capacity.py'
 }
 
 tasks.register('verifyBlockRasterCapture', Exec) {
@@ -798,7 +804,8 @@ tasks.register('releaseMatrixGate') {
     group = 'verification'
     description = 'Builds and inspects all 16 artifacts, runs GameTests, all 21 runtimes and required supplements; direct review and remote CI remain separate.'
     dependsOn('inspectReleaseArtifacts', verifyGameTests, 'verifyRuntimeMatrix',
-            'verifyQuiltModMenuRuntimes', 'verifyFabricLoaderMinimumRuntimes', 'verifyVideoDisplayRuntimes')
+            'verifyQuiltModMenuRuntimes', 'verifyFabricLoaderMinimumRuntimes', 'verifyVideoDisplayRuntimes',
+            'verifyVideoCapacityRuntimes')
 }
 
 tasks.register('inspectReleaseArtifacts', Exec) {
@@ -831,6 +838,30 @@ tasks.register('verifyVideoDisplayRuntimes', Exec) {
     environment('CINEMARR_VIDEO_CLIENT_GATE', 'true')
     environment('CINEMARR_VIDEO_DISPLAY_GATE', 'true')
     commandLine('bash', 'scripts/run-dedicated-server-gate.sh', 'all')
+}
+
+def capacityProfiles = ['1.7.10-forge', '1.21.1-neoforge', '26.1.2-fabric', '26.2-fabric']
+def capacityRuntimeGates = capacityProfiles.withIndex().collect { profile, index ->
+    tasks.register("verifyVideoCapacityRuntime${index}", Exec) {
+        group = 'verification'
+        description = "Exercises bounded admission, queue cancellation and failed TV replacement on ${profile}."
+        workingDir(layout.projectDirectory)
+        environment('CINEMARR_GATE_OUTPUT_ROOT', layout.buildDirectory.dir("video-capacity-gate/${profile}").get().asFile.absolutePath)
+        environment('CINEMARR_ALSA_PCM_TYPE', 'pulse')
+        environment('CINEMARR_VIDEO_CLIENT_GATE', 'true')
+        environment('CINEMARR_VIDEO_DISPLAY_GATE', 'true')
+        environment('CINEMARR_VIDEO_CAPACITY_GATE', 'true')
+        mustRunAfter('inspectReleaseArtifacts', 'verifyVideoDisplayRuntimes')
+        commandLine('bash', 'scripts/run-dedicated-server-gate.sh', profile)
+    }
+}
+capacityRuntimeGates.eachWithIndex { gate, index ->
+    if (index > 0) gate.configure { mustRunAfter(capacityRuntimeGates[index - 1]) }
+}
+tasks.register('verifyVideoCapacityRuntimes') {
+    group = 'verification'
+    description = 'Runs TV capacity and failure supplements across every rendering adapter boundary, serially.'
+    dependsOn(capacityRuntimeGates)
 }
 
 tasks.register('verifyRuntimeMatrix', Exec) {

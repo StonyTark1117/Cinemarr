@@ -38,7 +38,9 @@ public final class CinemarrVideoRenderer {
             CinemarrVideoPlayback pipeline=playback.pipeline(new CinemarrVideoClientState.StreamKey(state.identity()));
             if(pipeline==null||!pipeline.texture().ready())continue;visible.add(state.televisionId());
             CinemarrVideoTexture displayTexture=pipeline.texture().forDisplay(state);MeshCache mesh=updateMesh(state);PresentationTransform transform=PresentationTransform.create(displayTexture.width(),displayTexture.height(),state.screenWidth(),state.screenHeight(),state.displaySettings().mapping()==stonytark.cinemarr.core.video.PixelMapping.ONE_PIXEL_PER_BLOCK?stonytark.cinemarr.core.video.PresentationMode.STRETCH:state.presentationMode());
-            RenderType type=RenderTypes.entityCutout(displayTexture.location());
+            RenderType type=state.displaySettings().mapping()==stonytark.cinemarr.core.video.PixelMapping.ONE_PIXEL_PER_BLOCK
+                    ? displayTexture.pixelRenderType()
+                    : RenderTypes.entityCutout(displayTexture.location());
             int sourceWidth=displayTexture.width(),sourceHeight=displayTexture.height();
             submits.submitCustomGeometry(pose,type,(entry,vertices)->{
                 Matrix4f matrix=entry.pose();

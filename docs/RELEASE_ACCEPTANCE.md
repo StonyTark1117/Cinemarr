@@ -188,3 +188,26 @@ separate requirement, even when the health check succeeds.
 All previous acceptance narratives, failures, commands and receipt references
 remain verbatim in [the September 10 acceptance archive](RELEASE_ACCEPTANCE_CHECKPOINTS_20260910.md).
 Earlier history is retained in [hardening evidence history](HARDENING_EVIDENCE_HISTORY.md).
+
+The display-capacity supplement runs with a controlled two-TV-stream limit and
+three registered TVs. It verifies queued quality edits do not reserve duplicate
+work, freeing a slot admits the waiting TV at the current timeline, retuning
+cancels a queued request, and a rejected replacement preserves its working
+stream and healthy sibling. An explicit later quality change recovers the
+failed replacement. It retains original waiting/error controller captures and
+requires the enclosing physical-audio and normal-shutdown checks.
+
+Run it on the legacy, NeoForge 1.21.1, Fabric 26.1.2 and Fabric 26.2 boundaries:
+
+```sh
+CINEMARR_VIDEO_CLIENT_GATE=true CINEMARR_VIDEO_DISPLAY_GATE=true \
+CINEMARR_VIDEO_CAPACITY_GATE=true CINEMARR_ALSA_PCM_TYPE=pulse \
+CINEMARR_GATE_OUTPUT_ROOT=build/video-capacity-development \
+bash scripts/run-dedicated-server-gate.sh 1.21.1-neoforge
+```
+
+Use a fresh output directory for each attempt. `verifyVideoCapacityRuntimes`
+runs the four representatives serially and is required by `releaseMatrixGate`.
+CI runs the same supplement for those artifact representatives. The injected
+failure rejects only new fake-Plex starts: existing segment delivery and stop
+remain available. This supplement is deliberately unavailable for real Plex.

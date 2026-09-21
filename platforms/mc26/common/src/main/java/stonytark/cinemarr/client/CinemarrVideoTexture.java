@@ -14,6 +14,17 @@ public final class CinemarrVideoTexture implements AutoCloseable {
     private static final java.util.concurrent.atomic.AtomicLong IDS=new java.util.concurrent.atomic.AtomicLong();
     private final Identifier location=VideoIdentifiers.create(Cinemarr.MODID,"dynamic/video_frame_"+Long.toUnsignedString(IDS.incrementAndGet(),36));
     private DynamicTexture texture;
+    private static final com.mojang.blaze3d.pipeline.RenderPipeline PIXEL_PIPELINE =
+            com.mojang.blaze3d.pipeline.RenderPipeline.builder(net.minecraft.client.renderer.RenderPipelines.BEACON_BEAM_SNIPPET)
+                    .withLocation(VideoIdentifiers.create(Cinemarr.MODID, "pipeline/block_video"))
+                    .withCull(false).build();
+    private net.minecraft.client.renderer.rendertype.RenderType pixelRenderType;
+    public net.minecraft.client.renderer.rendertype.RenderType pixelRenderType() {
+        if (pixelRenderType == null) pixelRenderType = net.minecraft.client.renderer.rendertype.RenderType.create(
+                "cinemarr_block_video", net.minecraft.client.renderer.rendertype.RenderSetup.builder(PIXEL_PIPELINE)
+                        .withTexture("Sampler0", location).createRenderSetup());
+        return pixelRenderType;
+    }
     private byte[] source;
     private final stonytark.cinemarr.core.video.PresentedFrame presented = new stonytark.cinemarr.core.video.PresentedFrame();
     private long frameRevision;
@@ -80,7 +91,7 @@ public final class CinemarrVideoTexture implements AutoCloseable {
     public Identifier location(){return location;}
 
     @Override public void close() {
-        for(Derived value:derived.values())value.texture.close();derived.clear();source=null;presented.clear();
+        for(Derived value:derived.values())value.texture.close();derived.clear();source=null;presented.clear();pixelRenderType=null;
         if (texture != null) {
             Minecraft.getInstance().getTextureManager().release(location);
             texture = null;
