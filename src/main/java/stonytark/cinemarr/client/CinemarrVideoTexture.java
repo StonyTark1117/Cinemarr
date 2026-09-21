@@ -14,16 +14,30 @@ public final class CinemarrVideoTexture implements AutoCloseable {
     private static final java.util.concurrent.atomic.AtomicLong IDS=new java.util.concurrent.atomic.AtomicLong();
     private final ResourceLocation location=VideoResourceLocations.create(Cinemarr.MODID,"dynamic/video_frame_"+Long.toUnsignedString(IDS.incrementAndGet(),36));
     private DynamicTexture texture;
-    private net.minecraft.client.renderer.RenderType pixelRenderType;
+    private net.minecraft.client.renderer.RenderType pixelRenderType, detailedRenderType;
+    public net.minecraft.client.renderer.RenderType detailedRenderType() {
+        if (detailedRenderType == null) detailedRenderType = OwnedRenderType.detailed(location);
+        return detailedRenderType;
+    }
     public net.minecraft.client.renderer.RenderType pixelRenderType() {
-        if (pixelRenderType == null) pixelRenderType = PixelRenderType.forTexture(location);
+        if (pixelRenderType == null) pixelRenderType = OwnedRenderType.forTexture(location);
         return pixelRenderType;
     }
     /** The beacon shader preserves vertex colors without directional entity lighting. */
-    private abstract static class PixelRenderType extends net.minecraft.client.renderer.RenderType {
-        private PixelRenderType() {
+    private abstract static class OwnedRenderType extends net.minecraft.client.renderer.RenderType {
+        private OwnedRenderType() {
             super("cinemarr_block_video", com.mojang.blaze3d.vertex.DefaultVertexFormat.BLOCK,
                     com.mojang.blaze3d.vertex.VertexFormat.Mode.QUADS, 1536, false, false, () -> {}, () -> {});
+        }
+        static net.minecraft.client.renderer.RenderType detailed(ResourceLocation texture) {
+            // Match entityCutoutNoCull without its process-lifetime texture cache
+            // or unused entity-outline cache. A TV is drawn as world geometry.
+            return create("cinemarr_video_detailed", com.mojang.blaze3d.vertex.DefaultVertexFormat.NEW_ENTITY,
+                    com.mojang.blaze3d.vertex.VertexFormat.Mode.QUADS, 1536, true, false,
+                    CompositeState.builder().setShaderState(RENDERTYPE_ENTITY_CUTOUT_NO_CULL_SHADER)
+                            .setTextureState(new TextureStateShard(texture, false, false))
+                            .setTransparencyState(NO_TRANSPARENCY).setCullState(NO_CULL)
+                            .setLightmapState(LIGHTMAP).setOverlayState(OVERLAY).createCompositeState(false));
         }
         static net.minecraft.client.renderer.RenderType forTexture(ResourceLocation texture) {
             return create("cinemarr_block_video", com.mojang.blaze3d.vertex.DefaultVertexFormat.BLOCK,
@@ -101,7 +115,7 @@ public final class CinemarrVideoTexture implements AutoCloseable {
     public ResourceLocation location(){return location;}
 
     @Override public void close() {
-        for(Derived value:derived.values())value.texture.close();derived.clear();source=null;presented.clear();pixelRenderType=null;
+        for(Derived value:derived.values())value.texture.close();derived.clear();source=null;presented.clear();pixelRenderType=null;detailedRenderType=null;
         if (texture != null) {
             Minecraft.getInstance().getTextureManager().release(location);
             texture = null;

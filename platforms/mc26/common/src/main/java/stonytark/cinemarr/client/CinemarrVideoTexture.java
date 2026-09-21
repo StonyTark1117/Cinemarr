@@ -18,7 +18,16 @@ public final class CinemarrVideoTexture implements AutoCloseable {
             com.mojang.blaze3d.pipeline.RenderPipeline.builder(net.minecraft.client.renderer.RenderPipelines.BEACON_BEAM_SNIPPET)
                     .withLocation(VideoIdentifiers.create(Cinemarr.MODID, "pipeline/block_video"))
                     .withCull(false).build();
-    private net.minecraft.client.renderer.rendertype.RenderType pixelRenderType;
+    private net.minecraft.client.renderer.rendertype.RenderType pixelRenderType, detailedRenderType;
+    public net.minecraft.client.renderer.rendertype.RenderType detailedRenderType() {
+        // Keep the existing entity pipeline, but own this dynamic texture's
+        // render type instead of entering Minecraft's permanent memoized map.
+        if (detailedRenderType == null) detailedRenderType = net.minecraft.client.renderer.rendertype.RenderType.create(
+                "cinemarr_video_detailed", net.minecraft.client.renderer.rendertype.RenderSetup
+                        .builder(net.minecraft.client.renderer.RenderPipelines.ENTITY_CUTOUT)
+                        .withTexture("Sampler0", location).useLightmap().useOverlay().affectsCrumbling().createRenderSetup());
+        return detailedRenderType;
+    }
     public net.minecraft.client.renderer.rendertype.RenderType pixelRenderType() {
         if (pixelRenderType == null) pixelRenderType = net.minecraft.client.renderer.rendertype.RenderType.create(
                 "cinemarr_block_video", net.minecraft.client.renderer.rendertype.RenderSetup.builder(PIXEL_PIPELINE)
@@ -91,7 +100,7 @@ public final class CinemarrVideoTexture implements AutoCloseable {
     public Identifier location(){return location;}
 
     @Override public void close() {
-        for(Derived value:derived.values())value.texture.close();derived.clear();source=null;presented.clear();pixelRenderType=null;
+        for(Derived value:derived.values())value.texture.close();derived.clear();source=null;presented.clear();pixelRenderType=null;detailedRenderType=null;
         if (texture != null) {
             Minecraft.getInstance().getTextureManager().release(location);
             texture = null;

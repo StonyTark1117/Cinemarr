@@ -5,7 +5,6 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.rendertype.RenderType;
-import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import stonytark.cinemarr.Cinemarr;
@@ -51,7 +50,7 @@ public final class CinemarrVideoRenderer {
             CinemarrVideoTexture displayTexture=pipeline.texture().forDisplay(state);MeshCache mesh=updateMesh(state);PresentationTransform transform=PresentationTransform.create(displayTexture.width(),displayTexture.height(),state.screenWidth(),state.screenHeight(),state.displaySettings().mapping()==stonytark.cinemarr.core.video.PixelMapping.ONE_PIXEL_PER_BLOCK?stonytark.cinemarr.core.video.PresentationMode.STRETCH:state.presentationMode());
             RenderType type=state.displaySettings().mapping()==stonytark.cinemarr.core.video.PixelMapping.ONE_PIXEL_PER_BLOCK
                     ? displayTexture.pixelRenderType()
-                    : RenderTypes.entityCutout(displayTexture.location());used.add(type);VertexConsumer vertices=buffers.getBuffer(type);
+                    : displayTexture.detailedRenderType();used.add(type);VertexConsumer vertices=buffers.getBuffer(type);
             for(ScreenMaskMesher.Rectangle rectangle:mesh.rectangles)draw(vertices,matrix,state,rectangle,transform,displayTexture.width(),displayTexture.height());
             if(ProtocolLimits.videoProbeEnabled()&&!(pipeline.lastFrameSha256()+":"+state.displaySettings().revision()).equals(acceptanceFrames.put(state.televisionId(),pipeline.lastFrameSha256()+":"+state.displaySettings().revision())))Cinemarr.LOGGER.info(
                     "Acceptance video rendered: television={} frameSha256={} ptsUs={} rectangles={} revision={} raster={}x{} decoded={}x{}",state.televisionId(),pipeline.lastFrameSha256(),pipeline.lastPresentedUs(),mesh.rectangles.size(),state.displaySettings().revision(),displayTexture.width(),displayTexture.height(),pipeline.texture().width(),pipeline.texture().height());

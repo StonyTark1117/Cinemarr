@@ -4,7 +4,6 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.rendertype.RenderType;
-import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import stonytark.cinemarr.Cinemarr;
@@ -40,7 +39,7 @@ public final class CinemarrVideoRenderer {
             CinemarrVideoTexture displayTexture=pipeline.texture().forDisplay(state);MeshCache mesh=updateMesh(state);PresentationTransform transform=PresentationTransform.create(displayTexture.width(),displayTexture.height(),state.screenWidth(),state.screenHeight(),state.displaySettings().mapping()==stonytark.cinemarr.core.video.PixelMapping.ONE_PIXEL_PER_BLOCK?stonytark.cinemarr.core.video.PresentationMode.STRETCH:state.presentationMode());
             RenderType type=state.displaySettings().mapping()==stonytark.cinemarr.core.video.PixelMapping.ONE_PIXEL_PER_BLOCK
                     ? displayTexture.pixelRenderType()
-                    : RenderTypes.entityCutout(displayTexture.location());
+                    : displayTexture.detailedRenderType();
             int sourceWidth=displayTexture.width(),sourceHeight=displayTexture.height();
             submits.submitCustomGeometry(pose,type,(entry,vertices)->{
                 Matrix4f matrix=entry.pose();
