@@ -83,7 +83,11 @@ final class Mc26DisplaySettingsScreen extends Screen implements DisplaySettingsF
                     current.selectedAudioStreamId(), current.selectedSubtitleStreamId()).withDisplay(requested));
         } catch (RuntimeException failure) { showError(failure.getMessage()); }
     }
-    @Override public void showError(String message) { editor.fail(message); refresh(); }
+    @Override public void showError(String message) {
+        editor.fail(message); refresh();
+        if (stonytark.cinemarr.core.protocol.ProtocolLimits.displayProbeEnabled())
+            stonytark.cinemarr.Cinemarr.LOGGER.info("Acceptance display UI error: {}", editor.message());
+    }
     private void back() { if (!editor.pending()) CinemarrClientUi.showScreen(parent); }
     @Override public void onClose() { back(); }
     @Override public boolean isPauseScreen() { return false; }

@@ -264,4 +264,39 @@ class TelevisionStreamPoolTest {
             assertEquals(timeline.generation(), next.timelineGeneration());
         }
     }
+
+    @Test void diagnosticsAreBoundedAndDistinguishRequestedFromWorkingQualityAfterFailure() throws Exception {
+        try (Fixture f = new Fixture(1)) {
+            UUID first = UUID.randomUUID();
+            f.start(first);
+            for (int i = 0; i < 17; i++) f.update(UUID.randomUUID(), DEFAULTS, 1100, VIEWER);
+            f.pool.tick(1100);
+            String text = f.pool.diagnostics(1100, (id, generation) -> new TelevisionStreamPool.Metrics(160, 90, 3, 4096));
+            assertTrue(text.contains("tvStreamEntries=18; tvStreamWaiting=17"));
+            assertTrue(text.contains("tvStreamsOmitted=2"));
+            assertEquals(16, text.split("tv=", -1).length - 1);
+            assertTrue(text.contains("timeline=" + f.timeline.snapshot("party", 1100).id()));
+            assertTrue(text.contains("stream=" + f.pool.snapshot(first, 1100).id()));
+            assertTrue(text.contains("requested=Auto,effective=160x90"));
+            assertTrue(text.contains("status=waiting"));
+            assertTrue(text.contains("cachedSegments=3,cachedBytes=4096"));
+            f.failStart = true;
+            f.update(first, quality("1080p"), 1200, VIEWER);
+            f.pool.tick(1200); f.work.next();
+            text = f.pool.diagnostics(1200, (id, generation) -> new TelevisionStreamPool.Metrics(160, 90, 3, 4096));
+            assertTrue(text.contains("requested=1080p,effective=160x90"));
+            assertTrue(text.contains("status=failed"));
+            assertFalse(text.contains("party"));
+            assertFalse(text.toLowerCase().contains("fixture"));
+            assertFalse(text.contains("controlled replacement failure"));
+        }
+    }
+
+    @Test void unavailableRenditionDimensionsStayUnknownInDiagnostics() throws Exception {
+        try (Fixture f = new Fixture(1)) {
+            f.start(UUID.randomUUID());
+            assertTrue(f.pool.diagnostics(1000, (id, generation) -> null).contains("effective=unknown"));
+            assertTrue(f.pool.diagnostics(1000, (id, generation) -> new TelevisionStreamPool.Metrics(0, 0, 0, 0)).contains("effective=unknown"));
+        }
+    }
 }

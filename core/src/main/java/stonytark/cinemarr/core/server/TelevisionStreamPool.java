@@ -183,6 +183,51 @@ public final class TelevisionStreamPool implements AutoCloseable {
         Entry entry=entries.get(tv);if(entry==null)return "";
         return !entry.error.isEmpty()?entry.error:entry.pending?"Preparing TV stream":waiting.contains(tv)?"Waiting for stream capacity":"";
     }
+    public static final class Metrics {
+        private final int width, height, cachedSegments;
+        private final long cachedBytes;
+        public Metrics(int width, int height, int cachedSegments, long cachedBytes) {
+            if (width < 0 || height < 0 || cachedSegments < 0 || cachedBytes < 0)
+                throw new IllegalArgumentException("Invalid stream metrics");
+            this.width = width; this.height = height;
+            this.cachedSegments = cachedSegments; this.cachedBytes = cachedBytes;
+        }
+    }
+
+    /** Bounded operator diagnostics: no names, item keys, URLs, tokens or exception text. */
+    public synchronized String diagnostics(long now,
+            java.util.function.BiFunction<UUID, Long, Metrics> effective) {
+        if (effective == null) throw new IllegalArgumentException("Effective dimensions provider is required");
+        int preparing = 0;
+        for (Entry entry : entries.values()) if (entry.pending) preparing++;
+        StringBuilder result = new StringBuilder("; tvStreamEntries=").append(entries.size())
+                .append("; tvStreamWaiting=").append(waiting.size()).append("; tvStreamPreparing=").append(preparing).append("; tvStreams=[");
+        int shown = 0;
+        for (Map.Entry<UUID, Entry> row : entries.entrySet()) {
+            if (shown == 16) break;
+            if (shown++ > 0) result.append('|');
+            Entry entry = row.getValue(); Request desired = entry.desired;
+            VideoSessionCoordinator.Snapshot media = streams.snapshot(row.getKey().toString(), now);
+            Metrics actual = media.transcoding()
+                    ? effective.apply(media.id(), media.generation()) : null;
+            String status = !entry.error.isEmpty() ? "failed" : entry.pending ? "preparing"
+                    : waiting.contains(row.getKey()) ? "waiting" : desired.timeline.paused() ? "paused"
+                    : media.transcoding() ? "playing" : "idle";
+            result.append("tv=").append(row.getKey()).append(",timeline=").append(desired.timeline.id())
+                    .append('/').append(desired.timeline.generation()).append(",stream=").append(media.id())
+                    .append('/').append(media.generation()).append(",revision=").append(desired.display.revision())
+                    .append(",requested=").append(desired.display.resolution()).append(",effective=");
+            if (actual == null || actual.width < 1 || actual.height < 1) result.append("unknown");
+            else result.append(actual.width).append('x').append(actual.height);
+            result.append(",mapping=").append(desired.display.mapping()).append(",layout=").append(desired.display.layout())
+                    .append(",status=").append(status).append(",viewers=").append(entry.viewers.size())
+                    .append(",screen=").append(desired.width).append('x').append(desired.height)
+                    .append(",cachedSegments=").append(actual == null ? 0 : actual.cachedSegments)
+                    .append(",cachedBytes=").append(actual == null ? 0 : actual.cachedBytes);
+        }
+        return result.append("]; tvStreamsOmitted=").append(entries.size() - shown).toString();
+    }
+
     public synchronized long changes(){return changes;}
     public int activeStreamCount(){return streams.activeStreamCount();}
     public int pendingStarts(){return streams.pendingStarts();}

@@ -58,11 +58,26 @@ def rendered(text):
     return latest
 
 
-def render_matches(current, receipts):
+
+def decoded(text):
+    latest = {}
+    pattern = re.compile(r'Acceptance video frame: session=(\S+) generation=(\d+) ptsUs=(\d+) '
+                         r'sha256=([0-9a-f]{64}) dimensions=(\d+)x(\d+)')
+    for match in pattern.finditer(text):
+        latest[match[1] + ':' + match[2]] = {'ptsUs': int(match[3]), 'sha256': match[4],
+                                          'width': int(match[5]), 'height': int(match[6])}
+    return latest
+
+
+def render_matches(current, receipts, frames):
     for tv, state in current.items():
         receipt = receipts.get(tv)
         if not receipt or receipt['revision'] != state['revision'] or receipt['rectangles'] < 1:
             return False
+        if state['status'] == 'PLAYING':
+            frame = frames.get(state['stream'] + ':' + str(state['streamGeneration']))
+            if not frame or frame['sha256'] != receipt['sha256']:
+                return False
         expected = (tuple(map(int, state['screen'].split('x'))) if state['mapping'] == 'ONE_PIXEL_PER_BLOCK'
                     else (receipt['decodedWidth'], receipt['decodedHeight']))
         if (receipt['width'], receipt['height']) != expected or min(expected) < 1:
@@ -115,14 +130,15 @@ def main():
             texts = {r: p.read_text(errors='replace') for r, p in logs.items()}
             pair = {r: states(t) for r, t in texts.items()}
             if matching(pair['leader'], pair['follower'], status) and predicate(pair['leader']) and all(
-                    render_matches(pair[r], rendered(texts[r])) for r in texts):
+                    render_matches(pair[r], rendered(texts[r]), decoded(texts[r])) for r in texts):
                 return pair['leader']
             if time.monotonic() >= deadline: raise RuntimeError('Independent-TV phase timed out: ' + status)
             time.sleep(.1)
 
     def capture(name, current):
         phases.append({'phase': name, 'televisions': current,
-                       'rendered': {r: rendered(p.read_text(errors='replace')) for r, p in logs.items()}})
+                       'rendered': {r: rendered(p.read_text(errors='replace')) for r, p in logs.items()},
+                       'decoded': {r: decoded(p.read_text(errors='replace')) for r, p in logs.items()}})
         for role, desktop in desktops.items():
             path = args.output / (name + '-' + role + '.png')
             desktop.capture(path)
@@ -162,46 +178,107 @@ def main():
     publish(control, 'video:resume')
     resumed = wait('PLAYING', lambda x: x[target]['timelineGeneration'] > mapped[target]['timelineGeneration'])
     capture('resumed', resumed)
-    # Exercise the real controller entry point at the minimum scaled viewport.
-    # These UI captures also satisfy the enclosing gate's closed-client audit.
-    for role, desktop in desktops.items():
-        desktop.run('xdotool', 'windowsize', '--sync', desktop.window, '640', '480')
+    # Exercise real widgets at the minimum scaled viewport on owned private X.
+    def ui_wait(role, offset, marker):
+        deadline = time.monotonic() + 30
+        while marker not in logs[role].read_text(errors='replace')[offset:]:
+            desktops[role].validate()
+            if time.monotonic() >= deadline: raise RuntimeError('UI acknowledgement missing: ' + role + ' ' + marker)
+            time.sleep(.1)
+
+    def ui_capture(role, name):
+        path = args.output / (name + '-' + role + '.png')
+        desktops[role].capture(path)
+        captures.append({'path': path.name, 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()})
+
+    def open_page(role, quick=False):
+        desktop = desktops[role]
         offset = len(logs[role].read_text(errors='replace'))
         role_control = logs[role].with_name(logs[role].name.removesuffix('.console.log') + '.control')
         if role_control.is_symlink() or not role_control.is_file():
             raise RuntimeError('Missing owned display controller file')
-        publish(role_control, 'video:open-display-controller')
-        deadline = time.monotonic() + 30
-        while 'Acceptance video UI screenshot:' not in logs[role].read_text(errors='replace')[offset:]:
-            desktop.validate()
-            if time.monotonic() >= deadline: raise RuntimeError('Controller capture did not complete: ' + role)
-            time.sleep(.1)
+        publish(role_control, 'video:open-ui' if quick else 'video:open-display-controller')
+        ui_wait(role, offset, 'Acceptance video UI screenshot:')
         offset = len(logs[role].read_text(errors='replace'))
-        desktop.click(70, 30)
-        expected = 'Acceptance display UI: width=320 height=240 editable=' + ('true' if role == 'leader' else 'false')
-        deadline = time.monotonic() + 20
-        while expected not in logs[role].read_text(errors='replace')[offset:]:
-            desktop.validate()
-            if time.monotonic() >= deadline: raise RuntimeError('Minimum display page did not open: ' + role)
-            time.sleep(.1)
+        desktop.click(70, 30)  # Controller's actual Display button.
+        ui_wait(role, offset, 'Acceptance display UI: width=320 height=240 editable='
+                + ('true' if role == 'leader' else 'false') + ' qualityEditable='
+                + ('true' if role == 'leader' and not quick else 'false'))
         time.sleep(.3)
-        path = args.output / ('display-ui-' + role + '.png')
-        desktop.capture(path)
-        captures.append({'path': path.name, 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()})
+
+    for role, desktop in desktops.items():
+        desktop.run('xdotool', 'windowsize', '--sync', desktop.window, '640', '480')
+        open_page(role)
+        ui_capture(role, 'display-ui')
         if role == 'leader':
-            desktop.click(300, 76)  # Actual Layout widget.
-            desktop.click(385, 444)  # Apply through the revisioned editor.
+            desktop.click(300, 76)  # Change the Layout draft, then Cancel.
+            ui_capture(role, 'display-cancel-draft')
+            desktop.click(550, 444)
+            open_page(role)
+            if states(logs[role].read_text(errors='replace'))[target]['revision'] != resumed[target]['revision']:
+                raise RuntimeError('Cancel changed authoritative settings')
+            ui_capture(role, 'display-cancel-restored')
+            desktop.click(300, 76)  # Apply a Layout change through the editor.
+            desktop.click(385, 444)
             applied = wait('PLAYING', lambda x: x[target]['revision'] == resumed[target]['revision'] + 1)
             if not unchanged_siblings(resumed, applied, target) or not unchanged_stream(resumed, applied, target):
                 raise RuntimeError('UI layout Apply restarted media')
             phases.append({'phase': 'ui-apply', 'televisions': applied})
-            time.sleep(.3)
+            open_page(role)
+            presets = ['144p', '240p', '360p', '480p', '720p', '1080p', '4k', '8k']
+            for _ in range(len(presets) - presets.index(applied[target]['requested'])):
+                desktop.click(300, 172)
+                time.sleep(.15)
+
+            def input_field(x, value):
+                desktop.click(x, 224)
+                desktop.run('xdotool', 'windowfocus', '--sync', desktop.window)
+                desktop.run('xdotool', 'key', '--clearmodifiers', 'ctrl+a')
+                desktop.run('xdotool', 'type', '--clearmodifiers', '--delay', '30', value)
+
+            for value, error, name in [('oops', 'Enter whole dimensions from 2 to 8192', 'malformed'),
+                                       ('0', 'Resolution dimensions must be between 2 and 8192', 'out-of-range')]:
+                input_field(200, value)
+                offset = len(logs[role].read_text(errors='replace'))
+                desktop.click(385, 444)
+                ui_wait(role, offset, 'Acceptance display UI error: ' + error)
+                if states(logs[role].read_text(errors='replace'))[target]['revision'] != applied[target]['revision']:
+                    raise RuntimeError('Invalid custom dimensions mutated settings')
+                ui_capture(role, 'display-invalid-' + name)
+            input_field(200, '320')
+            input_field(500, '180')
+            desktop.click(385, 444)
+            custom = wait('PLAYING', lambda x: x[target]['requested'] == '320x180'
+                          and x[target]['revision'] == applied[target]['revision'] + 1
+                          and x[target]['streamGeneration'] > applied[target]['streamGeneration'])
+            if not unchanged_siblings(applied, custom, target):
+                raise RuntimeError('UI custom quality Apply restarted a sibling')
+            phases.append({'phase': 'ui-custom-resolution', 'televisions': custom})
+            open_page(role, quick=True)
+            desktop.click(300, 124)  # Disabled mapping and quality controls.
+            desktop.click(300, 172)
+            ui_capture(role, 'display-quick-locked')
         else:
-            desktop.escape()  # Read-only Display Settings -> controller.
-            time.sleep(.3)
+            desktop.click(300, 76)
+            desktop.click(385, 444)
+            ui_capture(role, 'display-read-only')
+            current = states(logs[role].read_text(errors='replace'))
+            if current[target]['revision'] != custom[target]['revision']:
+                raise RuntimeError('Read-only widgets changed settings')
+            offset = len(logs[role].read_text(errors='replace'))
+            follower_control = logs[role].with_name(logs[role].name.removesuffix('.console.log') + '.control')
+            publish(follower_control, 'video:display:0:quality')
+            ui_wait(role, offset, 'Acceptance display UI error: Only the TV owner or an operator can control this TV')
+            ui_capture(role, 'display-server-permission')
+            denied = wait('PLAYING')
+            if denied != custom: raise RuntimeError('Server permission rejection mutated TV state')
+            phases.append({'phase': 'server-permission-rejected', 'televisions': denied})
+        desktop.escape()  # Display Settings -> controller.
+        time.sleep(.3)
         desktop.escape()  # Controller -> world.
+    wait('PLAYING')
     report = {'phases': phases, 'captures': captures, 'directVisualReviewPending': True,
-              'physicalAudioMeasuredByEnclosingGate': True}
+              'physicalAudioRequiresEnclosingGate': True}
     (args.output / 'display.json').write_text(json.dumps(report, indent=2) + '\n')
     print('Independent TV stream/settings assertions passed; original image review remains required')
 

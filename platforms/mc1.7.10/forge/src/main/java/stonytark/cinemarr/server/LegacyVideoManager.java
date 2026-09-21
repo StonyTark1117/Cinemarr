@@ -698,7 +698,10 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
                 + "; mediaStarts=" + tvStreams.pendingStarts() + "; mediaRetiring=" + tvStreams.retiringMedia()
                 + "; mediaCloseFailures=" + tvStreams.closeFailures() + LegacyNetwork.incomingDiagnostics() + transferOwnershipDiagnostics()
                 + "; healthReports=" + reports + "; decoderRecoveries=" + recoveries + "; videoDrops=" + drops
-                + "; audioUnderruns=" + underruns + "; maxDriftMs=" + drift;
+                + "; audioUnderruns=" + underruns + "; maxDriftMs=" + drift + tvStreams.diagnostics(now, (streamId, generation) -> {
+                    ActiveVideoMedia media = active.get(key(streamId, generation));
+                    return media == null ? null : new TelevisionStreamPool.Metrics(media.effectiveWidth(), media.effectiveHeight(), media.cachedSegments(), media.cachedBytes());
+                });
     }
 
     private void restartIfNeeded(final String name, final VideoSessionCoordinator.Snapshot expected) {

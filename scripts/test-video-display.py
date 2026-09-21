@@ -43,16 +43,30 @@ class DisplayTests(unittest.TestCase):
         text = ('Acceptance video rendered: television=tv1 frameSha256=' + 'a' * 64 +
                 ' ptsUs=123 rectangles=1 revision=2 raster=160x90 decoded=160x90')
         receipts = display.rendered(text)
-        self.assertTrue(display.render_matches(current, receipts))
+        frames = display.decoded('Acceptance video frame: session=stream1 generation=3 ptsUs=123 sha256=' + 'a' * 64 + ' dimensions=160x90')
+        self.assertTrue(display.render_matches(current, receipts, frames))
         current['tv1']['mapping'] = 'ONE_PIXEL_PER_BLOCK'
-        self.assertFalse(display.render_matches(current, receipts))
+        self.assertFalse(display.render_matches(current, receipts, frames))
         receipts = display.rendered(text.replace('raster=160x90', 'raster=4x4'))
-        self.assertTrue(display.render_matches(current, receipts))
+        self.assertTrue(display.render_matches(current, receipts, frames))
         current['tv1']['revision'] += 1
-        self.assertFalse(display.render_matches(current, receipts))
+        self.assertFalse(display.render_matches(current, receipts, frames))
         current['tv1']['revision'] -= 1
         current['tv1']['effective'] = '256x144'
-        self.assertFalse(display.render_matches(current, receipts))
+        self.assertFalse(display.render_matches(current, receipts, frames))
+
+    def test_retained_frame_cannot_certify_a_playing_replacement(self):
+        current = display.states(line(1))
+        receipts = display.rendered('Acceptance video rendered: television=tv1 frameSha256=' + 'a' * 64 +
+                                   ' ptsUs=123 rectangles=1 revision=2 raster=160x90 decoded=160x90')
+        old = 'Acceptance video frame: session=stream1 generation=2 ptsUs=123 sha256=' + 'a' * 64 + ' dimensions=160x90'
+        frames = display.decoded(old)
+        self.assertFalse(display.render_matches(current, receipts, frames))
+        frames = display.decoded(old.replace('generation=2', 'generation=3'))
+        self.assertTrue(display.render_matches(current, receipts, frames))
+        current['tv1']['status'] = 'PAUSED'
+        current['tv1']['streamGeneration'] += 1
+        self.assertTrue(display.render_matches(current, receipts, frames))
 
     def test_malformed_evidence_is_rejected_and_latest_state_wins(self):
         with self.assertRaises(ValueError): display.states('Acceptance TV display: television=tv\n')
