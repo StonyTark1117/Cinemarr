@@ -21,6 +21,35 @@ WAITERS = (
 
 
 class LogMarkerPollingTest(unittest.TestCase):
+    def test_public_key_refresh_reset_is_not_a_game_connection_failure(self):
+        source = (ROOT / "scripts/run-dedicated-server-gate.sh").read_text()
+        function = re.search(r"(?ms)^client_playback_failed\(\) \{\n.*?^\}", source)
+        self.assertIsNotNone(function)
+        auth = ("[14:57:07] [Yggdrasil Key Fetcher/ERROR] (Minecraft) Failed to request yggdrasil public key\n"
+                "com.mojang.authlib.exceptions.MinecraftClientException: Connection reset by peer\n"
+                "Caused by: java.net.SocketException: Connection reset by peer\n")
+        cases = [
+            (auth, False),
+            (auth + "[14:57:08] [Render thread/INFO] Registering renderer\n", False),
+            ("java.net.SocketException: Connection reset by peer\n", True),
+            (auth + "[14:57:08] [Netty Client IO/ERROR] Connection reset by peer\n", True),
+            (auth + "[14:57:08] [Render thread/ERROR] Game connection failure\n"
+                    "Caused by: java.net.SocketException: Connection reset by peer\n", True),
+            (auth + "Client disconnected with reason: Disconnected\n", True),
+            (auth + "Acceptance audio state: ERROR\n", True),
+            ("[14:57:07] [Other worker/ERROR] Failed to request yggdrasil public key\n"
+             "java.net.SocketException: Connection reset by peer\n", True),
+        ]
+        with tempfile.TemporaryDirectory(prefix="cinemarr-playback-log-") as temporary:
+            log = pathlib.Path(temporary) / "client.log"
+            for content, failed in cases:
+                with self.subTest(content=content):
+                    log.write_text(content)
+                    result = subprocess.run(["bash", "-c", function.group() + '\nclient_playback_failed "$1"',
+                                             "playback-log", str(log)], capture_output=True, timeout=5)
+                    self.assertEqual(result.returncode == 0, failed, result.stderr)
+        self.assertIn('if client_playback_failed "$client_console"; then', source)
+
     def test_protocol_mismatch_launch_runs_once_on_success_or_failure(self):
         source = (ROOT / "scripts/run-dedicated-server-gate.sh").read_text()
         function = re.search(r"(?ms)^run_wrong_protocol_client\(\) \{\n.*?^\}", source)
@@ -186,6 +215,7 @@ set -uo pipefail
 output_root=/unused
 repo_root=/unused
 live_plex_gate=false
+video_display_gate=false
 video_follower_first_gate=false
 active_audio_modules=()
 started_audio_client_pid=""

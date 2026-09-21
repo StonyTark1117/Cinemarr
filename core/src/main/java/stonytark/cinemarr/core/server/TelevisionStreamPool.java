@@ -101,7 +101,7 @@ public final class TelevisionStreamPool implements AutoCloseable {
         // generation and display settings are unchanged. The server publishes
         // session state when this revision advances; without it, a follower
         // joining an already active stream receives PLAYING state but no data.
-        if (viewersChanged) changes++;
+        if (viewersChanged || previous.metadataReady != request.metadataReady) changes++;
         if(!request.sameMedia(previous)){entry.failed=null;entry.error="";changes++;}
         if (entry.pending && (!request.sameMedia(entry.starting) || !request.eligible())) {
             if (!request.sameTimeline(entry.starting) || request.timeline.item() == null

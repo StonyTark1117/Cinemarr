@@ -106,6 +106,23 @@ class TelevisionStreamPoolTest {
         }
     }
 
+    @Test void metadataCommitPublishesWaitingStatusWhenCapacityIsOccupied() throws Exception {
+        try (Fixture f = new Fixture(1)) {
+            f.start(UUID.randomUUID());
+            UUID waiting = UUID.randomUUID();
+            f.pool.update(new TelevisionStreamPool.Request(waiting, f.timeline.snapshot("party", 2000),
+                    DEFAULTS, 16, 9, new HashSet<>(Arrays.asList(VIEWER)), false), 2000);
+            f.pool.tick(2000);
+            assertEquals("", f.pool.message(waiting));
+            long revision = f.pool.changes();
+            f.update(waiting, DEFAULTS, 3000, VIEWER);
+            f.pool.tick(3000);
+            assertEquals("Waiting for stream capacity", f.pool.message(waiting));
+            assertTrue(f.pool.changes() > revision, "Waiting status must trigger viewer publication");
+            assertTrue(f.work.queued.isEmpty());
+        }
+    }
+
     @Test void stopWhileMetadataIsPendingRetiresTheExistingStream() throws Exception {
         try (Fixture f = new Fixture(1)) {
             UUID tv = UUID.randomUUID();

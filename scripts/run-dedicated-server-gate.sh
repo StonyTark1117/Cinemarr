@@ -958,6 +958,17 @@ start_audio_client() {
   active_audio_client_pids+=("$started_audio_client_pid")
 }
 
+client_playback_failed() {
+  # Public-key refresh runs independently of the offline acceptance connection.
+  # Ignore resets only inside that specific authlib log record, not game traffic.
+  awk '
+    /^\[/ { key_refresh = /\[Yggdrasil Key Fetcher\/ERROR\].*Failed to request yggdrasil public key/ }
+    /Acceptance audio state: ERROR|Cinemarr rejected (legacy )?video segment|Client disconnected with reason:|Couldn.t connect to server|Failed to open OpenAL device|Error starting SoundSystem|NoClassDefFoundError: (javazoom|de\/sciss)/ { failed = 1 }
+    /Connection reset by peer/ && !key_refresh { failed = 1 }
+    END { exit !failed }
+  ' "$1" 2>/dev/null
+}
+
 wait_for_audio_playing() {
   local label=$1
   local role=$2
@@ -974,8 +985,7 @@ wait_for_audio_playing() {
       echo "$label: $role client failed during bootstrap; see $client_console" >&2
       return 1
     fi
-    if grep -Eq 'Acceptance audio state: ERROR|Cinemarr rejected (legacy )?video segment|Client disconnected with reason:|Connection reset by peer|Couldn.t connect to server|Failed to open OpenAL device|Error starting SoundSystem|NoClassDefFoundError: (javazoom|de/sciss)' \
-        "$client_console" 2>/dev/null; then
+    if client_playback_failed "$client_console"; then
       echo "$label: $role client failed before playback; see $client_console" >&2
       return 2
     fi
