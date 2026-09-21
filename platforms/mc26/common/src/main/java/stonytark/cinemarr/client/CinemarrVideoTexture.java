@@ -17,6 +17,7 @@ public final class CinemarrVideoTexture implements AutoCloseable {
     private byte[] source;
     private final stonytark.cinemarr.core.video.PresentedFrame presented = new stonytark.cinemarr.core.video.PresentedFrame();
     private long frameRevision;
+    private long evidenceRevision = -1;
     private final java.util.Map<java.util.UUID, Derived> derived = new java.util.HashMap<>();
     private static final class Derived {
         final CinemarrVideoTexture texture = new CinemarrVideoTexture();
@@ -26,6 +27,11 @@ public final class CinemarrVideoTexture implements AutoCloseable {
         stonytark.cinemarr.core.video.PresentationMode layout;
     }
     public CinemarrVideoTexture forDisplay(stonytark.cinemarr.core.protocol.VideoPackets.SessionState state) {
+        if (state.paused() && source != null && evidenceRevision != frameRevision
+                && stonytark.cinemarr.core.protocol.ProtocolLimits.displayProbeEnabled()) {
+            stonytark.cinemarr.core.video.DisplayFrameEvidence.retain(source);
+            evidenceRevision = frameRevision;
+        }
         if (state.displaySettings().mapping() == stonytark.cinemarr.core.video.PixelMapping.DETAILED) {
             Derived old=derived.remove(state.televisionId()); if(old!=null)old.texture.close();
             if(derived.isEmpty())presented.releaseRaster();

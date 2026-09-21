@@ -153,6 +153,24 @@ def main():
         phases.append({'phase': name, 'televisions': current,
                        'rendered': {r: rendered(p.read_text(errors='replace')) for r, p in logs.items()},
                        'decoded': {r: decoded(p.read_text(errors='replace')) for r, p in logs.items()}})
+        if all(state['status'] == 'PAUSED' for state in current.values()):
+            retained = args.output / 'frames'
+            retained.mkdir(exist_ok=True)
+            for role, receipts in phases[-1]['rendered'].items():
+                original_dir = logs[role].with_name(logs[role].name.removesuffix('.console.log') + '.control.frames')
+                for receipt in receipts.values():
+                    source = original_dir / (receipt['sha256'] + '.rgba')
+                    expected_bytes = receipt['decodedWidth'] * receipt['decodedHeight'] * 4
+                    if not 0 < expected_bytes <= 64*1024*1024 or source.is_symlink() or source.stat().st_size != expected_bytes:
+                        raise RuntimeError('Original paused frame extent is missing or invalid')
+                    rgba = source.read_bytes()
+                    if hashlib.sha256(rgba).hexdigest() != receipt['sha256']:
+                        raise RuntimeError('Original paused frame differs from the render receipt')
+                    destination = retained / source.name
+                    if not destination.exists():
+                        with destination.open('xb') as stream: stream.write(rgba)
+                    elif destination.read_bytes() != rgba:
+                        raise RuntimeError('Retained original frame changed')
         for role, desktop in desktops.items():
             path = args.output / (name + '-' + role + '.png')
             desktop.capture(path)
@@ -190,6 +208,20 @@ def main():
         if not unchanged_siblings(mapped, next_state, target) or not unchanged_stream(mapped, next_state, target): raise RuntimeError('Layout change mutated sibling TV')
         mapped = next_state
         capture('paused-layout-' + str(index), mapped)
+    publish(control, 'video:display:0:mapping')
+    pixel = wait('PAUSED', lambda x: x[target]['revision'] == mapped[target]['revision'] + 1
+                 and x[target]['mapping'] == 'ONE_PIXEL_PER_BLOCK')
+    if not unchanged_siblings(mapped, pixel, target) or not unchanged_stream(mapped, pixel, target):
+        raise RuntimeError('Returning to paused pixel mapping changed a stream')
+    mapped = pixel
+    capture('paused-pixel', mapped)
+    for index in range(3):
+        publish(control, 'video:display:0:layout')
+        next_state = wait('PAUSED', lambda x: x[target]['revision'] == mapped[target]['revision'] + 1)
+        if not unchanged_siblings(mapped, next_state, target) or not unchanged_stream(mapped, next_state, target):
+            raise RuntimeError('Paused pixel layout change restarted media')
+        mapped = next_state
+        capture('paused-pixel-layout-' + str(index), mapped)
     publish(control, 'video:resume')
     resumed = wait('PLAYING', lambda x: x[target]['timelineGeneration'] > mapped[target]['timelineGeneration'])
     capture('resumed', resumed)
@@ -216,7 +248,10 @@ def main():
         if role_control.is_symlink() or not role_control.is_file():
             raise RuntimeError('Missing owned display controller file')
         publish(role_control, 'video:open-ui' if quick else 'video:open-display-controller')
+        controller = next(s['controller'] for s in initial.values() if s['origin'] == 'QUICK') if quick else initial[target]['controller']
+        ui_wait(role, offset, 'Acceptance video UI request: controller=' + str(controller))
         ui_wait(role, offset, 'Acceptance video UI screenshot:')
+        time.sleep(.3)
         offset = len(logs[role].read_text(errors='replace'))
         desktop.click(70, 30)  # Controller's actual Display button.
         ui_wait(role, offset, 'Acceptance display UI: width=320 height=240 editable='

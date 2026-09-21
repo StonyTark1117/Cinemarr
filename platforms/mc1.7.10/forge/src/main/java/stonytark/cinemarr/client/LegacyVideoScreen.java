@@ -110,7 +110,7 @@ final class LegacyVideoScreen extends GuiScreen {
     }
 
     private void addControls() {
-        add(26, layout.left(), 6, 68, 20, "Display");
+        add(26, layout.left(), 4, 68, 14, "Display");
         VideoPackets.SessionState playback=state.session(controllerPos);
         boolean paused=playback!=null&&playback.paused();
         control(PAUSE,Slot.PAUSE,paused?"Resume":"Pause");control(SEEK_BACK,Slot.SEEK_BACK,"-30s");

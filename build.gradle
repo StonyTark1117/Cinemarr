@@ -658,6 +658,13 @@ tasks.register('verifyVideoDisplayEvidence', Exec) {
     group = 'verification'
     description = 'Rejects mixed identities, stale settings and sibling stream restarts in display acceptance.'
     commandLine 'python3', 'scripts/test-video-display.py'
+    dependsOn 'verifyBlockRasterCapture'
+}
+
+tasks.register('verifyBlockRasterCapture', Exec) {
+    group = 'verification'
+    description = 'Checks the independent golden-color and block-uniformity framebuffer oracle.'
+    commandLine 'python3', 'scripts/test-block-raster-capture.py'
 }
 
 tasks.named('verifyAllTargets') {

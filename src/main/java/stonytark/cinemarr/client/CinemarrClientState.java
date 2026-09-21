@@ -53,7 +53,10 @@ public final class CinemarrClientState {
         Minecraft minecraft = Minecraft.getInstance();
         if (CinemarrVideoClientState.INSTANCE.accept(payload)) {
             acceptVideoProbe(payload);
-            refreshScreen(minecraft);
+            // Transfer packets do not change controller widgets. Rebuilding on
+            // every chunk can discard an in-flight mouse interaction.
+            if (!(payload instanceof VideoPayloads.SegmentChunk)
+                    && !(payload instanceof VideoPayloads.SegmentManifest)) refreshScreen(minecraft);
             return;
         }
         if (payload instanceof VideoPayloads.OpenVideoScreen value) {
