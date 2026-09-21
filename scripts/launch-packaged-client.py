@@ -54,7 +54,8 @@ def main():
     parser.add_argument('--java-home', type=Path, help='Otherwise CINEMARR_PACKAGED_JAVA<runtimeJava>_HOME or system OpenJDK')
     parser.add_argument('--check-only', action='store_true', help='Validate inputs without writing game files or opening X')
     parser.add_argument('--bundle-dir', type=Path, default=ROOT / 'build/releases')
-    parser.add_argument('--gradle-cache', type=Path, default=Path.home() / '.gradle/caches')
+    parser.add_argument('--gradle-cache', type=Path,
+                        default=Path(os.environ.get('GRADLE_USER_HOME', Path.home() / '.gradle')) / 'caches')
     parser.add_argument('--width', type=int, default=640)
     parser.add_argument('--height', type=int, default=480)
     args = parser.parse_args()

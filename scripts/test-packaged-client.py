@@ -113,6 +113,22 @@ class LaunchTests(unittest.TestCase):
         self.jar.write_bytes(b'changed')
         self.rejected()
 
+    def test_fabric_api_uses_configured_gradle_user_home(self):
+        targets = self.root / 'gradle/targets.json'
+        data = json.loads(targets.read_text())
+        data['artifacts'][0]['loader'] = 'fabric'
+        targets.write_text(json.dumps(data))
+        catalog = self.root / 'platforms/mc1.21.1/gradle/libs.versions.toml'
+        catalog.parent.mkdir(parents=True)
+        catalog.write_text('[versions]\nfabric-api = "test-version"\n')
+        cache_home = self.root / 'custom-gradle-home'
+        api = cache_home / 'caches/modules-2/files-2.1/net.fabricmc.fabric-api/fabric-api/test-version/hash/fabric-api-test-version.jar'
+        api.parent.mkdir(parents=True)
+        api.write_bytes(b'pinned-fabric-api')
+        with patch.dict(os.environ, {'GRADLE_USER_HOME': str(cache_home)}):
+            self.assertEqual(0, self.invoke(preflight=False))
+        self.assertEqual(api.read_bytes(), (self.game / 'mods' / api.name).read_bytes())
+
     def test_duplicate_checksum_rejected(self):
         sums = self.bundle / 'SHA256SUMS'
         sums.write_text(sums.read_text() * 2)
