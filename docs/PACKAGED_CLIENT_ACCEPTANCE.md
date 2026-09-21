@@ -35,6 +35,25 @@ An automated pass does not replace direct image review, byte-identical rebuild
 proof, exact packaged real-Plex/native acceptance, security review or final-SHA
 remote CI and artifact parity.
 
+The integrated scenario inventory is **62 local runtime cases**, preserving
+the previous 37 and adding 21 display cases plus four capacity/failure cases:
+
+| Scenario | Cases |
+| --- | ---: |
+| Main manifest runtime matrix | 21 |
+| Quilt with Mod Menu | 5 |
+| Minimum Fabric loader | 5 |
+| Terminal, pressure, and network-fault supplements | 2 each (6 total) |
+| Independent-TV display smoke | 21 |
+| Capacity and failed replacement: legacy, 1.21.1, 26.1.2, 26.2 | 4 |
+
+The ten GameTests, two complete builds, and native Windows/ARM decoder gates
+are additional checks. Packaged real-Plex acceptance adds fourteen cases:
+four full controls, four recovery, two lifecycle, and four independent-TV
+display runs. These counts describe required coverage, not completed evidence.
+Direct framebuffer review and source-bound raster measurements remain required
+on each rendering-adapter boundary.
+
 ## Independent-TV display supplement
 
 `verifyVideoDisplayRuntimes` runs all 21 runtime profiles with
