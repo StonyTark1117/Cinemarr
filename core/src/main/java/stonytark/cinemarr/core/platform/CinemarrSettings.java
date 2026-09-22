@@ -68,7 +68,7 @@ public final class CinemarrSettings {
     public static int maximumScreenDimension() { return clamp(server.maximumScreenDimension(), 1, 2_048); }
     public static int maximumConcurrentStreams() {
         int configured=clamp(server.maximumConcurrentStreams(), 1, 64);
-        return stonytark.cinemarr.core.protocol.ProtocolLimits.displayProbeEnabled()?Math.min(configured,2):configured;
+        return stonytark.cinemarr.core.protocol.ProtocolLimits.displayFeatureProbeEnabled()?Math.min(configured,2):configured;
     }
     /** @deprecated use {@link #maximumConcurrentStreams()}. */
     @Deprecated public static int maximumActiveTelevisions() { return maximumConcurrentStreams(); }

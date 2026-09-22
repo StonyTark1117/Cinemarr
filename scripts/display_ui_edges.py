@@ -18,7 +18,14 @@ def exercise(observer, custom):
     def cap(name):time.sleep(.25);observer.capture(desktop,'extended-'+name)
     def click(x,y):desktop.click(x,y);time.sleep(.15)
     def field(x,value):
-        click(x,222);desktop.run('xdotool','key','--clearmodifiers','ctrl+a');desktop.run('xdotool','type','--clearmodifiers','--delay','80',value);time.sleep(.2)
+        click(x,222)
+        desktop.run('xdotool','windowfocus','--sync',desktop.window)
+        # Match the independent-display probe: paced ordinary editing keys
+        # reliably clear these four-character fields on both LWJGL families.
+        desktop.run('xdotool','key','--clearmodifiers','--delay','150',
+                    'End','BackSpace','BackSpace','BackSpace','BackSpace')
+        desktop.run('xdotool','type','--clearmodifiers','--delay','150',value)
+        time.sleep(.2)
     def apply():click(320,436)
     try:
         desktop=observer.page(baseline,'leader','extended-initial')

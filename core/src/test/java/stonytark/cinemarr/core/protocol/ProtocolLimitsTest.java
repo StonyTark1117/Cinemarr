@@ -6,6 +6,18 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class ProtocolLimitsTest {
+    @Test void independentDisplaySceneRetainsConfiguredCapacity() {
+        assertEquals(4, stonytark.cinemarr.core.platform.CinemarrSettings.maximumConcurrentStreams());
+        System.setProperty(ProtocolLimits.ACCEPTANCE_ENABLED_PROPERTY, "true");
+        System.setProperty(ProtocolLimits.ACCEPTANCE_VIDEO_PROBE_PROPERTY, "true");
+        System.setProperty("cinemarr.acceptance.displayProbe", "true");
+        assertEquals(4, stonytark.cinemarr.core.platform.CinemarrSettings.maximumConcurrentStreams());
+        System.setProperty("cinemarr.acceptance.displayFeatureProbe", "true");
+        assertEquals(2, stonytark.cinemarr.core.platform.CinemarrSettings.maximumConcurrentStreams());
+        System.clearProperty("cinemarr.acceptance.displayFeatureProbe");
+        assertEquals(4, stonytark.cinemarr.core.platform.CinemarrSettings.maximumConcurrentStreams());
+    }
+
     @Test void browsePressureRequiresAllOptInsAndNeverRunsOnLeader() {
         System.setProperty("cinemarr.acceptance.browsePressureProbe", "true");
         assertEquals(false, ProtocolLimits.browsePressureProbeEnabled());

@@ -2656,7 +2656,7 @@ install_fake_plex_config() {
   local level_name=$3
   local fake_plex_port=$4
   local stream_cap=4
-  if [[ "$video_capacity_gate" == true ]]; then stream_cap=2; fi
+  if [[ "$video_capacity_gate" == true || "$display_feature_gate" == true ]]; then stream_cap=2; fi
   active_config="$run_dir/$level_name/serverconfig/cinemarr-server.toml"
   active_config_backup=$(mktemp "$output_root/$label.config.XXXXXX")
   active_config_existed=0
@@ -2715,7 +2715,6 @@ install_fake_plex_config() {
       'allowShows = false' \
       'permissionLevel = 0' > "$active_libraries"
   fi
-  if [[ "$display_feature_gate" == true ]]; then printf 'maximumConcurrentStreams = 2\n' >> "$active_config"; fi
 }
 
 install_invalid_config() {
