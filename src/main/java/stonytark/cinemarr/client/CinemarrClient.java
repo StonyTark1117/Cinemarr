@@ -112,7 +112,7 @@ public final class CinemarrClient {
         // world is already rendering the television. Treat the live player as
         // the readiness boundary; requiring a null screen made NeoForge miss
         // the one-shot acceptance marker indefinitely under production load.
-        if (minecraft.player == null || !minecraft.player.isAlive()) {
+        if (!ProtocolLimits.videoProbeViewReady(minecraft.player != null && minecraft.player.isAlive(), false)) {
             acceptanceVideoReadyTicks = 0;
             return;
         }
