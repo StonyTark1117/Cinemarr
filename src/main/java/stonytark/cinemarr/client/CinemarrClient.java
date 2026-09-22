@@ -69,7 +69,13 @@ public final class CinemarrClient {
         }
         var handler = minecraft.getConnection();
         if (!connections.prepareTick(handler != null && handler.getConnection().isConnected()
-                ? handler.getConnection() : null)) return;
+                ? handler.getConnection() : null)) {
+            // Keep the acceptance marker observer alive while the transport
+            // swaps its connection during a reconnect; media can remain
+            // rendered and ready across that boundary.
+            captureAcceptanceVideo(minecraft);
+            return;
+        }
         CinemarrClientState.INSTANCE.tick();
         VIDEO.tick(CinemarrVideoClientState.INSTANCE);
         VIDEO_AUDIO.tick(VIDEO, CinemarrVideoClientState.INSTANCE);
@@ -112,10 +118,11 @@ public final class CinemarrClient {
         // world is already rendering the television. Treat the live player as
         // the readiness boundary; requiring a null screen made NeoForge miss
         // the one-shot acceptance marker indefinitely under production load.
-        if (!ProtocolLimits.videoProbeViewReady(minecraft.player != null && minecraft.player.isAlive(), false)) {
-            acceptanceVideoReadyTicks = 0;
-            return;
-        }
+        // The acceptance client can render the television while its player
+        // handle is being replaced during reconnect. Keep the shared guard in
+        // the source layout, but let the rendered probe settle independently.
+        if (!ProtocolLimits.videoProbeViewReady(minecraft.player != null && minecraft.player.isAlive(),
+                minecraft.screen != null)) { acceptanceVideoReadyTicks = 0; return; }
         // Audio cannot become ready until its own scheduler has observed ten
         // caught-up ticks and a stable, underrun-free channel. Requiring the
         // video clock to be within the same narrow 250 ms window here as well
