@@ -10,6 +10,18 @@ spec.loader.exec_module(owner)
 
 
 class StreamChangeTests(unittest.TestCase):
+    def test_retained_frame_matches_both_divergent_generations(self):
+        state = ('Acceptance video session: controller=-3996 session=tv generation=7 '
+                 'status=PAUSED item=9001 positionMs=107282 canControl=true streams=3 '
+                 'audio=101 subtitle=-1 timeline=party timelineGeneration=3 durationMs=900000\n')
+        retained = ('Acceptance paused frame retained: generation=3 frameSha256='
+                    + 'a' * 64 + ' ptsUs=107192000 streamGeneration=7\n')
+        self.assertEqual('a' * 64, owner.retained_paused_frame(state + retained, 6))
+        self.assertIsNone(owner.retained_paused_frame(state + retained.replace('streamGeneration=7', 'streamGeneration=6'), 6))
+        self.assertIsNone(owner.retained_paused_frame(state + retained.replace('generation=3', 'generation=2'), 6))
+        self.assertIsNone(owner.retained_paused_frame(state + retained, 8))
+        self.assertIsNone(owner.retained_paused_frame(state + retained + state, 7, len(state + retained)))
+
     def test_owner_actions_follow_timeline_revision_not_media_revision(self):
         text = ('Acceptance video session: controller=1 session=tv generation=3 status=PAUSED '
                 'item=movie positionMs=12000 canControl=true streams=2 audio=1 subtitle=-1 '

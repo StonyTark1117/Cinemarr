@@ -490,7 +490,7 @@ rejection_observed() {
 
 client_bootstrap_failed() {
   local console_log=$1
-  grep -Eq '#@!@# Game crashed!|Description: Unexpected error|ExceptionInInitializerError|Timed out trying to setup the Game Window|Failed to initialize the mod loading system and display|ArrayIndexOutOfBoundsException: 0|\(Quilt Loader\) Uncaught exception in thread "main"|\[EARLYDISPLAY/\]: BARF (java.nio.file.FileSystemNotFoundException|java.lang.IllegalStateException: Already building)' \
+  grep -Eq '#@!@# Game crashed!|Description: Unexpected error|Timed out trying to setup the Game Window|Failed to initialize the mod loading system and display|ArrayIndexOutOfBoundsException: 0|\(Quilt Loader\) Uncaught exception in thread "main"|\[EARLYDISPLAY/\]: BARF (java.nio.file.FileSystemNotFoundException|java.lang.IllegalStateException: Already building)' \
     "$console_log" 2>/dev/null
 }
 

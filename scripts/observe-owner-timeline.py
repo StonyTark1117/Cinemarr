@@ -39,15 +39,27 @@ def retained_paused_frame(text, minimum_generation, after_offset=0):
     # TV-stream generations can repeat across earlier TVs and paused timeline
     # changes need not advance them. Require a record after this widget action.
     text = text[after_offset:]
-    states = re.findall(r"Acceptance video session:.*?generation=(\d+) status=([A-Z_]+).*?canControl=true", text)
-    if not states or states[-1][1] != "PAUSED":
+    states = re.findall(r"Acceptance video session:[^\n]*canControl=true[^\n]*", text)
+    if not states:
         return None
-    generation = int(states[-1][0])
-    if generation < minimum_generation:
+    current = re.search(r"generation=(\d+) status=([A-Z_]+)", states[-1])
+    if not current or current[2] != "PAUSED":
         return None
-    matches = re.findall(r"Acceptance paused frame retained: generation=" + str(generation)
-                         + r" frameSha256=([0-9a-f]{64}) ptsUs=([0-9]+)", text)
-    return matches[-1][0] if matches else None
+    stream_generation = int(current[1])
+    if stream_generation < minimum_generation:
+        return None
+    timeline = re.search(r"timelineGeneration=(\d+)", states[-1])
+    timeline_generation = int(timeline[1]) if timeline else stream_generation
+    # Retention logs name the timeline revision as generation and carry the
+    # media revision separately. They diverge after retune and stream replacement.
+    matches = re.findall(r"Acceptance paused frame retained: generation=(\d+)"
+                         r" frameSha256=([0-9a-f]{64}) ptsUs=([0-9]+)"
+                         r"(?: streamGeneration=(\d+))?", text)
+    for generation, digest, _, media_generation in reversed(matches):
+        if (int(generation) == timeline_generation
+                and int(media_generation or generation) == stream_generation):
+            return digest
+    return None
 
 
 def main():
