@@ -522,6 +522,7 @@ export CINEMARR_LIVE_VIDEO_SECTION_ID=${CINEMARR_LIVE_VIDEO_SECTION_ID:-1}
 source "$repo_root/scripts/run-dedicated-server-gate.sh" "$label"
 trap cleanup_remote EXIT
 trap 'exit 130' INT TERM
+if [[ "$private_audio_graph" == true ]]; then start_private_audio_graph "$label"; fi
 
 # The shared client gate accepts local RCON/FIFO controls for self-hosted
 # servers. DiscPanel control is provided by this wrapper's command_output

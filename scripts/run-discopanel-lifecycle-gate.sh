@@ -95,6 +95,7 @@ cleanup() {
   [[ $BASHPID == "$cleanup_owner_pid" ]] || return 0
   trap - EXIT INT TERM; set +e
   if declare -F cleanup_audio_processes >/dev/null; then cleanup_audio_processes; fi
+  if declare -F shutdown_private_audio_graph >/dev/null; then shutdown_private_audio_graph; fi
   if (( modern_forceload && remote_started )); then
     command_output 'forceload remove 1968 2048 2128 2048' >/dev/null
     modern_forceload=0
@@ -163,6 +164,7 @@ export CINEMARR_ACCEPTANCE_SERVER_HOST="$server_host" CINEMARR_GATE_OUTPUT_ROOT=
 # shellcheck source=run-dedicated-server-gate.sh
 source "$repo_root/scripts/run-dedicated-server-gate.sh" "$label"
 trap cleanup EXIT; trap 'exit 130' INT TERM
+if [[ "$private_audio_graph" == true ]]; then start_private_audio_graph "$label"; fi
 
 start_remote
 if [[ "$label" == 1.21.1-neoforge ]]; then
