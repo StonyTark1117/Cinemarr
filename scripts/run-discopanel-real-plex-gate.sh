@@ -383,6 +383,13 @@ jammarr_content=$(jq -r '.content' <<<"$jammarr_response")
 for role in leader follower; do
   client_mod_dir="$CINEMARR_GATE_OUTPUT_ROOT/$label.audio-$role/mods"
   mkdir -p "$client_mod_dir"
+  if [[ "$label" == 1.21.1-neoforge ]]; then
+    # NeoForge's early display can dereference a missing loader boolean under
+    # private X. The acceptance clients use the supported no-splash path.
+    mkdir -p "$(dirname "$client_mod_dir")/config"
+    printf '%s\n' '# Cinemarr acceptance: disable Forge early display for isolated X.' \
+      'earlyWindowControl = false' > "$(dirname "$client_mod_dir")/config/fml.toml"
+  fi
   # These game directories are deliberately retained as evidence between
   # runs. Remove the prior Jammarr candidate before installing the single
   # server-matched artifact, otherwise legacy Forge rejects duplicate mod IDs
