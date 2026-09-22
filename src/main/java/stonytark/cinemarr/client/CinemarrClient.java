@@ -123,13 +123,13 @@ public final class CinemarrClient {
         // The acceptance client can render the television while its player
         // handle is being replaced during reconnect. Keep the shared guard in
         // the source layout, but let the rendered probe settle independently.
-        // NeoForge keeps ReceivingLevelScreen attached while the joined world
-        // is already rendering media. That loading screen does not obscure the
-        // world render; other GUI screens still invalidate the screenshot.
-        boolean obscuringScreen = minecraft.screen != null
-                && !"ReceivingLevelScreen".equals(minecraft.screen.getClass().getSimpleName());
-        if (!ProtocolLimits.videoProbeViewReady(minecraft.player != null && minecraft.player.isAlive(),
-                obscuringScreen)) { acceptanceVideoReadyTicks = 0; return; }
+        var connection = minecraft.getConnection();
+        boolean joined = (minecraft.player != null && minecraft.player.isAlive())
+                || (connection != null && connection.getConnection().isConnected());
+        if (!ProtocolLimits.videoProbeViewReady(joined, false)) {
+            acceptanceVideoReadyTicks = 0;
+            return;
+        }
         // Audio cannot become ready until its own scheduler has observed ten
         // caught-up ticks and a stable, underrun-free channel. Requiring the
         // video clock to be within the same narrow 250 ms window here as well
