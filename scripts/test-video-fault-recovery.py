@@ -170,6 +170,17 @@ run_video_adverse_network_scenarios case 123 456 owned_leader owned_follower
         self.assertIn('scripts/test-video-fault-recovery.py', ci)
         self.assertIn('"$leader_pid" "$follower_pid" "$sink_leader" "$sink_follower"', SOURCE)
 
+    def test_long_supplements_keep_fixture_eos_outside_final_av_checks(self):
+        gradle = (ROOT / 'build.gradle').read_text()
+        pressure = gradle.split('def pressureRuntimeGates =', 1)[1].split(
+            "tasks.register('verifyVideoPressureRuntimes')", 1)[0]
+        recovery = gradle.split('def faultRecoveryRuntimeGates =', 1)[1].split(
+            "tasks.register('verifyVideoFaultRecoveryRuntimes')", 1)[0]
+        duration = "environment('CINEMARR_GATE_VIDEO_DURATION_SECONDS', '1200')"
+        self.assertIn(duration, pressure)
+        self.assertIn(duration, recovery)
+        self.assertIn('fake_video_duration_seconds=1200', SOURCE)
+
 
 if __name__ == '__main__':
     unittest.main()

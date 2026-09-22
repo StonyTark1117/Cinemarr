@@ -215,11 +215,16 @@ if [[ ( "$video_control_gate" == true || "$video_display_gate" == true ) && -z "
 fi
 if [[ "$video_adverse_network_gate" == true && -z "${CINEMARR_GATE_VIDEO_DURATION_SECONDS+x}" ]]; then
   # Three fault/recovery cases each require fresh physical frames and PCM after
-  # the normal controls. Do not confuse natural fixture EOS with a transport fault.
-  fake_video_duration_seconds=600
+  # the normal controls. A cold legacy client can spend nearly ten minutes in
+  # those shared controls, so do not confuse natural fixture EOS with a
+  # transport fault during the final recovery capture.
+  fake_video_duration_seconds=1200
 fi
 if [[ "$video_pressure_gate" == true && -z "${CINEMARR_GATE_VIDEO_DURATION_SECONDS+x}" ]]; then
-  fake_video_duration_seconds=600
+  # Browse pressure, third-peer segment pressure, display features and resource
+  # reloads all precede the final eight-second A/V check. Leave enough fixture
+  # runway for the complete sequence on a resource-constrained legacy client.
+  fake_video_duration_seconds=1200
 fi
 if [[ "$external_video_client_gate" == true && "$video_client_gate" != true ]]; then
   echo "CINEMARR_EXTERNAL_VIDEO_CLIENT_GATE requires CINEMARR_VIDEO_CLIENT_GATE=true" >&2

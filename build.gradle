@@ -956,7 +956,11 @@ def pressureRuntimeGates = [
         environment('CINEMARR_VIDEO_CONTROL_GATE', 'true')
     environment('CINEMARR_DISPLAY_FEATURE_GATE', 'true')
         environment('CINEMARR_VIDEO_PRESSURE_GATE', 'true')
-        environment('CINEMARR_GATE_VIDEO_DURATION_SECONDS', '600')
+        // This gate runs the normal control/display sequence before both
+        // pressure scenarios and its final A/V stability check. A cold legacy
+        // client can legitimately consume the first ten minutes before that
+        // last check, so keep EOS outside the acceptance window.
+        environment('CINEMARR_GATE_VIDEO_DURATION_SECONDS', '1200')
         mustRunAfter('inspectReleaseArtifacts', 'verifyDedicatedServers')
         mustRunAfter(terminalRuntimeGates)
         commandLine('bash', 'scripts/run-dedicated-server-gate.sh', profile)
@@ -985,7 +989,10 @@ def faultRecoveryRuntimeGates = [
         environment('CINEMARR_VIDEO_CONTROL_GATE', 'true')
     environment('CINEMARR_DISPLAY_FEATURE_GATE', 'true')
         environment('CINEMARR_VIDEO_ADVERSE_NETWORK_GATE', 'true')
-        environment('CINEMARR_GATE_VIDEO_DURATION_SECONDS', '600')
+        // The three recovery cases follow the normal control/display sequence.
+        // Keep the deterministic fixture alive through their final physical
+        // A/V capture even on a cold, resource-constrained legacy runner.
+        environment('CINEMARR_GATE_VIDEO_DURATION_SECONDS', '1200')
         mustRunAfter('inspectReleaseArtifacts', 'verifyDedicatedServers')
         mustRunAfter(terminalRuntimeGates, pressureRuntimeGates)
         commandLine('bash', 'scripts/run-dedicated-server-gate.sh', profile)
