@@ -108,8 +108,14 @@ public final class CinemarrClient {
     }
     private void soundEngineLoaded(SoundEngineLoadEvent event) { VIDEO_AUDIO.audioEngineReloaded(); }
     private void captureAcceptanceVideo(Minecraft minecraft) {
-        if (!ProtocolLimits.videoProbeViewReady(minecraft.player != null && minecraft.player.isAlive(),
-                minecraft.screen != null)) { acceptanceVideoReadyTicks = 0; return; }
+        // The probe client can retain its connection/loading screen while the
+        // world is already rendering the television. Treat the live player as
+        // the readiness boundary; requiring a null screen made NeoForge miss
+        // the one-shot acceptance marker indefinitely under production load.
+        if (minecraft.player == null || !minecraft.player.isAlive()) {
+            acceptanceVideoReadyTicks = 0;
+            return;
+        }
         // Audio cannot become ready until its own scheduler has observed ten
         // caught-up ticks and a stable, underrun-free channel. Requiring the
         // video clock to be within the same narrow 250 ms window here as well
