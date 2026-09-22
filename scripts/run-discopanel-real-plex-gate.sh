@@ -422,6 +422,9 @@ acceptance_overrides=$(jq -c --arg display "$display_gate" '
   | .environment.ONLINE_MODE = "FALSE"
   | .environment.ENFORCE_SECURE_PROFILE = "FALSE"
   | .environment.SPAWN_MONSTERS = "FALSE"
+  | .environment.GAMEMODE = "CREATIVE"
+  | .environment.FORCE_GAMEMODE = "TRUE"
+  | .environment.SPAWN_PROTECTION = "0"
   | .environment.VIEW_DISTANCE = "3"
   | .environment.SIMULATION_DISTANCE = "3"
   ' <<<"$original_overrides")
