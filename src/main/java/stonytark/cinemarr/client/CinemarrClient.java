@@ -110,8 +110,13 @@ public final class CinemarrClient {
     private void captureAcceptanceVideo(Minecraft minecraft) {
         if (!ProtocolLimits.videoProbeViewReady(minecraft.player != null && minecraft.player.isAlive(),
                 minecraft.screen != null)) { acceptanceVideoReadyTicks = 0; return; }
+        // Audio cannot become ready until its own scheduler has observed ten
+        // caught-up ticks and a stable, underrun-free channel. Requiring the
+        // video clock to be within the same narrow 250 ms window here as well
+        // made the production NeoForge client miss the one-shot marker while
+        // it was visibly rendering and audibly playing under CPU load.
         if (!ProtocolLimits.videoProbeEnabled() || acceptanceVideoScreenshotSaved
-                || !VIDEO.hasPresentedFrame() || !VIDEO.presentedFrameCaughtUp() || !VIDEO_AUDIO.anyReady()) {
+                || !VIDEO.hasPresentedFrame() || !VIDEO_AUDIO.anyReady()) {
             acceptanceVideoReadyTicks = 0;
             return;
         }
