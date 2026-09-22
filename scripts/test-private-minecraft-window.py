@@ -252,7 +252,7 @@ class CaptureIntegrityTests(unittest.TestCase):
     def test_gate_validates_automatic_capture_after_last_writer_cleanup(self):
         source = Path(__file__).with_name('run-dedicated-server-gate.sh').read_text()
         function = re.search(r'(?ms)^run_two_client_video\(\) \{\n.*?^\}', source).group()
-        tail = function[function.rindex('  cleanup_audio_processes\n'):]
+        tail = function[function.rindex('  cleanup_audio_processes "$result"\n'):]
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             profile = self.closed_profile(root)
