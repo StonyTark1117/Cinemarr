@@ -36,6 +36,17 @@ active_rcon_port=""
 active_audio_client_pids=()
 active_audio_recorder_pids=()
 active_audio_modules=()
+active_private_audio_pids=()
+active_audio_runtime_dir=""
+active_audio_environment_saved=0
+active_audio_original_xdg_runtime_dir=""
+active_audio_original_pipewire_runtime_dir=""
+active_audio_original_pulse_server=""
+active_audio_original_dbus_session_bus_address=""
+active_audio_original_xdg_runtime_dir_set=0
+active_audio_original_pipewire_runtime_dir_set=0
+active_audio_original_pulse_server_set=0
+active_audio_original_dbus_session_bus_address_set=0
 active_config=""
 active_config_backup=""
 active_config_existed=0
@@ -90,6 +101,10 @@ video_pressure_gate=${CINEMARR_VIDEO_PRESSURE_GATE:-false}
 video_adverse_network_gate=${CINEMARR_VIDEO_ADVERSE_NETWORK_GATE:-false}
 video_follower_first_gate=${CINEMARR_VIDEO_FOLLOWER_FIRST_GATE:-false}
 external_video_client_gate=${CINEMARR_EXTERNAL_VIDEO_CLIENT_GATE:-false}
+private_audio_graph=${CINEMARR_PRIVATE_AUDIO_GRAPH:-true}
+if [[ "$private_audio_graph" != true && "$private_audio_graph" != false ]]; then
+  echo 'CINEMARR_PRIVATE_AUDIO_GRAPH must be true or false' >&2; exit 2
+fi
 live_plex_gate=${CINEMARR_LIVE_PLEX_GATE:-false}
 video_capacity_gate=${CINEMARR_VIDEO_CAPACITY_GATE:-false}
 if [[ "$video_capacity_gate" != true && "$video_capacity_gate" != false ]]; then
@@ -338,6 +353,7 @@ cleanup_all() {
     fi
   fi
   cleanup_audio_processes
+  shutdown_private_audio_graph
   if [[ -n "$active_client_pid" ]]; then
     terminate_client_launch "$active_client_pid" 10 || true
     active_client_pid=""
@@ -392,6 +408,130 @@ cleanup_audio_processes() {
   active_audio_client_pids=()
   active_audio_recorder_pids=()
   active_audio_modules=()
+}
+
+shutdown_private_audio_graph() {
+  local index pid
+  for ((index=${#active_private_audio_pids[@]} - 1; index >= 0; index--)); do
+    pid=${active_private_audio_pids[index]}
+    kill -TERM "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+  done
+  active_private_audio_pids=()
+  if [[ -n "$active_audio_runtime_dir" && -d "$active_audio_runtime_dir" ]]; then
+    rm -r -- "$active_audio_runtime_dir"
+  fi
+  active_audio_runtime_dir=""
+  if (( active_audio_environment_saved )); then
+    if (( active_audio_original_xdg_runtime_dir_set )); then
+      export XDG_RUNTIME_DIR="$active_audio_original_xdg_runtime_dir"
+    else
+      unset XDG_RUNTIME_DIR
+    fi
+    if (( active_audio_original_pipewire_runtime_dir_set )); then
+      export PIPEWIRE_RUNTIME_DIR="$active_audio_original_pipewire_runtime_dir"
+    else
+      unset PIPEWIRE_RUNTIME_DIR
+    fi
+    if (( active_audio_original_pulse_server_set )); then
+      export PULSE_SERVER="$active_audio_original_pulse_server"
+    else
+      unset PULSE_SERVER
+    fi
+    if (( active_audio_original_dbus_session_bus_address_set )); then
+      export DBUS_SESSION_BUS_ADDRESS="$active_audio_original_dbus_session_bus_address"
+    else
+      unset DBUS_SESSION_BUS_ADDRESS
+    fi
+  fi
+  active_audio_environment_saved=0
+}
+
+# Use the same hardware-free, per-gate graph as Jammarr's hosted runtime suite.
+# In particular, neither acceptance client should contend with other matrix
+# jobs or a developer's desktop Pulse/PipeWire service for its measured sink.
+start_private_audio_graph() {
+  local label=$1 command pid deadline private_dbus_address private_dbus_pid
+  local -a private_dbus_output=() wireplumber_args=()
+  [[ -n "$active_audio_runtime_dir" ]] && return 0
+  for command in dbus-daemon pipewire wireplumber pipewire-pulse pactl pacat parec; do
+    if ! command -v "$command" > /dev/null; then
+      echo "$label: private audio acceptance requires $command" >&2
+      return 1
+    fi
+  done
+  [[ ${XDG_RUNTIME_DIR+x} ]] && active_audio_original_xdg_runtime_dir_set=1
+  active_audio_original_xdg_runtime_dir=${XDG_RUNTIME_DIR-}
+  [[ ${PIPEWIRE_RUNTIME_DIR+x} ]] && active_audio_original_pipewire_runtime_dir_set=1
+  active_audio_original_pipewire_runtime_dir=${PIPEWIRE_RUNTIME_DIR-}
+  [[ ${PULSE_SERVER+x} ]] && active_audio_original_pulse_server_set=1
+  active_audio_original_pulse_server=${PULSE_SERVER-}
+  [[ ${DBUS_SESSION_BUS_ADDRESS+x} ]] && active_audio_original_dbus_session_bus_address_set=1
+  active_audio_original_dbus_session_bus_address=${DBUS_SESSION_BUS_ADDRESS-}
+  active_audio_environment_saved=1
+
+  active_audio_runtime_dir=$(mktemp -d /tmp/cinemarr-dedicated-gate-audio.XXXXXX) || return 1
+  chmod 700 "$active_audio_runtime_dir"
+  mapfile -t private_dbus_output < <(dbus-daemon --session --fork --print-address=1 --print-pid=1)
+  private_dbus_address=${private_dbus_output[0]:-}
+  private_dbus_pid=${private_dbus_output[1]:-}
+  if [[ -z "$private_dbus_address" || ! "$private_dbus_pid" =~ ^[0-9]+$ ]] \
+      || ! kill -0 "$private_dbus_pid" 2>/dev/null; then
+    echo "$label: private D-Bus session did not become ready" >&2
+    return 1
+  fi
+  active_private_audio_pids+=("$private_dbus_pid")
+  export DBUS_SESSION_BUS_ADDRESS="$private_dbus_address"
+  env DBUS_SESSION_BUS_ADDRESS="$private_dbus_address" \
+    XDG_RUNTIME_DIR="$active_audio_runtime_dir" \
+    PIPEWIRE_RUNTIME_DIR="$active_audio_runtime_dir" pipewire \
+    > "$output_root/$label.private-pipewire.log" 2>&1 &
+  pid=$!; active_private_audio_pids+=("$pid")
+  deadline=$((SECONDS + 10))
+  while [[ ! -S "$active_audio_runtime_dir/pipewire-0" ]]; do
+    if ! kill -0 "$pid" 2>/dev/null || (( SECONDS >= deadline )); then
+      echo "$label: private PipeWire core did not become ready" >&2
+      return 1
+    fi
+    sleep .1
+  done
+  {
+    printf 'wireplumber-version: '; wireplumber --version 2>&1 || true
+    printf 'wireplumber-profile: '
+  } > "$output_root/$label.private-audio-runtime.txt"
+  if wireplumber --help 2>&1 | grep -q -- '-p'; then
+    wireplumber_args=(-p policy)
+    printf '%s\n' policy >> "$output_root/$label.private-audio-runtime.txt"
+  else
+    printf '%s\n' default >> "$output_root/$label.private-audio-runtime.txt"
+  fi
+  env DBUS_SESSION_BUS_ADDRESS="$private_dbus_address" \
+    XDG_RUNTIME_DIR="$active_audio_runtime_dir" \
+    PIPEWIRE_RUNTIME_DIR="$active_audio_runtime_dir" wireplumber "${wireplumber_args[@]}" \
+    > "$output_root/$label.private-wireplumber.log" 2>&1 &
+  pid=$!; active_private_audio_pids+=("$pid")
+  sleep 1
+  if ! kill -0 "$pid" 2>/dev/null; then
+    echo "$label: private WirePlumber policy manager exited during startup" >&2
+    return 1
+  fi
+  env DBUS_SESSION_BUS_ADDRESS="$private_dbus_address" \
+    XDG_RUNTIME_DIR="$active_audio_runtime_dir" \
+    PIPEWIRE_RUNTIME_DIR="$active_audio_runtime_dir" pipewire-pulse \
+    > "$output_root/$label.private-pipewire-pulse.log" 2>&1 &
+  pid=$!; active_private_audio_pids+=("$pid")
+  deadline=$((SECONDS + 10))
+  while [[ ! -S "$active_audio_runtime_dir/pulse/native" ]]; do
+    if ! kill -0 "$pid" 2>/dev/null || (( SECONDS >= deadline )); then
+      echo "$label: private PipeWire-Pulse server did not become ready" >&2
+      return 1
+    fi
+    sleep .1
+  done
+  export XDG_RUNTIME_DIR="$active_audio_runtime_dir"
+  export PIPEWIRE_RUNTIME_DIR="$active_audio_runtime_dir"
+  export PULSE_SERVER="unix:$active_audio_runtime_dir/pulse/native"
+  pactl info > /dev/null || return 1
 }
 
 trap cleanup_all EXIT
@@ -853,6 +993,7 @@ start_audio_client() {
   local username=$6
   local sink=$7
   local pcm_type=${CINEMARR_ALSA_PCM_TYPE:-pipewire}
+  local openal_driver=alsa pulse_sink=""
   local client_dir="$output_root/$label.audio-$role"
   local client_console="$output_root/$label.audio-$role.console.log"
   local control_file="$output_root/$label.audio-$role.control"
@@ -962,13 +1103,28 @@ start_audio_client() {
       return 1
       ;;
   esac
+  # LWJGL 2's bundled OpenAL follows Jammarr's tested direct Pulse path.
+  # Modern clients retain ALSA's Pulse plugin, with an override for diagnosis.
+  if [[ "$label" == '1.7.10-forge' && "$pcm_type" == pulse ]]; then
+    openal_driver=pulse
+    pulse_sink=$sink
+  fi
+  if [[ -n ${CINEMARR_OPENAL_DRIVER:-} ]]; then
+    openal_driver=$CINEMARR_OPENAL_DRIVER
+    [[ "$openal_driver" == pulse ]] && pulse_sink=$sink
+  fi
+  case "$openal_driver" in
+    alsa|pulse) ;;
+    *) echo "Unsupported CINEMARR_OPENAL_DRIVER '$openal_driver'" >&2; return 1 ;;
+  esac
   # Give OpenAL Soft enough mix-ahead to keep two software-rendered clients
   # moving at the same device rate when a hosted runner is briefly CPU-bound.
   # The sink monitors still measure real output and the sync gate still applies
   # its 150 ms physical lag limit; this only prevents backend mixer starvation.
   printf '%s\n' \
     '[general]' \
-    'period_size = 512' \
+    'frequency = 48000' \
+    'period_size = 1024' \
     'periods = 8' > "$client_dir/alsoft.conf"
   # Exercise a normal scaled GUI: a 640x480 physical window at scale two is
   # Minecraft's minimum 320x240 logical viewport, not a scale-one exception.
@@ -991,7 +1147,7 @@ start_audio_client() {
       exec setsid env -u CINEMARR_PLEX_TOKEN -u CINEMARR_PLEX_URL -u DISCOPANEL_TOKEN -u DISCOPANEL_API_BASE -u WAYLAND_DISPLAY XDG_SESSION_TYPE=x11 \
         JAVA_TOOL_OPTIONS="$java_options" \
         ALSA_CONFIG_PATH="$client_dir/alsa.conf" ALSOFT_CONF="$client_dir/alsoft.conf" \
-        ALSOFT_DRIVERS=alsa LIBGL_ALWAYS_SOFTWARE=1 \
+        ALSOFT_DRIVERS="$openal_driver" PULSE_SINK="$pulse_sink" LIBGL_ALWAYS_SOFTWARE=1 \
         python3 "$repo_root/scripts/launch-packaged-client.py" "$label" \
         --game-dir "$client_dir" --username "$username" \
         --server "${acceptance_server_host}:${port}" --expected-server-host "$acceptance_server_host" \
@@ -1003,7 +1159,7 @@ start_audio_client() {
       JAVA_HOME="$java_home" PATH="$java_home/bin:$PATH" \
       JAVA_TOOL_OPTIONS="$java_options" \
       ALSA_CONFIG_PATH="$client_dir/alsa.conf" ALSOFT_CONF="$client_dir/alsoft.conf" \
-      ALSOFT_DRIVERS=alsa LIBGL_ALWAYS_SOFTWARE=1 \
+      ALSOFT_DRIVERS="$openal_driver" PULSE_SINK="$pulse_sink" LIBGL_ALWAYS_SOFTWARE=1 \
       ./gradlew "$active_client_task" --no-daemon --max-workers=1 --console=plain "${cache_args[@]}" \
       "${runtime_args[@]}" \
       -PcinemarrAcceptanceUsername="$username" \
@@ -3386,6 +3542,17 @@ run_target() {
     active_server_group=$server_group
   else
     server_group=""
+  fi
+
+  # Create the measured audio graph before any graphical client can connect.
+  # Each CI matrix job gets its own D-Bus, PipeWire core and Pulse socket.
+  if (( result == 0 )) && [[ "$private_audio_graph" == true ]] \
+      && [[ "$protocol_client_gate" == true || "$command_client_gate" == true \
+        || "$audio_client_gate" == true || "$video_client_gate" == true ]]; then
+    if ! start_private_audio_graph "$label"; then
+      echo "$label: unable to prepare the isolated client audio environment" >&2
+      result=1
+    fi
   fi
 
   if (( result == 0 )) && [[ "$protocol_client_gate" == "true" ]]; then

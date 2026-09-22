@@ -75,9 +75,9 @@ jobs:
           installed=0
           for attempt in 1 2 3; do
             if sudo apt-get update && sudo apt-get install -y --fix-missing \
-                ffmpeg gdb imagemagick iproute2 libasound2-plugins libgl1-mesa-dri \
-                libopenal1 pulseaudio pulseaudio-utils python3-pil x11-utils x11-xserver-utils \
-                xdotool xvfb; then
+                dbus-daemon ffmpeg gdb imagemagick iproute2 libasound2-plugins libgl1-mesa-dri \
+                libopenal1 pipewire pipewire-pulse pulseaudio-utils python3-pil \
+                wireplumber x11-utils x11-xserver-utils xdotool xvfb; then
               installed=1
               break
             fi
@@ -90,7 +90,6 @@ jobs:
           fi
           mkdir -p "$GITHUB_WORKSPACE/build/native-cores"
           sudo sysctl -w "kernel.core_pattern=$GITHUB_WORKSPACE/build/native-cores/core.%p"
-          pulseaudio --start --exit-idle-time=-1
           python3 scripts/test-private-xvfb.py
           python3 scripts/test-display-feature.py
       - uses: actions/setup-java@v6
@@ -280,11 +279,6 @@ jobs:
           CINEMARR_GATE_OUTPUT_ROOT: ${{ github.workspace }}/build/fabric-loader-0.19.2-gate
           CINEMARR_FABRIC_LOADER_VERSION: 0.19.2
         run: bash scripts/run-dedicated-server-gate.sh ${{ matrix.runtime }}
-      - name: Stop headless audio before runner cleanup
-        if: ${{ always() }}
-        run: |
-          pulseaudio --kill 2>/dev/null || true
-          pkill -TERM -f 'pulseaudio' 2>/dev/null || true
       - name: Collect native failure backtraces
         if: ${{ always() }}
         run: python3 scripts/collect-native-core-backtraces.py build/native-cores
