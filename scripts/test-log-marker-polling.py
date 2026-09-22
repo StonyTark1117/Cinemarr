@@ -276,6 +276,8 @@ wait_for_audio_playing() {
                  'java.lang.RuntimeException: java.nio.file.NoSuchFileException: missing.jar\n', True),
                 ('[main/INFO] (Quilt Loader) Loading Minecraft\n', False),
                 ('Optional asset warning: java.nio.file.NoSuchFileException\n', False),
+                ('#@!@# Game crashed! Crash report saved to: report.txt\n', True),
+                ('java.lang.ExceptionInInitializerError\nCaused by: java.io.EOFException\n', True),
                 ('[pool-2-thread-1/ERROR] [EARLYDISPLAY/]: BARF java.nio.file.FileSystemNotFoundException: null\n', True),
                 ('[Render thread/ERROR] [EARLYDISPLAY/]: BARF java.lang.IllegalStateException: Already building.\n', True),
                 ('[Render thread/INFO] [EARLYDISPLAY/]: Requested GL version 4.6 got version 4.6\n', False),

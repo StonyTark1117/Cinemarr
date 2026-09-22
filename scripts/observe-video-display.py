@@ -282,7 +282,7 @@ def main():
                     raise RuntimeError('UI layout Apply restarted media')
                 phases.append({'phase': 'ui-apply', 'televisions': applied})
                 open_page(role)
-                presets = ['144p', '240p', '360p', '480p', '720p', '1080p', '4k', '8k']
+                presets = ['144p', '240p', '480p', '720p', '1080p', '1440p', '4k', '8k']
                 for _ in range(len(presets) - presets.index(applied[target]['requested'])):
                     desktop.click(300, 172)
                     time.sleep(.15)

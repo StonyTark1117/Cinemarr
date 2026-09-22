@@ -36,7 +36,7 @@ final class LegacyDisplaySettingsScreen extends GuiScreen implements stonytark.c
             if(b.id==0){b.displayString=page.layoutLabel();b.enabled=page.editable();}
             if(b.id==1){b.displayString=page.mappingLabel();b.enabled=page.qualityEditable();}
             if(b.id==2){b.displayString=page.resolutionLabel();b.enabled=page.qualityEditable();}
-            if(b.id==3)b.enabled=!page.pending();if(b.id==4)b.enabled=page.editable();
+            if(b.id==3||b.id==5)b.enabled=!page.pending();if(b.id==4)b.enabled=page.editable();
         }
         widthBox.setEnabled(page.customEditable());heightBox.setEnabled(page.customEditable());
         if(!page.customEditable()){widthBox.setFocused(false);heightBox.setFocused(false);}
@@ -46,18 +46,18 @@ final class LegacyDisplaySettingsScreen extends GuiScreen implements stonytark.c
         switch(b.id){
             case 0:page.cycleLayout();break;case 1:page.cycleMapping();break;case 2:page.cycleResolution();break;
             case 3:page.reload(state.session(pos));widthBox.setText(page.width());heightBox.setText(page.height());break;
-            case 4:VideoPackets.SessionCommand command=page.apply(pos,System.currentTimeMillis());if(command!=null)state.command(command);break;
+            case 4:VideoPackets.SessionCommand command=page.apply(pos,System.currentTimeMillis());if(command!=null)state.command(command);else if(!page.pending())showError(page.message());break;
             case 5:mc.displayGuiScreen(parent);break;default:break;
         }
         refresh();
     }
     @Override public void updateScreen(){page.update(state.session(pos),System.currentTimeMillis());widthBox.updateCursorCounter();heightBox.updateCursorCounter();refresh();}
     @Override protected void keyTyped(char character,int key){
-        if(key==Keyboard.KEY_ESCAPE){mc.displayGuiScreen(parent);return;}
+        if(key==Keyboard.KEY_ESCAPE){if(!page.pending())mc.displayGuiScreen(parent);return;}
         if(page.customEditable()){widthBox.textboxKeyTyped(character,key);heightBox.textboxKeyTyped(character,key);page.dimensions(widthBox.getText(),heightBox.getText());}
     }
     @Override protected void mouseClicked(int x,int y,int button){super.mouseClicked(x,y,button);if(page.customEditable()){widthBox.mouseClicked(x,y,button);heightBox.mouseClicked(x,y,button);}}
-    public void showError(String error){page.fail(error);refresh();}
+    public void showError(String error){page.fail(error);refresh();if(stonytark.cinemarr.core.protocol.ProtocolLimits.displayProbeEnabled())stonytark.cinemarr.Cinemarr.LOGGER.info("Acceptance display UI error: {}",page.message());}
     private void line(String text,int y,int color){drawCenteredString(fontRendererObj,fontRendererObj.trimStringToWidth(text,304),width/2,y,color);}
     @Override public void drawScreen(int x,int y,float partial){
         drawDefaultBackground();super.drawScreen(x,y,partial);widthBox.drawTextBox();heightBox.drawTextBox();

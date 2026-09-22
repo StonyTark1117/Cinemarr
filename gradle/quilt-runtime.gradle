@@ -16,8 +16,11 @@ ext.cinemarrQuiltRuntimeProfiles = [
 // The acceptance launcher already owns a private X server. Loom's CI default
 // wraps runClient in another xvfb-run and moves the game to an unobserved display.
 if (providers.gradleProperty('cinemarrAcceptanceServer').isPresent()) {
-    tasks.matching { it.name == 'runClient' }.configureEach {
+    tasks.matching { it.name == 'runClient' }.configureEach { task ->
         // Older Loom releases do not create a nested X server or expose this property.
-        if (hasProperty('useXvfb')) useXvfb.set(false)
+        if (task.hasProperty('useXvfb')) {
+            task.useXvfb.set(false)
+            task.useXvfb.disallowChanges()
+        }
     }
 }

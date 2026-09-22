@@ -1,5 +1,21 @@
 # Release acceptance
 
+**Cinemarr 1.0 candidate: consolidated on main, CI repair and certification in progress.**
+
+The [current completion ledger](1.0_CANDIDATE_LEDGER.md) tracks the combined
+candidate. All former branches have been merged or proven tree-identical to
+merged ancestors; only `main` remains locally and remotely. No release tag,
+publication or release creation is authorized.
+
+The first consolidated hosted run, `35730737095` on `a742e7d`, exposed a
+vertex-format merge regression and an ineffective Loom nested-X override.
+These are repository defects being repaired, not external blockers. Earlier
+passing evidence applies only to its recorded source and artifact bytes.
+Completion still requires the final main commit's full green hosted run,
+local acceptance, artifact parity, direct evidence review and clean teardown.
+
+## Historical pre-consolidation status
+
 **Cinemarr 1.0.0 prerelease: protocol correction awaiting new artifact certification.**
 
 The final local gate at `1ea796f91fe4e38993dc68ffa611370062fe92f1`

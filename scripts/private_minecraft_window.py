@@ -178,7 +178,16 @@ class PrivateMinecraftWindow:
                 self.window = windows[0]
                 break
             if time.monotonic() >= deadline:
-                raise RuntimeError("No visible Minecraft window on the private X server")
+                # Report only owned-display identity and numeric tree geometry;
+                # window titles and process environments may contain private data.
+                try:
+                    tree = self.run("xwininfo", "-root", "-tree")
+                except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                    tree = ""
+                ids = list(dict.fromkeys(re.findall(r"0x[0-9a-fA-F]+", tree)))
+                raise RuntimeError("No visible Minecraft window on the private X server: "
+                                   + f"display={self.display} xvfbPid={self.xpid} "
+                                   + f"geometry={self.geometry} treeIds={','.join(ids)}")
             # A disconnect can be logged before the render thread maps the
             # window. Revalidate the owned X server on every bounded lookup.
             time.sleep(0.1)

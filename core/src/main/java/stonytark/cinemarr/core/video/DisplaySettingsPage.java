@@ -81,7 +81,7 @@ public final class DisplaySettingsPage {
             return new VideoPackets.SessionCommand(VideoPackets.SessionAction.SET_DISPLAY, pos, "", "", "",
                     requested.layout(), current.timelineGeneration(), 0, -1, -1).withDisplay(requested);
         } catch (RuntimeException invalid) {
-            fail(invalid instanceof NumberFormatException ? "Enter whole numbers from 2 to 8192" : invalid.getMessage());
+            fail(invalid instanceof NumberFormatException ? "Enter whole dimensions from 2 to 8192" : invalid.getMessage());
             return null;
         }
     }

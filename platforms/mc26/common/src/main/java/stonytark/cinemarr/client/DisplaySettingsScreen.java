@@ -15,7 +15,7 @@ final class Mc26DisplaySettingsScreen extends Screen implements stonytark.cinema
     private final CinemarrVideoScreen parent;
     private DisplaySettingsPage page;
     private EditBox widthBox, heightBox;
-    private Button layout, mapping, quality, apply, reload;
+    private Button layout, mapping, quality, apply, reload, cancel;
 
     public Mc26DisplaySettingsScreen(long pos, CinemarrVideoClientState state, CinemarrVideoScreen parent) {
         super(Component.literal("Display Settings")); controllerPos=pos; this.state=state; this.parent=parent;
@@ -38,8 +38,8 @@ final class Mc26DisplaySettingsScreen extends Screen implements stonytark.cinema
         heightBox.setResponder(value->page.dimensions(widthBox.getValue(),value));
         addRenderableWidget(widthBox);addRenderableWidget(heightBox);
         reload=button(left,208,96,"Reload",()->{page.reload(state.session(controllerPos));String w=page.width(),h=page.height();widthBox.setValue(w);heightBox.setValue(h);});
-        apply=button(left+104,208,96,"Apply",()->{VideoPackets.SessionCommand command=page.apply(controllerPos,System.currentTimeMillis());if(command!=null)state.command(command);});
-        button(left+208,208,96,"Cancel",()->onClose());
+        apply=button(left+104,208,96,"Apply",()->{VideoPackets.SessionCommand command=page.apply(controllerPos,System.currentTimeMillis());if(command!=null)state.command(command);else if(!page.pending())showError(page.message());});
+        cancel=button(left+208,208,96,"Cancel",()->onClose());
         refresh();
     }
     private Button button(int x,int y,int w,String label,Runnable action) {
@@ -47,12 +47,12 @@ final class Mc26DisplaySettingsScreen extends Screen implements stonytark.cinema
     }
     private void refresh() {
         layout.setMessage(Component.literal(page.layoutLabel()));mapping.setMessage(Component.literal(page.mappingLabel()));quality.setMessage(Component.literal(page.resolutionLabel()));
-        layout.active=page.editable();mapping.active=quality.active=page.qualityEditable();apply.active=page.editable();reload.active=!page.pending();
+        layout.active=page.editable();mapping.active=quality.active=page.qualityEditable();apply.active=page.editable();reload.active=cancel.active=!page.pending();
         widthBox.setEditable(page.customEditable());heightBox.setEditable(page.customEditable());widthBox.active=heightBox.active=page.customEditable();
     }
     @Override public void tick(){page.update(state.session(controllerPos),System.currentTimeMillis());refresh();}
-    public void showError(String message){page.fail(message);refresh();}
-    @Override public void onClose(){CinemarrClientUi.showScreen(parent);}
+    public void showError(String message){page.fail(message);refresh();if(stonytark.cinemarr.core.protocol.ProtocolLimits.displayProbeEnabled())stonytark.cinemarr.Cinemarr.LOGGER.info("Acceptance display UI error: {}",page.message());}
+    @Override public void onClose(){if(!page.pending())CinemarrClientUi.showScreen(parent);}
     private void line(GuiGraphicsExtractor g,String text,int y,int color){g.centeredText(font,font.plainSubstrByWidth(text,304),width/2,y,color);}
     @Override public void extractRenderState(GuiGraphicsExtractor g,int mx,int my,float partial){
         super.extractRenderState(g,mx,my,partial);
