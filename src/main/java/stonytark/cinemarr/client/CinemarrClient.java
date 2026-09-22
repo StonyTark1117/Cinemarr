@@ -136,7 +136,7 @@ public final class CinemarrClient {
         // made the production NeoForge client miss the one-shot marker while
         // it was visibly rendering and audibly playing under CPU load.
         if (!ProtocolLimits.videoProbeEnabled() || acceptanceVideoScreenshotSaved
-                || !VIDEO.hasPresentedFrame() || !VIDEO_AUDIO.anyReady()) {
+                || !VIDEO.hasPresentedFrame() || !VIDEO_AUDIO.acceptanceReady()) {
             acceptanceVideoReadyTicks = 0;
             return;
         }

@@ -22,6 +22,8 @@ public final class CinemarrVideoAudioManager {
         for(CinemarrVideoClientState.StreamKey key:new ArrayList<>(players.keySet()))if(!current.contains(key)){players.remove(key).reset();acceptanceReady.remove(key);}
     }
     public boolean anyReady(){for(CinemarrVideoAudio value:players.values())if(value.ready())return true;return false;}
+    /** Latched acceptance readiness survives the reconnect tick boundary. */
+    public boolean acceptanceReady(){return !acceptanceReady.isEmpty();}
     public void audioEngineReloaded(){for(CinemarrVideoAudio value:players.values())value.audioEngineReloaded();}
     public void reset(){for(CinemarrVideoAudio value:players.values())value.reset();players.clear();acceptanceReady.clear();}
 }
