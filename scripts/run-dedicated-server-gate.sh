@@ -105,6 +105,14 @@ private_audio_graph=${CINEMARR_PRIVATE_AUDIO_GRAPH:-true}
 if [[ "$private_audio_graph" != true && "$private_audio_graph" != false ]]; then
   echo 'CINEMARR_PRIVATE_AUDIO_GRAPH must be true or false' >&2; exit 2
 fi
+# Protocol and command probes do not test playback. Jammarr's hosted gate uses
+# OpenAL's null backend here so headless runners need no incidental default
+# device; the separate leader/follower clients retain measured physical sinks.
+non_audio_openal_driver=${CINEMARR_NON_AUDIO_OPENAL_DRIVER:-null}
+case "$non_audio_openal_driver" in
+  null|alsa|pulse|pipewire) ;;
+  *) echo 'CINEMARR_NON_AUDIO_OPENAL_DRIVER must be null, alsa, pulse, or pipewire' >&2; exit 2 ;;
+esac
 live_plex_gate=${CINEMARR_LIVE_PLEX_GATE:-false}
 video_capacity_gate=${CINEMARR_VIDEO_CAPACITY_GATE:-false}
 if [[ "$video_capacity_gate" != true && "$video_capacity_gate" != false ]]; then
@@ -740,7 +748,7 @@ run_acceptance_client() {
       bash "$repo_root/scripts/run-private-xvfb.sh" 1280x720x24 env \
       JAVA_HOME="$java_home" PATH="$java_home/bin:$PATH" \
       JAVA_TOOL_OPTIONS="$java_tool_options" \
-      LIBGL_ALWAYS_SOFTWARE=1 \
+      ALSOFT_DRIVERS="$non_audio_openal_driver" LIBGL_ALWAYS_SOFTWARE=1 \
       ./gradlew "$active_client_task" --no-daemon --max-workers=1 --console=plain \
       "${cache_args[@]}" "${runtime_args[@]}" \
       -PcinemarrAcceptanceUsername="$username" \
@@ -845,7 +853,7 @@ run_command_client() {
       bash "$repo_root/scripts/run-private-xvfb.sh" 1280x720x24 env \
       JAVA_HOME="$java_home" PATH="$java_home/bin:$PATH" \
       JAVA_TOOL_OPTIONS='-Dcinemarr.acceptance.enabled=true -Dcinemarr.acceptance.commandProbe=true -Dorg.lwjgl.opengl.Display.allowSoftwareOpenGL=true' \
-      LIBGL_ALWAYS_SOFTWARE=1 \
+      ALSOFT_DRIVERS="$non_audio_openal_driver" LIBGL_ALWAYS_SOFTWARE=1 \
       ./gradlew "$active_client_task" --no-daemon --max-workers=1 --console=plain \
       "${cache_args[@]}" "${runtime_args[@]}" \
       -PcinemarrAcceptanceUsername="$username" \
