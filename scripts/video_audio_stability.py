@@ -4,7 +4,10 @@ from uuid import UUID
 
 
 def fields(line):
-    return dict(re.findall(r'\b([A-Za-z]+)=([^\s]+)', line))
+    # Legacy Log4j can append the closing CDATA/XML tags directly to the last
+    # value on a console line. Keep those transport delimiters out of the
+    # identity rather than silently discarding otherwise valid telemetry.
+    return dict(re.findall(r'\b([A-Za-z]+)=([^\s<\]]+)', line))
 
 
 def identity(row):

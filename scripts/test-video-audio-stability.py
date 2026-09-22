@@ -29,6 +29,12 @@ def sample(index=1, legacy=False, generation=1, **changes):
 
 
 class AudioStabilityTests(unittest.TestCase):
+    def test_legacy_log4j_xml_suffix_preserves_stream_identity(self):
+        text = scene(True)
+        text += sample(1, True).rstrip() + ']]></log4j:Message>\n'
+        text += sample(2, True).rstrip() + ']]></log4j:Message>\n'
+        self.assertEqual(2, len(readings(text)))
+
     def test_waiting_tv_does_not_hide_either_active_tv(self):
         for legacy in (False, True):
             texts = {role:scene(legacy) for role in ('leader','follower')}
