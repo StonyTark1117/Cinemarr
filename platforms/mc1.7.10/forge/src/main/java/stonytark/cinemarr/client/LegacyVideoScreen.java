@@ -112,7 +112,6 @@ final class LegacyVideoScreen extends GuiScreen {
     }
 
     private void addControls() {
-        add(26, layout.left(), 4, 68, 14, "Display");
         VideoPackets.SessionState playback=state.session(controllerPos);
         boolean paused=playback!=null&&playback.paused();
         control(PAUSE,Slot.PAUSE,paused?"Resume":"Pause");control(SEEK_BACK,Slot.SEEK_BACK,"-30s");
@@ -137,7 +136,6 @@ final class LegacyVideoScreen extends GuiScreen {
     private GuiButton add(int id, int x, int y, int width, int height, String label) { String display=trim(label,width-8);GuiButton button = new LegacyVideoButton(id, x, y, width, height, display); buttonList.add(button);if(!display.equals(label))tooltips.put(button,label);return button; }
 
     @Override protected void actionPerformed(GuiButton button) {
-        if (button.id == 26) { mc.displayGuiScreen(new LegacyDisplaySettingsScreen(controllerPos, state, this)); return; }
         if (!button.enabled) return;
         if(button.id==DISPLAY_SETTINGS){mc.displayGuiScreen(new LegacyDisplaySettingsScreen(controllerPos,state,this));return;}
         if (button.id >= LIBRARY_BASE && button.id < OPEN_BASE) { int index = button.id - LIBRARY_BASE; if (index < state.libraries().libraries().size()) selectLibrary(state.libraries().libraries().get(index).id()); return; }
