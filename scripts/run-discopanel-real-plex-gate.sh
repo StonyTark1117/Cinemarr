@@ -24,24 +24,28 @@ case "$label" in
     server_name='Jammarr 1.7.10 Forge Test'
     target_dir="$repo_root/platforms/mc1.7.10/forge"
     java_home=${CINEMARR_JAVA26_HOME:-/usr/lib/jvm/java-26-openjdk}
+    packaged_java_home=${CINEMARR_PACKAGED_JAVA8_HOME:-/usr/lib/jvm/java-8-openjdk}
     expected_jar='cinemarr-1.0.0+mc1.7.10-forge.jar'
     ;;
   1.20.1-quilt)
     server_name='Jammarr 1.20.1 Quilt Test'
     target_dir="$repo_root/platforms/mc1.20.1/fabric"
     java_home=${CINEMARR_JAVA21_HOME:-/usr/lib/jvm/java-21-openjdk}
+    packaged_java_home=${CINEMARR_PACKAGED_JAVA17_HOME:-/usr/lib/jvm/java-17-openjdk}
     expected_jar='cinemarr-1.0.0+mc1.20.1-fabric.jar'
     ;;
   1.21.1-neoforge)
     server_name='Jammarr 1.21.1 NeoForge Test'
     target_dir="$repo_root"
     java_home=${CINEMARR_JAVA21_HOME:-/usr/lib/jvm/java-21-openjdk}
+    packaged_java_home=${CINEMARR_PACKAGED_JAVA21_HOME:-/usr/lib/jvm/java-21-openjdk}
     expected_jar='cinemarr-1.0.0+mc1.21.1-neoforge.jar'
     ;;
   26.2-fabric)
     server_name='Jammarr 26.2 Fabric Test'
     target_dir="$repo_root/platforms/mc26.2/fabric"
     java_home=${CINEMARR_JAVA26_HOME:-/usr/lib/jvm/java-26-openjdk}
+    packaged_java_home=${CINEMARR_PACKAGED_JAVA25_HOME:-/usr/lib/jvm/java-25-openjdk}
     expected_jar='cinemarr-1.0.0+mc26.2-fabric.jar'
     ;;
   *)
@@ -66,7 +70,10 @@ export CINEMARR_GATE_OUTPUT_ROOT
 # Fail before contacting or changing a managed server if production-client
 # inputs are unavailable. Exact server bytes plus a development client are
 # insufficient for this release gate.
+[[ -x "$packaged_java_home/bin/java" ]] \
+  || { echo "Packaged Java home is unavailable for $label: $packaged_java_home" >&2; exit 2; }
 python3 "$repo_root/scripts/launch-packaged-client.py" "$label" --check-only \
+  --java-home "$packaged_java_home" \
   --game-dir "$repo_root/build/packaged-client-focus/preflight-$label" \
   --username CinemarrVideoA --server "$server_host:1" --expected-server-host "$server_host"
 
@@ -74,6 +81,15 @@ for tool in curl jq base64 pactl parec ffmpeg xvfb-run sha256sum python3; do
   command -v "$tool" >/dev/null || { echo "Missing required tool: $tool" >&2; exit 2; }
 done
 [[ -x "$java_home/bin/java" ]] || { echo "Java home is unavailable: $java_home" >&2; exit 2; }
+# The shared gate launches the packaged client from the runtime metadata. Keep
+# its Java selection explicit even when the caller did not export the derived
+# CINEMARR_PACKAGED_JAVA<runtimeJava>_HOME variable.
+case "$label" in
+  1.7.10-forge) export CINEMARR_PACKAGED_JAVA8_HOME="$packaged_java_home" ;;
+  1.20.1-quilt) export CINEMARR_PACKAGED_JAVA17_HOME="$packaged_java_home" ;;
+  1.21.1-neoforge) export CINEMARR_PACKAGED_JAVA21_HOME="$packaged_java_home" ;;
+  26.2-fabric) export CINEMARR_PACKAGED_JAVA25_HOME="$packaged_java_home" ;;
+esac
 
 jar_payload_sha() {
   python3 - "$1" <<'PY'

@@ -17,7 +17,7 @@ jre_api='https://api.adoptium.net/v3/assets/latest/21/hotspot?architecture=x64&i
 for tool in sshpass ssh scp curl jq sha256sum genisoimage python3 tr; do
   command -v "$tool" >/dev/null || { echo "Missing required tool: $tool" >&2; exit 2; }
 done
-[[ -f "$windows_iso" && -f "$password_file" && -d "$bundle/classes" \
+[[ -f "$password_file" && -d "$bundle/classes" \
    && -f "$bundle/lib/ffmpeg-8.1.2-1.5.14-windows-x86_64.jar" ]] || exit 2
 [[ "$host" =~ ^[A-Za-z0-9.-]+$ ]] || exit 2
 [[ "$state_dir" =~ ^/var/lib/cinemarr-hwtest/[A-Za-z0-9._/-]+$ && "$state_dir" != *'..'* ]] || exit 2
@@ -91,6 +91,10 @@ printf '%s\n' "$result"
 REMOTE
 )
 [[ "$provision" == true || "$provision" == false ]] || exit 1
+if [[ "$provision" == true && ! -f "$windows_iso" ]]; then
+  echo "CINEMARR_WINDOWS_ISO is required when provisioning the retained guest" >&2
+  exit 2
+fi
 
 jre_metadata=$(curl -fsSL "$jre_api")
 jre_url=$(jq -r '.[0].binary.package.link' <<<"$jre_metadata")
@@ -124,10 +128,12 @@ fi
 genisoimage -quiet -iso-level 3 -J -joliet-long -R -V CINEMARR \
   -o "$runtime_dir/cinemarr-payload.iso" "$payload_dir"
 
-windows_sha=$(sha256sum "$windows_iso" | awk '{print $1}')
 payload_sha=$(sha256sum "$runtime_dir/cinemarr-payload.iso" | awk '{print $1}')
 {
-  printf '%s  %s\n' "$windows_sha" "$(basename "$windows_iso")"
+  if [[ "$provision" == true ]]; then
+    windows_sha=$(sha256sum "$windows_iso" | awk '{print $1}')
+    printf '%s  %s\n' "$windows_sha" "$(basename "$windows_iso")"
+  fi
   printf '%s  %s\n' "$payload_sha" 'cinemarr-payload.iso'
   printf '%s  %s\n' "$jre_sha" "$(basename "$jre_url")"
 } > "$evidence_dir/input-SHA256SUMS"
