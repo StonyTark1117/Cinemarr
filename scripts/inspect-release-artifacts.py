@@ -495,6 +495,17 @@ def verify_jar(path: Path, minecraft: str, loader: str, java: int, expected_majo
                                      and name.endswith(f"core-{PRODUCT_VERSION}.jar"))
             if core_candidates != [expected_core]:
                 fail(f"{filename} must bundle its isolated shared core JAR, found {core_candidates}")
+            with zipfile.ZipFile(io.BytesIO(archive.read(core_candidates[0]))) as nested_core:
+                for entry in nested_core.infolist():
+                    expected_mode = 0o755 if entry.is_dir() else 0o644
+                    # Loom adds this descriptor after the core JAR is built and
+                    # records its ZIP mode as zero on every supported version.
+                    if loader == "fabric" and entry.filename == "fabric.mod.json":
+                        expected_mode = 0
+                    actual_mode = (entry.external_attr >> 16) & 0o777
+                    if actual_mode != expected_mode:
+                        fail(f"{filename}:{core_candidates[0]} has non-reproducible "
+                             f"permissions for {entry.filename}: {actual_mode:04o}")
             for core_entry in (
                 "stonytark/cinemarr/core/server/ChunkTransferPolicy.class",
                 "stonytark/cinemarr/core/server/PlexVideoService.class",

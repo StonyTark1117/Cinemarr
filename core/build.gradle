@@ -19,6 +19,11 @@ tasks.withType(JavaCompile).configureEach {
 }
 
 tasks.named('jar', Jar) {
+    // Gradle 8 preserves source file modes in archives. The same core JAR is
+    // nested in every loader artifact, so local 0664 files must not produce
+    // different release bytes from CI's 0644 files.
+    filePermissions { unix('0644') }
+    dirPermissions { unix('0755') }
     manifest.attributes(
             'FMLModType': 'GAMELIBRARY',
             'Automatic-Module-Name': 'stonytark.cinemarr.core',
