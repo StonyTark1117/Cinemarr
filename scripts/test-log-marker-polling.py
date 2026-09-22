@@ -159,7 +159,19 @@ done
 group_alive() { return 0; }
 sleep() {
   tick=$((tick + 1))
-  SECONDS=$tick
+  # Negative fixtures only need to prove the production waiter reaches its
+  # unchanged 180-second synthetic deadline and rejects stale telemetry. Skip
+  # ten seconds per mocked sleep so hundreds of real grep subprocesses cannot
+  # race this test's 15-second outer timeout on a busy release worker.
+  case "$mode" in
+    stale) SECONDS=$((tick * 10)) ;;
+    stalled)
+      # Preserve four one-second fresh samples so this remains distinct from
+      # the never-fresh case, then cross the remaining deadline quickly.
+      if (( tick <= 4 )); then SECONDS=$tick; else SECONDS=$((4 + (tick - 4) * 10)); fi
+      ;;
+    *) SECONDS=$tick ;;
+  esac
   emit leader
   case "$mode" in
     fresh) emit follower ;;
