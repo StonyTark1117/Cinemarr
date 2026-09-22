@@ -73,6 +73,8 @@ public final class CinemarrClient {
             // Keep the acceptance marker observer alive while the transport
             // swaps its connection during a reconnect; media can remain
             // rendered and ready across that boundary.
+            VIDEO.tick(CinemarrVideoClientState.INSTANCE);
+            VIDEO_AUDIO.tick(VIDEO, CinemarrVideoClientState.INSTANCE);
             captureAcceptanceVideo(minecraft);
             return;
         }
