@@ -30,9 +30,13 @@ public final class DisplaySettingsDraft {
         if (original.origin() == TvDisplaySettings.Origin.QUICK && !value.equals(original.resolution())) { error="Quick TV resolution is locked to its preset"; return this; }
         resolution=value; error=""; return this;
     }
+    /** Build a command payload carrying the expected revision; only the server advances it. */
     public TvDisplaySettings apply() {
         if (!error.isEmpty()) throw new IllegalStateException(error);
-        try { return original.apply(original.revision(), layout, mapping, resolution); }
+        try {
+            original.apply(original.revision(), layout, mapping, resolution); // Validate without committing.
+            return new TvDisplaySettings(original.origin(), layout, mapping, resolution, original.revision());
+        }
         catch (RuntimeException failure) { error=failure.getMessage()==null?"Invalid display settings":failure.getMessage(); throw failure; }
     }
     public void cancel() { layout=original.layout(); mapping=original.mapping(); resolution=original.resolution(); error=""; }

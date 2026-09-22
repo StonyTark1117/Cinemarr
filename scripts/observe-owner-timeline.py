@@ -31,9 +31,23 @@ def verify_stream_change(before, after, kind, expected_position, tolerance=0):
 
 def states(value):
     pattern = re.compile(r"Acceptance video session:.*?generation=([0-9]+) status=([A-Z_]+) item=.*? positionMs=([0-9]+) canControl=true streams=([0-9]+) audio=(-?[0-9]+) subtitle=(-?[0-9]+)(?: timeline=\S+ timelineGeneration=([0-9]+))?")
-    return [{"generation": int(m[6] or m[0]), "status": m[1], "positionMs": int(m[2]),
+    return [{"generation": int(m[6] or m[0]), "streamGeneration": int(m[0]), "status": m[1], "positionMs": int(m[2]),
              "streams": int(m[3]), "audio": int(m[4]), "subtitle": int(m[5])}
             for m in pattern.findall(value)]
+
+def retained_paused_frame(text, minimum_generation, after_offset=0):
+    # TV-stream generations can repeat across earlier TVs and paused timeline
+    # changes need not advance them. Require a record after this widget action.
+    text = text[after_offset:]
+    states = re.findall(r"Acceptance video session:.*?generation=(\d+) status=([A-Z_]+).*?canControl=true", text)
+    if not states or states[-1][1] != "PAUSED":
+        return None
+    generation = int(states[-1][0])
+    if generation < minimum_generation:
+        return None
+    matches = re.findall(r"Acceptance paused frame retained: generation=" + str(generation)
+                         + r" frameSha256=([0-9a-f]{64}) ptsUs=([0-9]+)", text)
+    return matches[-1][0] if matches else None
 
 
 def main():
@@ -97,19 +111,18 @@ def main():
             if marker in value and current and current[-1]["status"] == status and transitioned:
                 result = current[-1]
                 actions.append({"action": action, "marker": marker, "before": previous, "after": result})
-                return result, time.monotonic()
+                return result, time.monotonic(), offset
             if time.monotonic() >= deadline:
                 raise RuntimeError("No fresh authoritative result for owner widget: " + action)
             time.sleep(0.1)
 
-    def retained_frame(generation):
+    def retained_frame(generation, after_offset):
         deadline = time.monotonic() + 10
-        pattern = r"Acceptance paused frame retained: generation=" + str(generation) + r" frameSha256=([0-9a-f]{64}) ptsUs=([0-9]+)"
         while True:
             desktop.validate()
-            match = re.search(pattern, log())
-            if match:
-                return match.group(1)
+            retained = retained_paused_frame(log(), generation, after_offset)
+            if retained:
+                return retained
             if time.monotonic() >= deadline:
                 raise RuntimeError("Paused generation lost the previously displayed frame")
             time.sleep(0.1)
@@ -140,36 +153,36 @@ def main():
         capture("playing-before")
         time.sleep(3.2)
         capture("playing-after-three-seconds")
-        paused, _ = click("PAUSE", 85, 350, "PAUSED", current)
-        paused_frame = retained_frame(paused["generation"])
+        paused, _, pause_offset = click("PAUSE", 85, 350, "PAUSED", current)
+        paused_frame = retained_frame(paused["streamGeneration"], pause_offset)
         capture("paused-before")
         paused_world_pair()
         capture("paused-after-three-seconds")
-        sought, _ = click("SEEK", 328, 350, "PAUSED", paused)
+        sought, _, seek_offset = click("SEEK", 328, 350, "PAUSED", paused)
         if sought["positionMs"] != paused["positionMs"] + 30_000:
             raise RuntimeError("Paused +30s did not preserve pause and move exactly thirty seconds")
-        if retained_frame(sought["generation"]) != paused_frame:
+        if retained_frame(sought["streamGeneration"], seek_offset) != paused_frame:
             raise RuntimeError("Paused seek lost the held program frame")
         capture("paused-seek")
-        changed, _ = click("SET_STREAMS", stream_x, 300, "PAUSED", sought)
+        changed, _, stream_offset = click("SET_STREAMS", stream_x, 300, "PAUSED", sought)
         verify_stream_change(sought, changed, args.stream_kind, sought["positionMs"])
-        if retained_frame(changed["generation"]) != paused_frame:
+        if retained_frame(changed["streamGeneration"], stream_offset) != paused_frame:
             raise RuntimeError("Paused stream change lost the held program frame")
         capture("paused-stream-change")
-        resumed, resume_at = click("RESUME", 85, 350, "PLAYING", changed)
+        resumed, resume_at, _ = click("RESUME", 85, 350, "PLAYING", changed)
         if abs(resumed["positionMs"] - changed["positionMs"]) > 2_000:
             raise RuntimeError("Resume did not start near the paused cursor")
         time.sleep(3.2)
         capture("resumed-clock")
         elapsed = (time.monotonic() - resume_at) * 1000
-        sought, seek_at = click("SEEK", 328, 350, "PLAYING", resumed)
+        sought, seek_at, _ = click("SEEK", 328, 350, "PLAYING", resumed)
         expected = resumed["positionMs"] + elapsed + 30_000
         if abs(sought["positionMs"] - expected) > 2_000:
             raise RuntimeError("Playing +30s used a stale snapshot instead of the advancing clock")
         capture("playing-seek")
         time.sleep(3.2)
         elapsed = (time.monotonic() - seek_at) * 1000
-        changed, _ = click("SET_STREAMS", stream_x, 300, "PLAYING", sought)
+        changed, _, _ = click("SET_STREAMS", stream_x, 300, "PLAYING", sought)
         verify_stream_change(sought, changed, args.stream_kind, sought["positionMs"] + elapsed, 5_000)
         capture("playing-stream-change")
         edits.finish()

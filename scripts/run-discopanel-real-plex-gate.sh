@@ -218,23 +218,24 @@ restore_properties() {
       '{serverId:$id,path:"server.properties",content:$content}')" >/dev/null
 }
 
-# Reusable lifecycle worlds can retain dead probe identities. Prepare only the
+# Reusable test worlds can retain dead or falling probe identities on every loader. Prepare only the
 # two named offline test players while stopped, never heal during playback,
 # and restore their original NBT bytes after the run (including failure).
 legacy_probe_files=()
 legacy_probe_originals=()
 prepare_legacy_probe_players() {
-  [[ "$label" == 1.7.10-forge ]] || return 0
-  local files path original prepared
+  local files path original prepared mode=prepare player_dir=world/playerdata
+  [[ "$label" == 1.7.10-forge ]] || mode=prepare-modern
+  if [[ "$label" == 26.* ]]; then mode=prepare-modern26; player_dir=world/players/data; fi
   [[ $(get_server | jq -r '.server.status') == SERVER_STATUS_STOPPED ]] || return 1
   files=$(api_call discopanel.v1.FileService/ListFiles \
-    "$(jq -cn --arg id "$server_id" '{serverId:$id,path:"world/playerdata"}')") || return 1
-  for path in world/playerdata/42ca340c-04ef-3fa1-b363-ebb5d33ee76d.dat \
-              world/playerdata/ab770eaf-1e72-3375-9500-a23286375fad.dat; do
+    "$(jq -cn --arg id "$server_id" --arg path "$player_dir" '{serverId:$id,path:$path}')") || return 1
+  for path in "$player_dir/42ca340c-04ef-3fa1-b363-ebb5d33ee76d.dat" \
+              "$player_dir/ab770eaf-1e72-3375-9500-a23286375fad.dat"; do
     [[ $(jq --arg path "$path" '[.files[] | select(.path == $path)] | length' <<<"$files") == 1 ]] || continue
     original=$(api_call discopanel.v1.FileService/GetFile \
       "$(jq -cn --arg id "$server_id" --arg path "$path" '{serverId:$id,path:$path}')" | jq -er '.content') || return 1
-    prepared=$(printf '%s' "$original" | python3 "$repo_root/scripts/legacy-probe-player-state.py" prepare) || return 1
+    prepared=$(printf '%s' "$original" | python3 "$repo_root/scripts/legacy-probe-player-state.py" "$mode") || return 1
     legacy_probe_files+=("$path")
     legacy_probe_originals+=("$original")
     api_call discopanel.v1.FileService/UpdateFile \
@@ -244,13 +245,14 @@ prepare_legacy_probe_players() {
 }
 
 check_legacy_probe_players_alive() {
-  [[ "$label" == 1.7.10-forge ]] || return 0
-  local path content
-  for path in world/playerdata/42ca340c-04ef-3fa1-b363-ebb5d33ee76d.dat \
-              world/playerdata/ab770eaf-1e72-3375-9500-a23286375fad.dat; do
+  local path content mode=check player_dir=world/playerdata
+  [[ "$label" == 1.7.10-forge ]] || mode=check-modern
+  if [[ "$label" == 26.* ]]; then mode=check-modern26; player_dir=world/players/data; fi
+  for path in "$player_dir/42ca340c-04ef-3fa1-b363-ebb5d33ee76d.dat" \
+              "$player_dir/ab770eaf-1e72-3375-9500-a23286375fad.dat"; do
     content=$(api_call discopanel.v1.FileService/GetFile \
       "$(jq -cn --arg id "$server_id" --arg path "$path" '{serverId:$id,path:$path}')" | jq -er '.content') || return 1
-    printf '%s' "$content" | python3 "$repo_root/scripts/legacy-probe-player-state.py" check || return 1
+    printf '%s' "$content" | python3 "$repo_root/scripts/legacy-probe-player-state.py" "$mode" || return 1
   done
   echo "$label: both saved acceptance players remained alive" >> "$CINEMARR_GATE_OUTPUT_ROOT/$label.remote-server.evidence.txt"
 }
@@ -297,10 +299,52 @@ remove_display_scene() {
   fi
 }
 
+remove_display_fixture() {
+  local x y cleanup_result=0
+  command_output 'setblock 22 100 7 air' >/dev/null || cleanup_result=1
+  command_output 'setblock 52 103 14 air' >/dev/null || cleanup_result=1
+  command_output 'setblock 20 100 -1 air' >/dev/null || cleanup_result=1
+  command_output 'setblock 44 100 -1 air' >/dev/null || cleanup_result=1
+  if [[ "$label" == '1.7.10-forge' ]]; then
+    for ((x=20;x<24;x++)); do for ((y=100;y<104;y++)); do command_output "setblock $x $y 0 air" >/dev/null || cleanup_result=1; done; done
+    for ((x=44;x<61;x++)); do for ((y=100;y<111;y++)); do command_output "setblock $x $y 0 air" >/dev/null || cleanup_result=1; done; done
+  else
+    command_output 'fill 20 100 0 23 103 0 air' >/dev/null || cleanup_result=1
+    command_output 'fill 44 100 0 60 110 0 air' >/dev/null || cleanup_result=1
+  fi
+  return "$cleanup_result"
+}
+
+display_forceload_added=()
+load_display_chunks() {
+  [[ "$label" == 1.7.10-forge ]] && return 0
+  local x z query
+  for x in -16 0 16 32 48; do for z in -16 0; do
+    query=$(api_call discopanel.v1.ServerService/SendCommand \
+      "$(jq -cn --arg id "$server_id" --arg command "forceload query $x $z" \
+        '{id:$id,command:$command,silent:false}')" | jq -r '.output // empty')
+    if [[ "$query" == *'is not marked for force loading'* ]]; then
+      display_forceload_added+=("$x $z")
+      command_output "forceload add $x $z" >/dev/null || return 1
+    elif [[ "$query" != *'is marked for force loading'* ]]; then
+      echo 'Unable to determine original force-loaded acceptance chunks' >&2
+      return 1
+    fi
+  done; done
+}
+
+restore_display_chunks() {
+  local position result=0
+  for position in "${display_forceload_added[@]}"; do
+    command_output "forceload remove $position" >/dev/null || result=1
+  done
+  (( result == 0 )) && display_forceload_added=()
+  return "$result"
+}
+
 remote_prepared=0
 remote_started=0
 acceptance_tv_id=''
-acceptance_forceload=0
 cleanup_owner_pid=$BASHPID
 cleanup_remote() {
   local cleanup_status=$?
@@ -315,10 +359,8 @@ cleanup_remote() {
     if [[ -n "$acceptance_tv_id" ]]; then send_command "cinemarr tv unregister $acceptance_tv_id"; fi
     send_command 'setblock -1 100 -1 air'
     remove_display_scene || cleanup_status=1
-    if (( acceptance_forceload )); then
-      command_output 'forceload remove -16 -16 15 15' >/dev/null
-      acceptance_forceload=0
-    fi
+    remove_display_fixture || cleanup_status=1
+    restore_display_chunks || cleanup_status=1
     sleep 2
     api_call discopanel.v1.ServerService/StopServer "$(jq -cn --arg id "$server_id" '{id:$id}')" >/dev/null
     wait_for_status SERVER_STATUS_STOPPED
@@ -425,7 +467,7 @@ initial_sessions=$(plex_cinemarr_session_count /status/sessions)
 
 acceptance_overrides=$(jq -c --arg display "$display_gate" '
   .environment = (.environment // {})
-  | .environment.JAVA_TOOL_OPTIONS = (((.environment.JAVA_TOOL_OPTIONS // "") + " -Dcinemarr.acceptance.enabled=true -Dcinemarr.acceptance.videoProbe=true" + (if $display == "true" then " -Dcinemarr.acceptance.displayProbe=true" else "" end)) | ltrimstr(" "))
+  | .environment.JAVA_TOOL_OPTIONS = (((.environment.JAVA_TOOL_OPTIONS // "") + " -Dcinemarr.acceptance.enabled=true -Dcinemarr.acceptance.videoProbe=true -Dcinemarr.acceptance.displayProbe=true" + (if $display == "true" then "" else " -Dcinemarr.acceptance.displayFeatureProbe=true" end)) | ltrimstr(" "))
   | .environment.ONLINE_MODE = "FALSE"
   | .environment.ENFORCE_SECURE_PROFILE = "FALSE"
   | .environment.SPAWN_MONSTERS = "FALSE"
@@ -445,11 +487,13 @@ remote_started=1
 wait_for_status SERVER_STATUS_RUNNING
 wait_for_log 'Done \(|For help, type "help"' 300
 wait_for_log 'Validated 1 allowed Plex video libraries' 180
+load_display_chunks
 baseline_diagnostics=$(command_output 'cinemarr diagnostics')
 [[ "$baseline_diagnostics" == *'Plex=ready;'* && "$baseline_diagnostics" == *'activeStreams=0/'* ]] \
   || { echo "$label did not start from an idle, ready video service: $baseline_diagnostics" >&2; exit 1; }
 send_command 'setblock -1 100 -1 air'
 remove_display_scene
+remove_display_fixture
 sleep 2
 # A prior interrupted acceptance run can leave its temporary TV registered.
 # Remove the bounded test position first, then define the baseline which this
@@ -460,13 +504,6 @@ baseline_diagnostics=$(command_output 'cinemarr diagnostics')
 baseline_registered_tvs=$(sed -n 's/.*registeredTvs=\([0-9][0-9]*\);.*/\1/p' <<<"$baseline_diagnostics")
 [[ "$baseline_registered_tvs" =~ ^[0-9]+$ ]] \
   || { echo "$label did not expose its post-cleanup baseline TV count" >&2; exit 1; }
-if [[ "$label" != 1.7.10-forge ]]; then
-  # Modern clients can reconnect from the distant lifecycle-probe position;
-  # keep only the four acceptance-TV chunks resident until teardown so the
-  # asynchronous Plex start cannot race the teleport's chunk-tracking update.
-  command_output 'forceload add -16 -16 15 15' >/dev/null
-  acceptance_forceload=1
-fi
 
 export CINEMARR_GATE_LIBRARY_ONLY=true
 export CINEMARR_VIDEO_CLIENT_GATE=true
@@ -475,6 +512,8 @@ export CINEMARR_VIDEO_CLIENT_GATE=true
 control_gate_default=true
 if [[ "$display_gate" == true ]]; then control_gate_default=false; fi
 export CINEMARR_VIDEO_CONTROL_GATE=${CINEMARR_VIDEO_CONTROL_GATE:-$control_gate_default}
+export CINEMARR_DISPLAY_FEATURE_GATE=true
+if [[ "$display_gate" == true ]]; then export CINEMARR_DISPLAY_FEATURE_GATE=false; fi
 export CINEMARR_VIDEO_FOLLOWER_SMALL_WINDOW=${CINEMARR_VIDEO_FOLLOWER_SMALL_WINDOW:-true}
 export CINEMARR_LIVE_PLEX_GATE=true
 export CINEMARR_ACCEPTANCE_SERVER_HOST="$server_host"
@@ -498,9 +537,33 @@ acceptance_tv_id=$(sed -n \
   || { echo "$label did not expose the rendered acceptance TV identifier" >&2; exit 1; }
 wait_for_log 'Acceptance Quick TV:' 60
 
+if [[ "$CINEMARR_VIDEO_CONTROL_GATE" == true ]]; then
+  # Restore the original chunk-loading state before stopping. A failed restart
+  # must not strand temporary force-load entries in the saved world.
+  restore_display_chunks
+  new_logs > "$CINEMARR_GATE_OUTPUT_ROOT/$label.before-display-restart.server.log"
+  api_call discopanel.v1.ServerService/StopServer "$(jq -cn --arg id "$server_id" '{id:$id}')" >/dev/null
+  wait_for_status SERVER_STATUS_STOPPED
+  remote_started=0
+  restart_cursor=$(remote_log_cursor)
+  api_call discopanel.v1.ServerService/StartServer "$(jq -cn --arg id "$server_id" '{id:$id}')" >/dev/null
+  remote_started=1
+  wait_for_status SERVER_STATUS_RUNNING
+  wait_for_remote_marker_after "$restart_cursor" 'Validated 1 allowed Plex video libraries' 300
+  restart_log="$CINEMARR_GATE_OUTPUT_ROOT/$label.display-restart.server.log"
+  api_call discopanel.v1.ServerService/GetServerLogs \
+    "$(jq -cn --arg id "$server_id" '{id:$id,tail:1000}')" \
+    | jq -r --arg cursor "$restart_cursor" '.logs[] | select(.timestamp >= $cursor) | .message' > "$restart_log"
+  python3 "$repo_root/scripts/check-display-persistence.py" \
+    --expected "$CINEMARR_GATE_OUTPUT_ROOT/$label.display-feature/result.json" \
+    --log "$restart_log" --output "$CINEMARR_GATE_OUTPUT_ROOT/$label.display-restart.json"
+  load_display_chunks
+fi
+
 command_output "cinemarr tv unregister $acceptance_tv_id" >/dev/null
 command_output 'setblock -1 100 -1 air' >/dev/null
 remove_display_scene
+remove_display_fixture
 sleep 3
 for _ in {1..20}; do
   diagnostics=$(command_output 'cinemarr diagnostics')
@@ -537,10 +600,7 @@ mkdir -p "$CINEMARR_GATE_OUTPUT_ROOT"
   new_logs | grep -E 'Acceptance Quick TV:|Plex=ready;|CinemarrVideo[AB].*(joined|left) the game' || true
 } > "$CINEMARR_GATE_OUTPUT_ROOT/$label.remote-server.evidence.txt"
 
-if (( acceptance_forceload )); then
-  command_output 'forceload remove -16 -16 15 15' >/dev/null
-  acceptance_forceload=0
-fi
+restore_display_chunks
 
 api_call discopanel.v1.ServerService/StopServer "$(jq -cn --arg id "$server_id" '{id:$id}')" >/dev/null
 wait_for_status SERVER_STATUS_STOPPED

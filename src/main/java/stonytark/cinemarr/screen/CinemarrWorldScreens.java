@@ -236,7 +236,11 @@ public final class CinemarrWorldScreens extends SavedData {
             Television television = entry.getValue();
             if (!valid(television) || intersects(occupied,television.pixels)
                     || !TelevisionLifecycle.restore(registration(television))) invalid.add(entry.getKey());
-            else occupied.addAll(television.pixels);
+            else {
+                occupied.addAll(television.pixels);
+                stonytark.cinemarr.core.screen.DisplayPersistenceProbe.restored(television.id,
+                        television.controllerPos, television.displaySettings(), television.width, television.height);
+            }
         }
         for (Long controller : invalid) removeLocalAt(controller);
         if (!invalid.isEmpty()) setDirty();

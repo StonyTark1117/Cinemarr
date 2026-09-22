@@ -1,10 +1,10 @@
 # Jammarr target feasibility for Cinemarr
 
-This is a historical planning assessment, not the final requested comparison.
-The current hardening plan requires a fresh Jammarr checkout assessment only
-after Cinemarr's preceding documentation and exact-commit CI gates are complete.
-The statements below remain scoped to the recorded Jammarr revision; they do
-not certify the current Cinemarr commit or establish support for new targets.
+This historical planning assessment is superseded by the
+[September 14 current comparison](JAMMARR_COMPARISON_20260914.md), brought forward
+at the user's explicit request while release acceptance remains paused.
+The statements below remain scoped to the recorded older Jammarr revision;
+neither assessment certifies new Cinemarr targets.
 
 This assessment compares Cinemarr with Jammarr commit
 `f680a0ee29192879459d83a80f2f016263378d39` and its 1.1.0 target manifest.

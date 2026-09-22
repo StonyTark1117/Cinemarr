@@ -71,6 +71,11 @@ public final class CinemarrVideoClientState {
     public void browse(String libraryId,String parentKey,String query,int page){CinemarrNetwork.sendToServer(new VideoPayloads.BrowseRequest(new VideoPackets.BrowseRequest(libraryId,parentKey,query,page)));}
     public void command(VideoPackets.SessionCommand command){CinemarrNetwork.sendToServer(new VideoPayloads.SessionCommand(command));}
     public VideoPackets.LibraryList libraries(){return libraries;} public VideoPackets.BrowseResults browse(){return browse;}
+    public String actualDimensions(long pos) {
+        VideoPackets.SessionState tv=session(pos);
+        StreamState stream=tv==null?null:streams.get(new StreamKey(tv.identity()));
+        return stream==null||stream.decodedWidth==0?"unknown":stream.decodedWidth+"x"+stream.decodedHeight;
+    }
     public VideoPackets.SessionState session(long controllerPos){return televisions.get(controllerPos);}
     public Collection<VideoPackets.SessionState> televisions(){return List.copyOf(televisions.values());}
     public List<QueuedVideo> queue(long controllerPos){VideoPackets.SessionState value=televisions.get(controllerPos);return value==null?Collections.emptyList():queues.getOrDefault(value.timelineId(),Collections.emptyList());}
@@ -85,6 +90,7 @@ public final class CinemarrVideoClientState {
     }
 
     static final class StreamState {
+        int decodedWidth, decodedHeight;
         private final StreamKey key;
         private final SegmentRequestPacer requestPacer;
         private final VideoSegmentAssembler assembler=new VideoSegmentAssembler();

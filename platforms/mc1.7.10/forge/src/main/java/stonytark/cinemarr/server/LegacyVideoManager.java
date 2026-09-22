@@ -280,11 +280,26 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
         if (lifecycleProbe) {
             return;
         }
-        for (int x = -9; x <= 9; x++) for (int z = 1; z <= (ProtocolLimits.displayProbeEnabled() ? 14 : 8); z++) {
+        if(ProtocolLimits.displayFeatureProbeEnabled() && "CinemarrVideoA".equals(player.getCommandSenderName())) {
+            for(int index=0;index<2;index++) {
+                int startX=20+index*24,w=index==0?4:17,h=index==0?4:11;
+                if(screens.television(LegacyBlockPos.pack(startX,100,-1))!=null)continue;
+                world.getChunkFromChunkCoords(startX>>4,0);world.getChunkFromChunkCoords((startX+w-1)>>4,0);
+                world.setBlock(startX,100,-1,LegacyBlocks.TV_CONTROLLER,0,3);
+                for(int x=0;x<w;x++)for(int y=0;y<h;y++) {
+                    // The 4x4 L and 17x11 central hole exercise the actual masked mesh.
+                    if(index==0 ? x>=2&&y>=2 : x>=7&&x<=9&&y>=4&&y<=6)continue;
+                    world.setBlock(startX+x,100+y,0,LegacyBlocks.SCREEN_PIXEL,3,3);
+                    screens.putPixel(startX+x,100+y,0,stonytark.cinemarr.core.screen.ScreenFacing.SOUTH);
+                }
+                if(!screens.activate(startX,100,-1,player.getUniqueID()).success())throw new IllegalStateException("Display acceptance custom TV activation failed");
+            }
+        }
+        for (int x = -9; x <= 9; x++) for (int z = 1; z <= (ProtocolLimits.displaySceneProbeEnabled() ? 14 : 8); z++) {
             world.setBlock(x, 99, z, net.minecraft.init.Blocks.stone, 0, 3);
             for (int y = 100; y <= 109; y++) world.setBlockToAir(x, y, z);
         }
-        if (ProtocolLimits.displayProbeEnabled() && "CinemarrVideoA".equals(player.getCommandSenderName())) {
+        if (ProtocolLimits.displaySceneProbeEnabled() && "CinemarrVideoA".equals(player.getCommandSenderName())) {
             for (int x = -9; x <= 9; x++) for (int z = 1; z <= 14; z++) for (int y = 110; y <= 118; y++) {
                 if (!stonytark.cinemarr.core.video.DisplayAcceptance.sceneTvBlock(x, y, z)) world.setBlockToAir(x, y, z);
             }
@@ -309,7 +324,7 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
         }
         world.setWorldTime(6000L);
         double cameraX = stonytark.cinemarr.core.protocol.ProtocolLimits.videoProbeCameraX(player.getCommandSenderName());
-        player.playerNetServerHandler.setPlayerLocation(cameraX, 100.0D, ProtocolLimits.displayProbeEnabled() ? 12.5D : 7.5D, 180.0F, ProtocolLimits.displayProbeEnabled() ? -22.0F : 0.0F);
+        player.playerNetServerHandler.setPlayerLocation(cameraX, 100.0D, ProtocolLimits.displaySceneProbeEnabled() ? 12.5D : 7.5D, 180.0F, ProtocolLimits.displaySceneProbeEnabled() ? -22.0F : 0.0F);
     }
 
     private void synchronizeTracking(EntityPlayerMP player) {
@@ -411,6 +426,15 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
                 LegacyWorldScreens.get((WorldServer) player.worldObj).updateDisplay(command.controllerPos(),command.displaySettings());
                 long displayNow = System.currentTimeMillis();
                 for (EntityPlayerMP recipient : recipients(television, player)) sendCurrent(recipient, television, displayNow);
+                return;
+            }
+            // Presentation edits never tune, restore, persist attachment, or refresh tracking.
+            if (command.action() == VideoPackets.SessionAction.SET_PRESENTATION) {
+                VideoSessionCoordinator.Snapshot current = sessions.snapshotIfPresent(television.sessionName(), System.currentTimeMillis());
+                stonytark.cinemarr.core.video.PresentationCommandGuard.validate(command,
+                        television.sessionName(), current == null ? 0 : current.generation());
+                screenData.updatePresentation(command.controllerPos(), command.presentationMode());
+                for(EntityPlayerMP recipient:recipients(television,player))sendCurrent(recipient,television,System.currentTimeMillis());
                 return;
             }
             String requested = command.sessionName().trim().isEmpty() ? television.sessionName() : command.sessionName();
@@ -826,7 +850,9 @@ public final class LegacyVideoManager implements AutoCloseable, LegacyNetwork.Se
         for(WorldServer world:server.worldServers)if(world!=null)for(LegacyWorldScreens.Television tv:LegacyWorldScreens.get(world).televisions()) {
             VideoSessionCoordinator.Snapshot timeline=sessions.snapshotIfPresent(tv.sessionName(),now);
             if(timeline==null)continue;
-            retained.add(tv.id());Set<UUID> viewers=new HashSet<UUID>();
+            retained.add(tv.id());
+            if(timeline.item()!=null&&!metadataMatches(timeline))continue;
+            Set<UUID> viewers=new HashSet<UUID>();
             for(Map.Entry<UUID,Map<UUID,Long>> entry:visibleTelevisions.entrySet())if(entry.getValue().containsKey(tv.id()))viewers.add(entry.getKey());
             tvStreams.update(new TelevisionStreamPool.Request(tv.id(),timeline,tv.displaySettings(),tv.width(),tv.height(),viewers,metadataMatches(timeline)),now);
             VideoSessionCoordinator.Snapshot stream=tvStreams.snapshot(tv.id(),now);

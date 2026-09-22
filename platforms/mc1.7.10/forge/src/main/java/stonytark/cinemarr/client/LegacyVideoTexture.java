@@ -8,6 +8,7 @@ import java.nio.ByteBuffer;
 /** One OpenGL texture per decoded watch-party stream, updated on the client thread. */
 final class LegacyVideoTexture implements AutoCloseable {
     private int textureId;
+    private ByteBuffer uploadBuffer;
     private byte[] source;
     private final stonytark.cinemarr.core.video.PresentedFrame presented = new stonytark.cinemarr.core.video.PresentedFrame();
     private long frameRevision;
@@ -30,6 +31,7 @@ final class LegacyVideoTexture implements AutoCloseable {
             Derived old=derived.remove(state.televisionId()); if(old!=null)old.texture.close();
             if(derived.isEmpty())presented.releaseRaster();
             budgetErrorShown=false;
+            captureFrame(state);
             return this;
         }
         if (source == null) return this;
@@ -51,11 +53,24 @@ final class LegacyVideoTexture implements AutoCloseable {
             value.texture.uploadRaw(state.screenWidth(),state.screenHeight(),raster,true);
             value.revision=frameRevision; value.width=state.screenWidth(); value.height=state.screenHeight(); value.layout=state.presentationMode();
         }
+        captureFrame(state);
         return value.texture;
+    }
+    private void captureFrame(stonytark.cinemarr.core.protocol.VideoPackets.SessionState state) {
+        if(!stonytark.cinemarr.core.client.DisplayFrameCapture.requested(state.controllerPos()))return;
+        net.minecraft.client.entity.EntityClientPlayerMP player=net.minecraft.client.Minecraft.getMinecraft().thePlayer;
+        double[] camera={player.posX,player.posY-player.yOffset+1.62,player.posZ,player.rotationYaw,player.rotationPitch,
+                net.minecraft.client.Minecraft.getMinecraft().gameSettings.fovSetting,player.boundingBox.minY,
+                net.minecraft.client.Minecraft.getMinecraft().currentScreen!=null?1:0,
+                net.minecraft.client.Minecraft.getMinecraft().gameSettings.hideGUI?1:0};
+        String receipt=stonytark.cinemarr.core.client.DisplayFrameCapture.capture(state,source,width,height,
+                presented.retainedBytes(),derived.size(),camera);
+        if(!receipt.isEmpty())stonytark.cinemarr.Cinemarr.LOGGER.info("Acceptance display frame: {}",receipt);
     }
     public void retainDisplays(java.util.Set<java.util.UUID> visible) {
         java.util.Iterator<java.util.Map.Entry<java.util.UUID,Derived>> it=derived.entrySet().iterator();
         while(it.hasNext()){java.util.Map.Entry<java.util.UUID,Derived> entry=it.next();if(!visible.contains(entry.getKey())){entry.getValue().texture.close();it.remove();}}
+        if(derived.isEmpty())presented.releaseRaster();
     }
     private int width;
     private int height;
@@ -74,7 +89,8 @@ final class LegacyVideoTexture implements AutoCloseable {
         GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, nearest ? GL11.GL_NEAREST : GL11.GL_LINEAR);
         GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL11.GL_CLAMP);
         GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL11.GL_CLAMP);
-        ByteBuffer pixels = BufferUtils.createByteBuffer(rgba.length); pixels.put(rgba).flip();
+        if(uploadBuffer==null||uploadBuffer.capacity()!=rgba.length)uploadBuffer=BufferUtils.createByteBuffer(rgba.length);
+        ByteBuffer pixels=uploadBuffer; pixels.clear(); pixels.put(rgba).flip();
         if (allocate) GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA8, width, height, 0, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, pixels);
         else GL11.glTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, width, height, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, pixels);
     }
@@ -84,5 +100,5 @@ final class LegacyVideoTexture implements AutoCloseable {
     int width() { return width; }
     int height() { return height; }
     @Override public void close() {
-        for(Derived value:derived.values())value.texture.close();derived.clear();source=null;presented.clear();budgetErrorShown=false; if (textureId != 0) GL11.glDeleteTextures(textureId); textureId = width = height = 0; }
+        for(Derived value:derived.values())value.texture.close();derived.clear();source=null;presented.clear();budgetErrorShown=false;uploadBuffer=null; if (textureId != 0) GL11.glDeleteTextures(textureId); textureId = width = height = 0; }
 }

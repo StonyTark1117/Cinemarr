@@ -85,8 +85,10 @@ class LogMarkerPollingTest(unittest.TestCase):
                                        "loader-config", label, str(directory)],
                                       capture_output=True, text=True, timeout=5)
             client = root / "client"
-            for label in ("1.20.1-neoforge", "1.20.2-neoforge", "1.20.1-forge", "1.20.2-forge", "1.21.1-forge", "26.1.2-forge", "26.2-forge"):
+            for label in ("1.20.1-neoforge", "1.20.2-neoforge", "1.21.1-neoforge", "1.20.1-forge", "1.20.2-forge", "1.21.1-forge", "26.1.2-forge", "26.2-forge"):
                 self.assertEqual(invoke(label, root / label).returncode, 0)
+                self.assertEqual(tomllib.loads((root / label / "config/fml.toml").read_text()),
+                                 {"earlyWindowControl": False}, label)
             config = client / "config/fml.toml"
             self.assertFalse(config.exists())
             # Validate preservation and conflict handling on the original
@@ -109,7 +111,7 @@ class LogMarkerPollingTest(unittest.TestCase):
             self.assertEqual(outside.read_text(), 'earlyWindowControl = true\n')
             profiles = subprocess.check_output(
                 ["python3", "scripts/target-matrix.py", "gate-lines"], cwd=ROOT, text=True)
-            handled = {"1.20.1-neoforge", "1.20.2-neoforge", "1.20.1-forge", "1.20.2-forge", "1.21.1-forge", "26.1.2-forge", "26.2-forge"}
+            handled = {"1.20.1-neoforge", "1.20.2-neoforge", "1.21.1-neoforge", "1.20.1-forge", "1.20.2-forge", "1.21.1-forge", "26.1.2-forge", "26.2-forge"}
             for label in (line.split("|")[0] for line in profiles.splitlines()):
                 if label in handled:
                     continue

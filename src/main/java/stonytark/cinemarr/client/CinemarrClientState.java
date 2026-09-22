@@ -65,7 +65,7 @@ public final class CinemarrClientState {
                     value.controllerPos(), "", "", "", PresentationMode.FIT, 0, 0, -1, -1));
             CinemarrClientUi.openVideoScreen(value.controllerPos());
         } else if (payload instanceof CinemarrPayloads.ServerHello value) {
-            if ((!value.valid() || value.protocolVersion() != ProtocolLimits.clientHelloVersion()) && minecraft.getConnection() != null) {
+            if (!value.valid() && minecraft.getConnection() != null) {
                 minecraft.getConnection().getConnection().disconnect(net.minecraft.network.chat.Component.literal(
                         "Cinemarr protocol mismatch: server requires version " + value.protocolVersion()));
             } else requestTimeSync();
@@ -109,7 +109,7 @@ public final class CinemarrClientState {
         acceptanceVideoController = 0; acceptanceVideoTuneSent = false;
         acceptanceVideoResetSent = false;
         acceptanceVideoLibrariesRequested = false; acceptanceVideoBrowseRequested = false; acceptanceVideoPlaySent = false;
-        acceptanceVideoLibraryId = ""; acceptanceVideoLastItemKey = ""; acceptanceControl.reset();
+        acceptanceVideoLibraryId = ""; acceptanceVideoLastItemKey = ""; acceptanceControl.reset(); stonytark.cinemarr.core.client.DisplayFrameCapture.reset();
         acceptanceCommandOperator = null;
         acceptanceDiagnosticsSent = false;
     }
@@ -194,11 +194,44 @@ public final class CinemarrClientState {
             Cinemarr.LOGGER.info("Acceptance video world view: screen=none");
             return;
         }
-        if (ProtocolLimits.displayProbeEnabled() && operation.startsWith("video:display:")) {
+        if (ProtocolLimits.displaySceneProbeEnabled() && operation.startsWith("video:display:")) {
             try {
                 VideoPackets.SessionCommand displayCommand = stonytark.cinemarr.core.video.DisplayAcceptance.command(CinemarrVideoClientState.INSTANCE.televisions(), operation);
                 if (displayCommand != null) CinemarrVideoClientState.INSTANCE.command(displayCommand);
             } catch (RuntimeException invalid) { Cinemarr.LOGGER.info("Acceptance display command failed: {}", invalid.getMessage()); }
+            return;
+        }
+        if(ProtocolLimits.displayProbeEnabled() && operation.startsWith("video:display")) {
+            if (operation.startsWith("video:display-reload:")) {
+                String nonce=operation.substring("video:display-reload:".length());
+                if(nonce.matches("[0-9]{1,24}"))CinemarrClientUi.acceptanceReload(nonce);
+                return;
+            }
+            if (operation.startsWith("video:display-background:")) {
+                stonytark.cinemarr.core.client.DisplayFrameCapture.background(operation);
+                return;
+            }
+            if (operation.startsWith("video:display-frame:")) {
+                stonytark.cinemarr.core.client.DisplayFrameCapture.request(operation);
+                return;
+            }
+            if (operation.startsWith("video:display-open:")) {
+                long pos = Long.parseLong(operation.substring("video:display-open:".length()));
+                CinemarrClientUi.openDisplayScreen(pos);
+                Cinemarr.LOGGER.info("Acceptance display page opened: controller={}", pos);
+                return;
+            }
+            try {
+                for(VideoPackets.SessionState tv:CinemarrVideoClientState.INSTANCE.televisions()) {
+                    if(operation.startsWith("video:display-snapshot:"))
+                        Cinemarr.LOGGER.info("Acceptance display snapshot: request={} {}",operation.substring("video:display-snapshot:".length()),
+                                stonytark.cinemarr.core.client.DisplayFeatureProbe.describe(tv,CinemarrVideoClientState.INSTANCE.actualDimensions(tv.controllerPos())));
+                    else if(ProtocolLimits.videoProbeLeader() && tv.canControl()) {
+                        VideoPackets.SessionCommand displayCommand=stonytark.cinemarr.core.client.DisplayFeatureProbe.command(operation,tv);
+                        if(displayCommand!=null)CinemarrVideoClientState.INSTANCE.command(displayCommand);
+                    }
+                }
+            } catch(RuntimeException failure){Cinemarr.LOGGER.info("Acceptance display command rejected: {}",failure.getClass().getSimpleName());}
             return;
         }
 

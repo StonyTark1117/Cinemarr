@@ -31,7 +31,8 @@ public final class BlockRasterizer {
                             + (source[(y0 * sourceWidth + x1) * 4 + c] & 255) * fx;
                     double bottom = (source[(y1 * sourceWidth + x0) * 4 + c] & 255) * (1 - fx)
                             + (source[(y1 * sourceWidth + x1) * 4 + c] & 255) * fx;
-                    output[dst + c] = (byte) Math.round(top * (1 - fy) + bottom * fy);
+                    // Stabilize exact half-channel ties against transform floating-point noise.
+                    output[dst + c] = (byte) Math.floor(top * (1 - fy) + bottom * fy + 0.5 + 1e-9);
                 }
                 output[dst + 3] = (byte) 255;
             }

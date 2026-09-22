@@ -1,0 +1,243 @@
+{
+  "schemaVersion": 1,
+  "product": "Cinemarr",
+  "version": "1.0.0",
+  "candidateStatus": "historical-superseded",
+  "supersededReason": "Final local gate at 1ea796f failed the Fabric 26.1.2 wrong-protocol check. The outgoing-only protocol override fix changes both client adapters and requires new artifact certification. This manifest certifies only the historical hashes below.",
+  "testedProductSource": "86684359df84f305531639a9d0184b2c2eab083c",
+  "scope": {
+    "artifacts": 16,
+    "runtimeProfiles": 21,
+    "localMatrixCases": 37,
+    "mainAndModMenuFeatureCases": 26,
+    "controlledFeatureSteps": 33,
+    "realPlexFeatureSteps": 31,
+    "maintainedGuiBoundaries": 5,
+    "renderingBoundariesDirectlyReviewed": 6
+  },
+  "certificationMeaning": "Exact artifact build, launch, playback, control, protocol, reconnect, lifecycle and representative real-Plex evidence. This does not assert completion of the final containing-commit local gate, hosted aggregate or publication. Phase 10 requires those outcomes for that commit.",
+  "targets": [
+    {
+      "artifact": "cinemarr-1.0.0+mc1.7.10-forge.jar",
+      "sha256": "70b7eb7afa5c94b0297b7014703111b6e553fafcc5721732c1b6fc239ee620f5",
+      "runtimeProfiles": [
+        "1.7.10-forge"
+      ],
+      "evidenceLevel": "runtime-certified",
+      "runtimeEvidence": "fresh-866-legacy-gui-and-live"
+    },
+    {
+      "artifact": "cinemarr-1.0.0+mc1.20.1-fabric.jar",
+      "sha256": "dbcd7a71149a220d720adac1b82017309a132a3ab47a9bf98ee23d09ac2c62d9",
+      "runtimeProfiles": [
+        "1.20.1-fabric",
+        "1.20.1-quilt"
+      ],
+      "evidenceLevel": "runtime-certified",
+      "runtimeEvidence": "unchanged-b99-artifact-runtime-and-representative-live"
+    },
+    {
+      "artifact": "cinemarr-1.0.0+mc1.20.1-forge.jar",
+      "sha256": "6b30c9bab1765f79e6554d6107001a386c0bf7cc54275f2d9299a4a68fd3e0d4",
+      "runtimeProfiles": [
+        "1.20.1-forge"
+      ],
+      "evidenceLevel": "runtime-certified",
+      "runtimeEvidence": "unchanged-b99-artifact-runtime-and-representative-live"
+    },
+    {
+      "artifact": "cinemarr-1.0.0+mc1.20.1-neoforge.jar",
+      "sha256": "f7584912b3a42cf1d710415cb40e0b2df0348a1169c1a602f60a441611470809",
+      "runtimeProfiles": [
+        "1.20.1-neoforge"
+      ],
+      "evidenceLevel": "runtime-certified",
+      "runtimeEvidence": "unchanged-b99-artifact-runtime-and-representative-live"
+    },
+    {
+      "artifact": "cinemarr-1.0.0+mc1.20.2-fabric.jar",
+      "sha256": "5b896dfedc9ce94d0ccca3b59dd341a1de76fe598754ce46de2706249a05de16",
+      "runtimeProfiles": [
+        "1.20.2-fabric",
+        "1.20.2-quilt"
+      ],
+      "evidenceLevel": "runtime-certified",
+      "runtimeEvidence": "unchanged-b99-artifact-runtime-and-representative-live"
+    },
+    {
+      "artifact": "cinemarr-1.0.0+mc1.20.2-forge.jar",
+      "sha256": "5bcaf520fd6f100e83c560ca3b7fc3b4fb2a632eed5a6b53bdeffa0cb634343e",
+      "runtimeProfiles": [
+        "1.20.2-forge"
+      ],
+      "evidenceLevel": "runtime-certified",
+      "runtimeEvidence": "unchanged-b99-artifact-runtime-and-representative-live"
+    },
+    {
+      "artifact": "cinemarr-1.0.0+mc1.20.2-neoforge.jar",
+      "sha256": "b3577699096a5c8be9a2680deea64a641dbc7895bc0efdc4aca1de99bc381c10",
+      "runtimeProfiles": [
+        "1.20.2-neoforge"
+      ],
+      "evidenceLevel": "runtime-certified",
+      "runtimeEvidence": "unchanged-b99-artifact-runtime-and-representative-live"
+    },
+    {
+      "artifact": "cinemarr-1.0.0+mc1.21.1-fabric.jar",
+      "sha256": "076b0065e6c59ff4ccabbf885ec50511dd4690873aafa5c90c07c15540b77af0",
+      "runtimeProfiles": [
+        "1.21.1-fabric",
+        "1.21.1-quilt"
+      ],
+      "evidenceLevel": "runtime-certified",
+      "runtimeEvidence": "unchanged-b99-artifact-runtime-and-representative-live"
+    },
+    {
+      "artifact": "cinemarr-1.0.0+mc1.21.1-forge.jar",
+      "sha256": "aa71431cc839508b1577154baf68a32334915749e0125145642207c399919d26",
+      "runtimeProfiles": [
+        "1.21.1-forge"
+      ],
+      "evidenceLevel": "runtime-certified",
+      "runtimeEvidence": "unchanged-b99-artifact-runtime-and-representative-live"
+    },
+    {
+      "artifact": "cinemarr-1.0.0+mc1.21.1-neoforge.jar",
+      "sha256": "3d7fb013dbb3b8e55866dd93c5edc0d6a3274b04f0e57bf9e214ee6ce0112a36",
+      "runtimeProfiles": [
+        "1.21.1-neoforge"
+      ],
+      "evidenceLevel": "runtime-certified",
+      "runtimeEvidence": "unchanged-b99-artifact-runtime-and-representative-live"
+    },
+    {
+      "artifact": "cinemarr-1.0.0+mc26.1.2-fabric.jar",
+      "sha256": "aed61994f6c89ee2f3b12fe247a9cf746c24b1e9f0049a42b8781a37ed57e526",
+      "runtimeProfiles": [
+        "26.1.2-fabric",
+        "26.1.2-quilt"
+      ],
+      "evidenceLevel": "runtime-certified",
+      "runtimeEvidence": "unchanged-b99-artifact-runtime-and-representative-live"
+    },
+    {
+      "artifact": "cinemarr-1.0.0+mc26.1.2-forge.jar",
+      "sha256": "9fb94f2603bf3745a3565de909fcab842bfedec7603da305dbb3bbabfaad696c",
+      "runtimeProfiles": [
+        "26.1.2-forge"
+      ],
+      "evidenceLevel": "runtime-certified",
+      "runtimeEvidence": "unchanged-b99-artifact-runtime-and-representative-live"
+    },
+    {
+      "artifact": "cinemarr-1.0.0+mc26.1.2-neoforge.jar",
+      "sha256": "beea0ae9a943ac93b7c9051ae69f35b0cbfff19abba180df228cdb24ede165c5",
+      "runtimeProfiles": [
+        "26.1.2-neoforge"
+      ],
+      "evidenceLevel": "runtime-certified",
+      "runtimeEvidence": "unchanged-b99-artifact-runtime-and-representative-live"
+    },
+    {
+      "artifact": "cinemarr-1.0.0+mc26.2-fabric.jar",
+      "sha256": "f62ef5e3f3117748f7efa163b7de47bcf6328acfe85da075594aa473cf3d1e94",
+      "runtimeProfiles": [
+        "26.2-fabric",
+        "26.2-quilt"
+      ],
+      "evidenceLevel": "runtime-certified",
+      "runtimeEvidence": "unchanged-b99-artifact-runtime-and-representative-live"
+    },
+    {
+      "artifact": "cinemarr-1.0.0+mc26.2-forge.jar",
+      "sha256": "c370e41c39a6c10468daeddffc7762392b669d16133a3701e3ff25039e94a12f",
+      "runtimeProfiles": [
+        "26.2-forge"
+      ],
+      "evidenceLevel": "runtime-certified",
+      "runtimeEvidence": "unchanged-b99-artifact-runtime-and-representative-live"
+    },
+    {
+      "artifact": "cinemarr-1.0.0+mc26.2-neoforge.jar",
+      "sha256": "523cfebe68e68a6525a06c715da51969f1db522a64bf69a7d01ccd359cf5b168",
+      "runtimeProfiles": [
+        "26.2-neoforge"
+      ],
+      "evidenceLevel": "runtime-certified",
+      "runtimeEvidence": "unchanged-b99-artifact-runtime-and-representative-live"
+    }
+  ],
+  "bundleHashes": {
+    "SHA256SUMS": "0afc1e0d68059697514b48195585fe28827ff41186af792769f33d7c79e88225",
+    "cinemarr-1.0.0+mc1.20.1-fabric.jar": "dbcd7a71149a220d720adac1b82017309a132a3ab47a9bf98ee23d09ac2c62d9",
+    "cinemarr-1.0.0+mc1.20.1-forge.jar": "6b30c9bab1765f79e6554d6107001a386c0bf7cc54275f2d9299a4a68fd3e0d4",
+    "cinemarr-1.0.0+mc1.20.1-neoforge.jar": "f7584912b3a42cf1d710415cb40e0b2df0348a1169c1a602f60a441611470809",
+    "cinemarr-1.0.0+mc1.20.2-fabric.jar": "5b896dfedc9ce94d0ccca3b59dd341a1de76fe598754ce46de2706249a05de16",
+    "cinemarr-1.0.0+mc1.20.2-forge.jar": "5bcaf520fd6f100e83c560ca3b7fc3b4fb2a632eed5a6b53bdeffa0cb634343e",
+    "cinemarr-1.0.0+mc1.20.2-neoforge.jar": "b3577699096a5c8be9a2680deea64a641dbc7895bc0efdc4aca1de99bc381c10",
+    "cinemarr-1.0.0+mc1.21.1-fabric.jar": "076b0065e6c59ff4ccabbf885ec50511dd4690873aafa5c90c07c15540b77af0",
+    "cinemarr-1.0.0+mc1.21.1-forge.jar": "aa71431cc839508b1577154baf68a32334915749e0125145642207c399919d26",
+    "cinemarr-1.0.0+mc1.21.1-neoforge.jar": "3d7fb013dbb3b8e55866dd93c5edc0d6a3274b04f0e57bf9e214ee6ce0112a36",
+    "cinemarr-1.0.0+mc1.7.10-forge.jar": "70b7eb7afa5c94b0297b7014703111b6e553fafcc5721732c1b6fc239ee620f5",
+    "cinemarr-1.0.0+mc26.1.2-fabric.jar": "aed61994f6c89ee2f3b12fe247a9cf746c24b1e9f0049a42b8781a37ed57e526",
+    "cinemarr-1.0.0+mc26.1.2-forge.jar": "9fb94f2603bf3745a3565de909fcab842bfedec7603da305dbb3bbabfaad696c",
+    "cinemarr-1.0.0+mc26.1.2-neoforge.jar": "beea0ae9a943ac93b7c9051ae69f35b0cbfff19abba180df228cdb24ede165c5",
+    "cinemarr-1.0.0+mc26.2-fabric.jar": "f62ef5e3f3117748f7efa163b7de47bcf6328acfe85da075594aa473cf3d1e94",
+    "cinemarr-1.0.0+mc26.2-forge.jar": "c370e41c39a6c10468daeddffc7762392b669d16133a3701e3ff25039e94a12f",
+    "cinemarr-1.0.0+mc26.2-neoforge.jar": "523cfebe68e68a6525a06c715da51969f1db522a64bf69a7d01ccd359cf5b168",
+    "manifest.json": "3f9557edd7a75b564b67c60c22dca46c826b6325c6032fa076da01e6ebb9ca76"
+  },
+  "evidenceReceipts": {
+    "candidate-evidence-selection.json": "834d2fd8f507387b5fa813b25b3a764cfe36a94899b3dfcac738177c29840502",
+    "isolated-final-matrix-reconciliation.json": "b34b60cef608cd46cf69c3c8a3c7e77cb090faf1095b8b0b1343d83f1454a880",
+    "requirements-evidence-reconciliation.json": "44ad577c58ba28a108896a3ffe32d388fd792743982609dee9542a203deafc7c",
+    "native-production-parity.json": "1a2a233c692fd120a45a9a2981be5e8ad5ba47898083461a762fdb34af315979",
+    "ci-b99a5c2/native-live-recovery-byte-parity.json": "1e9d7b6ff663be3fe5efc583d9e83b13e4c6ceddd8a808428ed20dff101a99b1",
+    "display-ui-supplement/legacy-field-fix-build/jar-member-continuity.json": "2171ed255fd82df3e8a9e8bca9b9e2aedf5b5cf8127b78b219b593f36203d3f6",
+    "display-ui-supplement/maintained-cases-complete-review.json": "03835c9713fd31e2c6277faa85424e57e9026574be499bb539b7f71748dc6ab4",
+    "live-field866-main-1.7.10-forge-attempt2-complete-review.json": "6e20edb26d23b976e144a0d9295eb7cd59f086c43b89aee4f92d30b14f3055eb",
+    "field866-recovery-complete-review.json": "14898efa8c9326fa882f327448d5c4a505856549f0fe5cdf07238e9ffc0c3934",
+    "live-field866-lifecycle-1.7.10-forge-complete-review.json": "4efb42f5fd4212ab791274296c11fc4e71e8b45c7c028eea976c90e334f49185",
+    "field866-final-live-stack-baseline.json": "197c5349f1b6c4ffd8094c6f940175a50a0e2afeb19175864e7a4e91f4813258",
+    "field866-final-plex-occupancy.json": "9ca84ecc6eb4a06b9c9664e35d0716f9e99b2cf829c914beb9bccd4e82b6843f",
+    "field866-final-native-idle.json": "cd05e995133c35f52b03ef11189fa9d1618cc8aed3e3e56aae0ed1c32ccd4111",
+    "field866-remote-workspace-cleanup.json": "ae2e86165cfa517200b2b63a04364a7cbac06b7b9fd5455f2ad24f2656a3dc78",
+    "field866-completed-live-secret-scan-exit.json": "320e39ed9697a106424e2a08853e716accf919f26872a6b3ac0e6d0e7b5db8e1",
+    "field866-gui-and-followup-secret-scan-exit.json": "8724b9955e3ed5a27f37a3a371639658edf5c33f4548f20149a1f84a6fced56d",
+    "display-ui-supplement/1.7.10-forge-attempt3/complete-review.json": "902f836cac3efda2c846e14df94f489e186fbf6fe9c067515bac93edc7687f76",
+    "display-ui-supplement/1.20.1-quilt-attempt1/complete-review.json": "f5374aedc6fe694b844598bb61f9b31ab5e8267e43049b57e0edfa33b9835120",
+    "display-ui-supplement/1.20.2-forge-attempt1/complete-review.json": "f0046b23195e912164369c5638037eff6dd75c042938188efc1c484d59f4e582",
+    "display-ui-supplement/26.1.2-neoforge-attempt1/complete-review.json": "9b4ac3517b78937832b225ae2d3fa66f19c5838c963ffdbac3b52ab15cd0ef5a",
+    "display-ui-supplement/26.2-fabric-attempt1/complete-review.json": "78d511236b6313d14d0f5e9179717cdd690f8b07a56b2ef281200be4c839e440",
+    "legacy-field-worktree/build/field-certification-attempt2/result.json": "1702f679a40eeab5ba591dc827ba78d91806c08b717d872e2d2192d9586aca25"
+  },
+  "receiptLocation": "Paths are relative to build/audit-remediation-evidence; legacy-field-worktree refers to the preserved 8668435 worktree. Receipts and raw evidence are retained outside Git.",
+  "priorSuccessfulHostedRuns": [
+    {
+      "commit": "b99a5c27708c118548112ca7ad21c1520a881968",
+      "run": 34815343612
+    },
+    {
+      "commit": "2d8a0d341ddb3ab5ca3cfbadeb937a3e496e4dbc",
+      "run": 34827174909
+    },
+    {
+      "commit": "a462cd86b39834ca983f601195de206e6ecd6301",
+      "run": 34835244372
+    }
+  ],
+  "nativeBoundary": "Windows x86-64 and emulated Linux ARM64 software-decoder ABI/functionality for three fixtures; not full Minecraft playback on those operating systems or physical ARM performance. New legacy artifact retains all 86 native members unchanged.",
+  "legacyMain": {
+    "originalCapturesReviewed": 96,
+    "audioCorrelation": 0.923318,
+    "audioLagMs": 0,
+    "freshRestartRestoredTvs": 3
+  },
+  "legacyLifecycle": {
+    "checkpointPlaced": 256,
+    "checkpointRemaining": 8960,
+    "restartUnloadedRemaining": 9216,
+    "loadedCleanupRemaining": 0
+  },
+  "releaseRule": "No release-ready claim before all ten phases complete for the final exact commit. No tag or publication is authorized."
+}

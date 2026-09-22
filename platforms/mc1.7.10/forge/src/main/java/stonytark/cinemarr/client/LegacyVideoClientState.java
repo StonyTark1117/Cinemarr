@@ -90,6 +90,11 @@ final class LegacyVideoClientState {
     void command(VideoPackets.SessionCommand command) { LegacyNetwork.sendToServer(LegacyPacketTypes.VIDEO_SESSION_COMMAND, command); }
     VideoPackets.LibraryList libraries() { return libraries; }
     VideoPackets.BrowseResults browse() { return browse; }
+    public String actualDimensions(long pos) {
+        VideoPackets.SessionState tv=session(pos);
+        StreamState stream=tv==null?null:streams.get(new StreamKey(tv.identity()));
+        return stream==null||stream.decodedWidth==0?"unknown":stream.decodedWidth+"x"+stream.decodedHeight;
+    }
     VideoPackets.SessionState session(long controller) { return televisions.get(controller); }
     Collection<VideoPackets.SessionState> televisions() { return new ArrayList<VideoPackets.SessionState>(televisions.values()); }
     List<QueuedVideo> queue(long controller) {
@@ -120,6 +125,7 @@ final class LegacyVideoClientState {
     }
 
     static final class StreamState {
+        int decodedWidth, decodedHeight;
         private final StreamKey key;
         private final SegmentRequestPacer requestPacer;
         private final VideoSegmentAssembler assembler = new VideoSegmentAssembler();

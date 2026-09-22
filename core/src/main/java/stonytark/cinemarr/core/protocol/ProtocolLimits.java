@@ -96,12 +96,21 @@ public final class ProtocolLimits {
                 && Boolean.getBoolean(ACCEPTANCE_VIDEO_PROBE_PROPERTY);
     }
 
+
     public static boolean videoProbeLeader() {
         return videoProbeEnabled() && Boolean.getBoolean(ACCEPTANCE_VIDEO_LEADER_PROPERTY);
     }
 
     public static boolean displayProbeEnabled() {
         return videoProbeEnabled() && Boolean.getBoolean("cinemarr.acceptance.displayProbe");
+    }
+
+    public static boolean displayFeatureProbeEnabled() {
+        return displayProbeEnabled() && Boolean.getBoolean("cinemarr.acceptance.displayFeatureProbe");
+    }
+
+    public static boolean displaySceneProbeEnabled() {
+        return displayProbeEnabled() && !displayFeatureProbeEnabled();
     }
 
     public static boolean worldChangeProbeEnabled() {

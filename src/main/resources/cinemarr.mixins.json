@@ -10,6 +10,7 @@
     "client.NativeImageAccessor",
     "client.SoundEngineAccessor",
     "client.SoundEngineLifecycleMixin",
+    "client.SoundEngineReloadMixin",
     "client.SoundManagerAccessor"
   ],
   "injectors": {

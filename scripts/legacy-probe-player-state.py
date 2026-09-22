@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Inspect or prepare a saved legacy test player's health; base64 NBT stays on stdin/stdout.
+"""Inspect or prepare a saved test player's health; base64 NBT stays on stdin/stdout.
 
 Only top-level health/death/fall fields change. The caller must own the test
 identity, keep the server stopped, and restore the original bytes afterward.
@@ -17,7 +17,16 @@ FIELDS = {"Health": (2, 20), "HealF": (5, 20.0), "DeathTime": (2, 0),
 FORMATS = {1: "b", 2: "h", 3: "i", 4: "q", 5: "f", 6: "d"}
 
 
-def prepare(compressed, repair=False):
+def prepare(compressed, repair=False, modern=False, modern26=False):
+    expected = dict(FIELDS)
+    if modern:
+        expected.pop("HealF")
+        expected["Health"] = (5, 20.0)
+    if modern26:
+        if not modern:
+            raise ValueError("26.x player schema requires modern health")
+        expected.pop("FallDistance")
+        expected["fall_distance"] = (6, 0.0)
     if len(compressed) > LIMIT:
         raise ValueError("oversized player data")
     with gzip.GzipFile(fileobj=io.BytesIO(compressed)) as stream:
@@ -47,9 +56,9 @@ def prepare(compressed, repair=False):
         if kind in FORMATS:
             start = position
             value = number(FORMATS[kind])
-            if depth == 1 and key in FIELDS:
-                if key in fields or kind != FIELDS[key][0] or not math.isfinite(value):
-                    raise ValueError("invalid legacy health field")
+            if depth == 1 and key in expected:
+                if key in fields or kind != expected[key][0] or not math.isfinite(value):
+                    raise ValueError("invalid player health field")
                 fields[key] = (value, start)
         elif kind in (7, 11, 12):
             read(number("i") * {7: 1, 11: 4, 12: 8}[kind])
@@ -74,28 +83,28 @@ def prepare(compressed, repair=False):
         raise ValueError("player root must be a compound")
     name()
     payload(10, 0)
-    if position != len(data) or set(fields) != set(FIELDS):
-        raise ValueError("legacy player health fields missing or trailing data")
-    alive = fields["Health"][0] > 0 and fields["HealF"][0] > 0 and fields["DeathTime"][0] == 0
+    if position != len(data) or set(fields) != set(expected):
+        raise ValueError("player health fields missing or trailing data")
+    alive = fields["Health"][0] > 0 and (modern or fields["HealF"][0] > 0) and fields["DeathTime"][0] == 0
     if not repair:
         if not alive:
             raise ValueError("saved test player is dead")
         return compressed
-    if all(fields[key][0] == value for key, (_, value) in FIELDS.items()):
+    if all(fields[key][0] == value for key, (_, value) in expected.items()):
         return compressed
-    for key, (kind, value) in FIELDS.items():
+    for key, (kind, value) in expected.items():
         struct.pack_into(">" + FORMATS[kind], data, fields[key][1], value)
     return gzip.compress(data, mtime=0)
 
 
 def main():
-    if sys.argv[1:] not in (["check"], ["prepare"]):
-        raise ValueError("expected check or prepare")
+    if sys.argv[1:] not in (["check"], ["prepare"], ["check-modern"], ["prepare-modern"], ["check-modern26"], ["prepare-modern26"]):
+        raise ValueError("expected check or prepare, optionally suffixed -modern")
     encoded = sys.stdin.buffer.read(LIMIT * 2 + 1)
     if len(encoded) > LIMIT * 2:
         raise ValueError("oversized encoded player data")
-    data = prepare(base64.b64decode(encoded.strip(), validate=True), sys.argv[1] == "prepare")
-    if sys.argv[1] == "prepare":
+    data = prepare(base64.b64decode(encoded.strip(), validate=True), sys.argv[1].startswith("prepare"), sys.argv[1].endswith(("-modern", "-modern26")), sys.argv[1].endswith("-modern26"))
+    if sys.argv[1].startswith("prepare"):
         print(base64.b64encode(data).decode("ascii"))
 
 
@@ -103,5 +112,5 @@ if __name__ == "__main__":
     try:
         main()
     except (ValueError, OSError, EOFError, struct.error):
-        print("Legacy test-player state is dead or malformed; acceptance cannot pass.", file=sys.stderr)
+        print("Test-player state is dead or malformed; acceptance cannot pass.", file=sys.stderr)
         sys.exit(1)

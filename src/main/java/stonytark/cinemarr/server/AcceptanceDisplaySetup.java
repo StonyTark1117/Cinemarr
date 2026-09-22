@@ -14,7 +14,7 @@ import stonytark.cinemarr.screen.ScreenPixelBlock;
 /** Opt-in disposable acceptance scene, using the ordinary registration and command paths. */
 public final class AcceptanceDisplaySetup {
     public static void prepare(ServerLevel level, ServerPlayer player, ServerVideoManager manager) {
-        if (!ProtocolLimits.displayProbeEnabled()) return;
+        if (!ProtocolLimits.displaySceneProbeEnabled()) return;
         CinemarrWorldScreens screens = CinemarrWorldScreens.get(level);
         CinemarrWorldScreens.Television quick = screens.television(new BlockPos(-1, 100, -1));
         if (quick == null || !quick.owner().equals(player.getUUID())) return;

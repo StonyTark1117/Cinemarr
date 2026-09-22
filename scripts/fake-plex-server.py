@@ -176,7 +176,7 @@ def main() -> None:
             elif path == "/video/:/transcode/universal/decision" and video_directory is not None:
                 body = {"MediaContainer": {"generalDecisionCode": 1001}}
             elif path == "/video/:/transcode/universal/start.m3u8" and video_directory is not None:
-                if state == "starts-rejected":
+                if state == "starts-rejected" or state.startswith("starts-fail"):
                     self.respond(503, {})
                     return
                 master = ("#EXTM3U\n#EXT-X-VERSION:3\n"

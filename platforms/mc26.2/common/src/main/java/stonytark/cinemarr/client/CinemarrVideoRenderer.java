@@ -36,7 +36,7 @@ public final class CinemarrVideoRenderer {
             if(state.item()==null||state.status()==VideoPackets.SessionStatus.IDLE)continue;
             CinemarrVideoPlayback pipeline=playback.pipeline(new CinemarrVideoClientState.StreamKey(state.identity()));
             if(pipeline==null||!pipeline.texture().ready())continue;visible.add(state.televisionId());
-            CinemarrVideoTexture displayTexture=pipeline.texture().forDisplay(state);if(displayTexture==null)continue;MeshCache mesh=updateMesh(state);PresentationTransform transform=PresentationTransform.create(displayTexture.width(),displayTexture.height(),state.screenWidth(),state.screenHeight(),state.displaySettings().mapping()==stonytark.cinemarr.core.video.PixelMapping.ONE_PIXEL_PER_BLOCK?stonytark.cinemarr.core.video.PresentationMode.STRETCH:state.presentationMode());
+            CinemarrVideoTexture displayTexture=pipeline.texture().forDisplay(state);if(displayTexture==null || stonytark.cinemarr.core.client.DisplayFrameCapture.isSuppressed(state.controllerPos()))continue;MeshCache mesh=updateMesh(state);PresentationTransform transform=PresentationTransform.create(displayTexture.width(),displayTexture.height(),state.screenWidth(),state.screenHeight(),state.displaySettings().mapping()==stonytark.cinemarr.core.video.PixelMapping.ONE_PIXEL_PER_BLOCK?stonytark.cinemarr.core.video.PresentationMode.STRETCH:state.presentationMode());
             RenderType type=state.displaySettings().mapping()==stonytark.cinemarr.core.video.PixelMapping.ONE_PIXEL_PER_BLOCK
                     ? displayTexture.pixelRenderType()
                     : displayTexture.detailedRenderType();

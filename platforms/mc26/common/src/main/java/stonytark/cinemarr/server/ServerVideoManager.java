@@ -252,6 +252,15 @@ public final class ServerVideoManager implements AutoCloseable {
                 for (ServerPlayer recipient : recipients(television, player)) sendCurrent(recipient, television, displayNow);
                 return;
             }
+            // Presentation edits never tune, restore, persist attachment, or refresh tracking.
+            if (command.action() == VideoPackets.SessionAction.SET_PRESENTATION) {
+                VideoSessionCoordinator.Snapshot current = sessions.snapshotIfPresent(television.sessionName(), System.currentTimeMillis());
+                stonytark.cinemarr.core.video.PresentationCommandGuard.validate(command,
+                        television.sessionName(), current == null ? 0 : current.generation());
+                CinemarrWorldScreens.get(player.level()).updatePresentation(controller, command.presentationMode());
+                for(ServerPlayer recipient:recipients(television,player))sendCurrent(recipient,television,System.currentTimeMillis());
+                return;
+            }
             String requestedSession=command.sessionName().isBlank()?television.sessionName():command.sessionName();
             VideoSessionCoordinator.Snapshot tuned = sessions.tune(television.id(), requestedSession);
             TelevisionLifecycle.attachment(television.id(),true);
@@ -294,10 +303,10 @@ public final class ServerVideoManager implements AutoCloseable {
                 if (!library.rule().allows(item, playerPermission)) throw new IOException("Video item is not allowed by this library policy");
                 StartOptions options=new StartOptions(renditionFor(television,metadata),selection(metadata.streams(),command.audioStreamId(),command.subtitleStreamId(),command.action()!=VideoPackets.SessionAction.SET_STREAMS));
                 StartOptions previousOptions=playbackOptions.get(tuned.id());
-                if(command.action()==VideoPackets.SessionAction.SET_STREAMS) playbackOptions.put(tuned.id(),options);
+                playbackOptions.put(tuned.id(),options);
                 startingOptions.set(options);VideoSessionCoordinator.Snapshot state;
                 try{state=command.action()==VideoPackets.SessionAction.SET_STREAMS?sessions.reconfigure(tuned.name(),System.currentTimeMillis(),tuned.generation()):sessions.play(tuned.name(),item,command.seekPositionMs(),System.currentTimeMillis(),tuned.generation());}
-                catch(RuntimeException|IOException failure){if(command.action()==VideoPackets.SessionAction.SET_STREAMS){if(previousOptions==null)playbackOptions.remove(tuned.id());else playbackOptions.put(tuned.id(),previousOptions);}throw failure;}
+                catch(RuntimeException|IOException failure){if(previousOptions==null)playbackOptions.remove(tuned.id());else playbackOptions.put(tuned.id(),previousOptions);throw failure;}
                 finally{startingOptions.remove();}
                 return new PreparedPlayback(state, options, library.rule().id());
             } catch (IOException failure) { throw new WrappedFailure(failure); }
@@ -532,7 +541,9 @@ public final class ServerVideoManager implements AutoCloseable {
         for(ServerLevel world:server.getAllLevels())for(CinemarrWorldScreens.Television tv:CinemarrWorldScreens.get(world).televisions()) {
             VideoSessionCoordinator.Snapshot timeline=sessions.snapshotIfPresent(tv.sessionName(),now);
             if(timeline==null)continue;
-            retained.add(tv.id());Set<UUID> viewers=new HashSet<UUID>();
+            retained.add(tv.id());
+            if(timeline.item()!=null&&!metadataMatches(timeline))continue;
+            Set<UUID> viewers=new HashSet<UUID>();
             for(Map.Entry<UUID,Map<UUID,Long>> entry:visibleTelevisions.entrySet())if(entry.getValue().containsKey(tv.id()))viewers.add(entry.getKey());
             tvStreams.update(new TelevisionStreamPool.Request(tv.id(),timeline,tv.displaySettings(),tv.width(),tv.height(),viewers,metadataMatches(timeline)),now);
             VideoSessionCoordinator.Snapshot stream=tvStreams.snapshot(tv.id(),now);

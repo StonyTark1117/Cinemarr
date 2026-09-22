@@ -15,9 +15,10 @@ def world(pid=101,dimension=-1,count=0,threads=None):
             f'streams={count} pipelines={count} audioSources={count} decoderThreads={threads}\n')
 
 
-def session(owner):
-    return ('Acceptance video session: controller=1 session=party generation=5 status=PLAYING item=9001 '
-            f'positionMs=0 canControl={str(owner).lower()} streams=1 audio=-1 subtitle=-1 durationMs=300000 message=Playing\n')
+def session(owner, generation=5):
+    return ('Acceptance video session: controller=1 session=tv-stream generation=17 status=PLAYING item=9001 '
+            f'positionMs=0 canControl={str(owner).lower()} streams=1 audio=-1 subtitle=-1 durationMs=300000 '
+            f'timeline=party timelineGeneration={generation} message=Playing\n')
 
 
 class WorldTests(unittest.TestCase):
@@ -55,7 +56,15 @@ class WorldTests(unittest.TestCase):
         self.values['follower']+='Acceptance legacy world unloaded: dimension=-1\n'+world(101,0,1)+session(False)
         result=probe.run(self.observer,'returned',1)
         self.assertTrue(result['sameClientProcesses']); self.assertTrue(result['physicalAudioAndVisualReviewPending'])
+        self.assertEqual('party',result['session']['session'])
+        self.assertEqual(5,result['session']['generation'])
         self.assertNotIn('passed',result)
+
+    def test_return_rejects_changed_timeline_even_when_stream_identity_is_unchanged(self):
+        self.away()
+        self.values['follower']+='Acceptance legacy world unloaded: dimension=-1\n'+world(101,0,1)+session(False,generation=6)
+        with self.assertRaises(RuntimeError):probe.run(self.observer,'returned',1)
+        self.assertFalse((self.output/'world-returned-1.json').exists())
 
     def test_old_overworld_playback_cannot_prove_return(self):
         self.away()

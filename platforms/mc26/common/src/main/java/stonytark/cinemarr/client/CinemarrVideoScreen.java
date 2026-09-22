@@ -42,6 +42,8 @@ public final class CinemarrVideoScreen extends Screen {
         super(Component.translatable("cinemarr.video.title"));this.controllerPos=controllerPos;this.state=state;
     }
 
+    void openDisplaySettings() { CinemarrClientUi.openScreen(new Mc26DisplaySettingsScreen(controllerPos,state,this)); }
+
     @Override protected void init(){
         VideoPackets.SessionState authoritative=state.session(controllerPos);
         feedback.updateServerMessage(authoritative==null?"":authoritative.message());
@@ -121,7 +123,7 @@ public final class CinemarrVideoScreen extends Screen {
         PresentationMode current=mode();
         for(PresentationMode candidate:PresentationMode.values())control(Slot.valueOf(candidate.name()),Component.literal(candidate.name().toLowerCase(java.util.Locale.ROOT)),b->command(VideoPackets.SessionAction.SET_PRESENTATION,"",0,candidate,generation)).active=candidate!=current;
         control(Slot.SCREEN,Component.literal(CinemarrSettings.enabled()?"Screen on":"Screen off"),b->{CinemarrSettings.enabled(!CinemarrSettings.enabled());CinemarrSettings.saveEnabled();rebuildWidgets();});
-        widget("display-settings",Button.builder(Component.literal("Display"),b->CinemarrClientUi.showScreen(new Mc26DisplaySettingsScreen(controllerPos,state,this))).bounds(layout.left(),4,68,14).build());
+        widget("display-settings",Button.builder(Component.literal("Display"),b->openDisplaySettings()).bounds(layout.left(),2,68,14).build());
         if(playback!=null&&playback.item()!=null){
             control(Slot.AUDIO,Component.literal("Audio: "+streamLabel(playback,VideoStreamOption.Kind.AUDIO,playback.selectedAudioStreamId(),"default")),b->cycleStream(playback,VideoStreamOption.Kind.AUDIO)).active=playback.streams().stream().anyMatch(value->value.kind()==VideoStreamOption.Kind.AUDIO);
             control(Slot.SUBTITLES,Component.literal("Subs: "+streamLabel(playback,VideoStreamOption.Kind.SUBTITLE,playback.selectedSubtitleStreamId(),"off")),b->cycleStream(playback,VideoStreamOption.Kind.SUBTITLE)).active=playback.streams().stream().anyMatch(value->value.kind()==VideoStreamOption.Kind.SUBTITLE);

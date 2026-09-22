@@ -17,6 +17,30 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 class CinemarrWorldScreensTest {
+    @Test void draftPacketWorldUpdateAcceptsFreshWriterAndRejectsStaleWriterAtomically() {
+        TelevisionLifecycle.reset(null);
+        CinemarrWorldScreens data=new CinemarrWorldScreens();
+        for(int x=0;x<4;x++)data.putPixel(new BlockPos(x,0,0),Direction.NORTH);
+        BlockPos controller=new BlockPos(0,0,1);assertTrue(data.activate(controller,UUID.randomUUID()).success());
+        var original=data.television(controller).displaySettings();
+        var first=new stonytark.cinemarr.core.video.DisplaySettingsDraft(original).layout(PresentationMode.FILL);
+        var second=new stonytark.cinemarr.core.video.DisplaySettingsDraft(original).layout(PresentationMode.STRETCH);
+        data.updateSession(controller,"existing");
+        for(var draft:java.util.List.of(first,second)) {
+            var command=new stonytark.cinemarr.core.protocol.VideoPackets.SessionCommand(
+                    stonytark.cinemarr.core.protocol.VideoPackets.SessionAction.SET_DISPLAY,controller.asLong(),"","","",PresentationMode.FIT,0,0,-1,-1).withDisplay(draft.apply());
+            var bytes=new stonytark.cinemarr.core.protocol.ByteArrayWireOutput();
+            stonytark.cinemarr.core.protocol.VideoPackets.SESSION_COMMAND.encode(bytes,command);
+            var decoded=stonytark.cinemarr.core.protocol.VideoPackets.SESSION_COMMAND.decode(new stonytark.cinemarr.core.protocol.ByteArrayWireInput(bytes.toByteArray()));
+            if(draft==first)data.updateDisplay(controller,decoded.displaySettings());
+            else org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,()->data.updateDisplay(controller,decoded.displaySettings()));
+        }
+        assertEquals(1,data.television(controller).displaySettings().revision());
+        assertEquals(PresentationMode.FILL,data.television(controller).presentationMode());
+        assertEquals("existing",data.television(controller).sessionName());
+        TelevisionLifecycle.reset(null);
+    }
+
     @Test void activatedGeometryOwnershipMaskPresentationAndSessionRoundTrip(){
         CinemarrWorldScreens data=new CinemarrWorldScreens();UUID owner=UUID.randomUUID();
         data.putPixel(new BlockPos(0,0,0),Direction.NORTH);data.putPixel(new BlockPos(1,0,0),Direction.NORTH);

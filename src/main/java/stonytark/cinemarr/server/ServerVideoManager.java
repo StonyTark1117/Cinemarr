@@ -254,6 +254,15 @@ public final class ServerVideoManager implements AutoCloseable {
                 for (ServerPlayer recipient : recipients(television, player)) sendCurrent(recipient, television, displayNow);
                 return;
             }
+            // Presentation edits never tune, restore, persist attachment, or refresh tracking.
+            if (command.action() == VideoPackets.SessionAction.SET_PRESENTATION) {
+                VideoSessionCoordinator.Snapshot current = sessions.snapshotIfPresent(television.sessionName(), System.currentTimeMillis());
+                stonytark.cinemarr.core.video.PresentationCommandGuard.validate(command,
+                        television.sessionName(), current == null ? 0 : current.generation());
+                CinemarrWorldScreens.get(player.serverLevel()).updatePresentation(controller, command.presentationMode());
+                for(ServerPlayer recipient:recipients(television,player))sendCurrent(recipient,television,System.currentTimeMillis());
+                return;
+            }
             String requestedSession=command.sessionName().isBlank()?television.sessionName():command.sessionName();
             VideoSessionCoordinator.Snapshot tuned = sessions.tune(television.id(), requestedSession);
             TelevisionLifecycle.attachment(television.id(),true);
@@ -546,7 +555,9 @@ public final class ServerVideoManager implements AutoCloseable {
         for(ServerLevel world:server.getAllLevels())for(CinemarrWorldScreens.Television tv:CinemarrWorldScreens.get(world).televisions()) {
             VideoSessionCoordinator.Snapshot timeline=sessions.snapshotIfPresent(tv.sessionName(),now);
             if(timeline==null)continue;
-            retained.add(tv.id());Set<UUID> viewers=new HashSet<UUID>();
+            retained.add(tv.id());
+            if(timeline.item()!=null&&!metadataMatches(timeline))continue;
+            Set<UUID> viewers=new HashSet<UUID>();
             for(Map.Entry<UUID,Map<UUID,Long>> entry:visibleTelevisions.entrySet())if(entry.getValue().containsKey(tv.id()))viewers.add(entry.getKey());
             tvStreams.update(new TelevisionStreamPool.Request(tv.id(),timeline,tv.displaySettings(),tv.width(),tv.height(),viewers,metadataMatches(timeline)),now);
             VideoSessionCoordinator.Snapshot stream=tvStreams.snapshot(tv.id(),now);

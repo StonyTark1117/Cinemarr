@@ -17,6 +17,35 @@ class StreamChangeTests(unittest.TestCase):
         self.assertEqual(8, owner.states(text)[0]['generation'])
         self.assertEqual(3, owner.states(text.replace(' timeline=party timelineGeneration=8', ''))[0]['generation'])
 
+    def test_old_tv_retention_cannot_satisfy_a_fresh_pause_at_reused_generation(self):
+        def state(generation):
+            return f'Acceptance video session: generation={generation} status=PAUSED item=movie canControl=true\n'
+        def retained(generation, value):
+            return f'Acceptance paused frame retained: generation={generation} frameSha256={value * 64} ptsUs=123\n'
+        old = state(6) + retained(6, 'a')
+        # First PAUSE packet retains the old stream generation; its successor
+        # and the newly held frame arrive after the observer has begun polling.
+        transient = old + state(6)
+        self.assertIsNone(owner.retained_paused_frame(transient, 6, len(old)))
+        completed = transient + state(7) + retained(7, 'b')
+        self.assertEqual('b' * 64, owner.retained_paused_frame(completed, 6, len(old)))
+
+    def test_paused_seek_requires_fresh_retention_even_without_stream_generation_change(self):
+        state = 'Acceptance video session: generation=7 status=PAUSED item=movie canControl=true\n'
+        retained = 'Acceptance paused frame retained: generation=7 frameSha256=' + 'b' * 64 + ' ptsUs=123\n'
+        before = state + retained
+        self.assertIsNone(owner.retained_paused_frame(before + state, 7, len(before)))
+        self.assertEqual('b' * 64, owner.retained_paused_frame(before + state + retained, 7, len(before)))
+
+    def test_coalesced_paused_packets_require_retention_at_latest_authoritative_generation(self):
+        old = 'Acceptance video session: generation=9 status=PAUSED item=movie canControl=true\n'
+        latest = 'Acceptance video session: generation=10 status=PAUSED item=movie canControl=true\n'
+        retained = 'Acceptance paused frame retained: generation=10 frameSha256=' + 'a'*64 + ' ptsUs=123\n'
+        self.assertEqual('a'*64, owner.retained_paused_frame(old + latest + retained, 9))
+        self.assertIsNone(owner.retained_paused_frame(old + latest + retained.replace('generation=10', 'generation=9'), 9))
+        self.assertIsNone(owner.retained_paused_frame(old + latest + retained, 11))
+        self.assertIsNone(owner.retained_paused_frame(old + latest.replace('PAUSED', 'PLAYING') + retained, 9))
+
     def setUp(self):
         self.before = dict(generation=3, status='PAUSED', positionMs=84388, audio=205039, subtitle=-1)
         self.subtitle = dict(self.before, generation=4, subtitle=205040)

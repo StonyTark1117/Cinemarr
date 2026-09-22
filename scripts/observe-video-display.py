@@ -257,7 +257,7 @@ def main():
             ui_wait(role, offset, 'Acceptance video UI screenshot:')
             time.sleep(.3)
             offset = len(logs[role].read_text(errors='replace'))
-            desktop.click(70, 30)  # Controller's actual Display button.
+            desktop.click(70, 18)  # Controller's actual Display button.
             ui_wait(role, offset, 'Acceptance display UI: width=320 height=240 editable='
                     + ('true' if role == 'leader' else 'false') + ' qualityEditable='
                     + ('true' if role == 'leader' and not quick else 'false'))
@@ -270,13 +270,13 @@ def main():
             if role == 'leader':
                 desktop.click(300, 76)  # Change the Layout draft, then Cancel.
                 ui_capture(role, 'display-cancel-draft')
-                desktop.click(550, 444)
+                desktop.click(550, 436)
                 open_page(role)
                 if states(logs[role].read_text(errors='replace'))[target]['revision'] != resumed[target]['revision']:
                     raise RuntimeError('Cancel changed authoritative settings')
                 ui_capture(role, 'display-cancel-restored')
                 desktop.click(300, 76)  # Apply a Layout change through the editor.
-                desktop.click(385, 444)
+                desktop.click(320, 436)
                 applied = wait('PLAYING', lambda x: x[target]['revision'] == resumed[target]['revision'] + 1)
                 if not unchanged_siblings(resumed, applied, target) or not unchanged_stream(resumed, applied, target):
                     raise RuntimeError('UI layout Apply restarted media')
@@ -304,14 +304,14 @@ def main():
                                            ('0', 'Resolution dimensions must be between 2 and 8192', 'out-of-range')]:
                     input_field(200, value)
                     offset = len(logs[role].read_text(errors='replace'))
-                    desktop.click(385, 444)
+                    desktop.click(320, 436)
                     ui_wait(role, offset, 'Acceptance display UI error: ' + error)
                     if states(logs[role].read_text(errors='replace'))[target]['revision'] != applied[target]['revision']:
                         raise RuntimeError('Invalid custom dimensions mutated settings')
                     ui_capture(role, 'display-invalid-' + name)
                 input_field(200, '320')
                 input_field(500, '180')
-                desktop.click(385, 444)
+                desktop.click(320, 436)
                 custom = wait('PLAYING', lambda x: x[target]['requested'] == '320x180'
                               and x[target]['revision'] == applied[target]['revision'] + 1
                               and x[target]['streamGeneration'] > applied[target]['streamGeneration'])
@@ -324,7 +324,7 @@ def main():
                 ui_capture(role, 'display-quick-locked')
             else:
                 desktop.click(300, 76)
-                desktop.click(385, 444)
+                desktop.click(320, 436)
                 ui_capture(role, 'display-read-only')
                 current = states(logs[role].read_text(errors='replace'))
                 if current[target]['revision'] != custom[target]['revision']:

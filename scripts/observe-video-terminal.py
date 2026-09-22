@@ -13,7 +13,7 @@ import time
 spec = importlib.util.spec_from_file_location('world', Path(__file__).with_name('capture-post-reconnect-video.py'))
 world = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(world)
-STATE = re.compile(r'Acceptance video session: controller=\S+ session=(\S+) generation=(\d+) status=(\S+) item=([^\s\]]*) positionMs=(\d+) canControl=(true|false).*? durationMs=(\d+) message=([^\r\n<]*)')
+STATE = re.compile(r'Acceptance video session: controller=\S+ session=(\S+) generation=(\d+) status=(\S+) item=([^\s\]]*) positionMs=(\d+) canControl=(true|false).*? durationMs=(\d+)(?: timeline=\S+ timelineGeneration=\d+)? message=([^\r\n<]*)')
 QUEUE = re.compile(r'Acceptance video queue: session=(\S+) generation=(\d+) entries=(\d+) firstItem=([^\s\]]*)')
 
 
@@ -46,6 +46,18 @@ def same_playback(pair, status, after_generation=-1, item=None, session=None):
             and leader['owner'] and not follower['owner'] and leader['item'] == follower['item']
             and (item is None or leader['item'] == item)
             and (session is None or leader['session'] == session))
+
+
+def queue_advanced(rows, generation, item, session):
+    """Require the advance event and current playback, even across rapid setup updates."""
+    if not same_playback(rows, 'PLAYING', generation, item, session):
+        return False
+    current_generation = rows['leader'][-1]['generation']
+    return all(any(row['session'] == session and row['generation'] == current_generation
+                   and row['status'] == 'PLAYING' and row['item'] == item
+                   and row['owner'] == (role == 'leader') and row['position'] < 3_000
+                   and row['message'] == 'Playing next queued video' for row in history)
+               for role, history in rows.items())
 
 
 class Observer:
@@ -135,8 +147,7 @@ class Observer:
             generation = seek['after']['leader']['generation']
             def advanced(values):
                 rows = {role: states(value) for role, value in values.items()}
-                if not same_playback(rows, 'PLAYING', generation, expected['item'], expected['session']): return False
-                return all(row[-1]['position'] < 3_000 and row[-1]['message'] == 'Playing next queued video' for row in rows.values())
+                return queue_advanced(rows, generation, expected['item'], expected['session'])
             text = self.wait(advanced, seek['offsets'])
             current = {r: states(t)[-1] for r, t in text.items()}
             self.wait(lambda values: all(queues(value) and queues(value)[-1]['entries'] == 0

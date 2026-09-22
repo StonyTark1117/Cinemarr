@@ -2,33 +2,29 @@
 
 <img src="artwork/cinemarr-icon.png" alt="Cinemarr logo" width="160">
 
-Cinemarr is a required client-and-server Minecraft mod for server-authoritative Plex movie and television playback on player-built screens. The server owns Plex credentials, library policy, transcodes, timelines, and media relay. Clients receive bounded HLS media, decode a visible session once, and render it across that television's dynamic texture.
+Cinemarr is a required client-and-server Minecraft mod for server-authoritative Plex movie and television playback on player-built screens. The server owns Plex credentials, library policy, transcodes, timelines, and media relay. Clients receive bounded HLS media, decode each visible TV stream once, and render it across that television's dynamic texture.
 
 ## 1.0 prerelease status
 
-This checkout targets **Cinemarr 1.0.0**. It is a prerelease development build,
-**not a release candidate**. Custom TV display controls and independent per-TV
-streams are now required 1.0 work across the **16-artifact / 21-runtime** matrix.
-See the [full feature specification](docs/1.0_CUSTOM_TV_DISPLAY_PLAN.md) and
-[release hardening plan](docs/1.0_RELEASE_HARDENING_PLAN.md).
+This checkout targets **Cinemarr 1.0.0**, with custom TV display controls and
+independent streams across the **16-artifact / 21-runtime** matrix.
+The current handshake correction is awaiting artifact certification, so the
+target manifest records `prerelease`. Earlier artifact evidence remains bound
+to its recorded hashes. The final gate at `1ea796f` failed a protocol-rejection
+check; the correction passed repeated focused modern and legacy checks.
+Release readiness requires the new exact commit's complete local gate, fully
+green hosted aggregate, matching downloaded artifacts and clean teardown.
+No tag or publication is part of this work.
 
-The earlier V11 candidate used protocol 10 and screen-data schema 3. Integrated
-development now uses protocol 11; saved-data migration and verification of all
-adapters remain required before certification.
-New custom TVs must default to Fit, Detailed, Auto, while Quick TV construction
-sizes and preset resolutions remain intact. Implementation is in progress.
+Protocol 11 separates watch-party and TV-stream identities. Saved-data migration
+preserves existing screens; new custom TVs default to Fit, Detailed, Auto, and
+Quick TV construction sizes and preset resolutions remain intact. Requested
+quality and measured decoded dimensions are reported separately.
 
-The earlier runtime batch stopped when source changes superseded its frozen
-candidate. Prior matching builds, partial runtime passes, native checks and
-Plex-session diagnostics remain historical evidence. They do not certify the
-changed implementation, and that batch is no longer running.
-
-Fresh certification must include the existing 37 local cases, feature smoke on
-all 21 profiles, additional capacity/failure/raster supplements, two matching
-builds, all ten GameTests, native guests, real-Plex multi-TV/two-client playback,
-recovery/lifecycle and cleanup. The reviewed final commit must pass the full
-local release gate and all required GitHub jobs with matching downloaded
-artifacts. See [release acceptance](docs/RELEASE_ACCEPTANCE.md).
+See the [release acceptance record](docs/RELEASE_ACCEPTANCE.md),
+[artifact evidence and hashes](docs/RELEASE_CANDIDATE_EVIDENCE_20260914.json),
+[full feature specification](docs/1.0_CUSTOM_TV_DISPLAY_PLAN.md) and
+[ten-phase hardening plan](docs/1.0_RELEASE_HARDENING_PLAN.md).
 
 The old global Plex-music queue, stations, MP3 transport, music UI, and their bundled JLayer/Jump3r libraries have been removed. Cinemarr 1.0 is a television/video mod; it does not require Jammarr.
 
@@ -141,9 +137,9 @@ CINEMARR_VIDEO_CLIENT_GATE=true \
 ./scripts/run-dedicated-server-gate.sh 1.21.1-neoforge
 ```
 
-Earlier green automation missed real audio, concurrency, camera and controller defects. Subsequent live pressure, reload and lifecycle checks prompted further fixes. Their source-bound acceptance and earlier complete builds are regression evidence, not certification of the current uncommitted code or final release bytes.
+Earlier green automation missed real audio, concurrency, camera and controller defects. Subsequent live pressure, reload and lifecycle checks prompted further fixes. Their source-bound acceptance and earlier complete builds are regression evidence; the integrated remediation still requires final exact-byte certification.
 
-The full local entry point is `./gradlew releaseMatrixGate --no-configuration-cache --max-workers=1` under Java 21, from a clean candidate checkout with fresh evidence directories. It requires all 16 artifacts, ten GameTests, all 21 runtimes and the required supplements. Direct image review, reproducibility, exact-artifact real-Plex/recovery/lifecycle and Windows/ARM checks, security/documentation review, scoped commits/push and exact-SHA green hosted CI with matching artifact hashes remain separate completion requirements. Installed Windows/ARM test guests are retained powered off between tests; see the [guest runbook](docs/NATIVE_TEST_GUESTS.md). See [the 1.0 hardening plan](docs/1.0_RELEASE_HARDENING_PLAN.md) for current evidence. The [earlier Jammarr target-feasibility assessment](docs/JAMMARR_TARGET_FEASIBILITY.md) concerns later expansion, does not change the 1.0 matrix, and will be refreshed only after the preceding hardening and CI gates finish.
+The full local entry point is `./gradlew releaseMatrixGate --no-configuration-cache --max-workers=1` under Java 21, from a clean candidate checkout with fresh evidence directories. It requires all 16 artifacts, ten GameTests, all 21 runtimes and the required supplements. Direct image review, reproducibility, exact-artifact real-Plex/recovery/lifecycle and Windows/ARM checks, security/documentation review, scoped commits/push and exact-SHA green hosted CI with matching artifact hashes remain separate completion requirements. Installed Windows/ARM test guests are retained powered off between tests; see the [guest runbook](docs/NATIVE_TEST_GUESTS.md). See [the 1.0 hardening plan](docs/1.0_RELEASE_HARDENING_PLAN.md) for current evidence. The [current Jammarr comparison](docs/JAMMARR_COMPARISON_20260914.md), brought forward at the user's request, assesses features, versions, fixes and future improvements while leaving the 1.0 matrix and paused release gates unchanged.
 
 The credentialed release gate uses the in-game controller with a real allowed Plex library, two independent clients, identifiable video, synchronized audible output, and a residue-free teardown. For the managed DiscPanel environment, run the exact-artifact wrapper on each representative boundary:
 
@@ -177,3 +173,35 @@ CINEMARR_LIVE_VIDEO_SECTION_ID='1' \
 ```
 
 See [release acceptance](docs/RELEASE_ACCEPTANCE.md), [compatibility](docs/COMPATIBILITY.md), and [proposal status](docs/PROPOSAL_STATUS.md) for the remaining 1.0 gates.
+
+### Display settings and per-TV quality
+
+Open a TV controller and choose **Display**. Layout cycles through Fit, Fill and
+Stretch. Mapping cycles between Detailed and One pixel per block. Quality cycles
+through Auto, 144p, 240p, 480p, 720p, 1080p, 1440p, 4k, 8k and Custom. Width and
+height are editable only in Custom (2–8192 per axis, within the decoded-frame
+memory budget). Apply waits for the server to acknowledge the saved settings;
+Cancel discards unsent changes. Reload fetches the latest received settings after
+a concurrent edit or timeout. Only the owner or an operator can edit a TV.
+Quick TVs keep their preset quality and Detailed mapping; their layout is editable.
+
+**Screen size** is the block bounding rectangle. **Requested quality** is a stream
+bounding box, limited by source resolution, source aspect ratio, server caps and
+codec rounding. **Actual decoded** is measured from the most recently presented
+source frame on this client; it stays unknown before a frame arrives. During a
+quality replacement it can continue to show the old frame's dimensions until the
+new stream presents a frame. It does not promise that Plex honored the request.
+In One pixel per block mode, the output raster instead matches the screen's block
+dimensions; each visible block displays one sampled color. Fit adds black bars,
+Fill crops, and Stretch fills the rectangle. Screen holes stay absent.
+
+Each TV consumes its own stream slot, including TVs in the same watch party.
+Multiple viewers of one TV share that TV's server stream. A full server shows
+**Waiting for stream capacity** on additional TVs; the next eligible TV starts
+automatically at the party's current position when a slot is freed. Quality
+changes replace only the edited TV's stream. Pause, resume, seek and track
+selection remain shared by the watch party. Paused layout and mapping edits
+redraw the retained frame.
+
+See the release acceptance checklist for the artifact evidence and final-commit
+certification requirements of each maintained platform.

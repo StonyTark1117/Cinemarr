@@ -54,7 +54,21 @@ class ProtocolLimitsTest {
         assertEquals(-1.5D, ProtocolLimits.videoProbeCameraX("CinemarrVideoA"));
     }
 
+    @Test void displayScenesAreMutuallyExclusiveAndRequireExplicitAcceptance() {
+        System.setProperty("cinemarr.acceptance.displayProbe", "true");
+        assertEquals(false, ProtocolLimits.displaySceneProbeEnabled());
+        System.setProperty(ProtocolLimits.ACCEPTANCE_ENABLED_PROPERTY, "true");
+        System.setProperty(ProtocolLimits.ACCEPTANCE_VIDEO_PROBE_PROPERTY, "true");
+        assertEquals(true, ProtocolLimits.displaySceneProbeEnabled());
+        assertEquals(false, ProtocolLimits.displayFeatureProbeEnabled());
+        System.setProperty("cinemarr.acceptance.displayFeatureProbe", "true");
+        assertEquals(false, ProtocolLimits.displaySceneProbeEnabled());
+        assertEquals(true, ProtocolLimits.displayFeatureProbeEnabled());
+    }
+
     @AfterEach void clearAcceptanceProperties() {
+        System.clearProperty("cinemarr.acceptance.displayProbe");
+        System.clearProperty("cinemarr.acceptance.displayFeatureProbe");
         System.clearProperty("cinemarr.acceptance.browsePressureProbe");
         System.clearProperty(ProtocolLimits.ACCEPTANCE_VIDEO_LEADER_PROPERTY);
         System.clearProperty("cinemarr.acceptance.worldChangeProbe");
@@ -85,6 +99,20 @@ class ProtocolLimitsTest {
         assertEquals(ProtocolLimits.VERSION, ProtocolLimits.clientHelloVersion());
         System.setProperty(ProtocolLimits.ACCEPTANCE_CLIENT_PROTOCOL_PROPERTY, "-1");
         assertEquals(ProtocolLimits.VERSION, ProtocolLimits.clientHelloVersion());
+    }
+
+    @Test void badOutgoingTestHelloDoesNotChangeIncomingCapabilityValidation() {
+        System.setProperty(ProtocolLimits.ACCEPTANCE_ENABLED_PROPERTY, "true");
+        System.setProperty(ProtocolLimits.ACCEPTANCE_CLIENT_PROTOCOL_PROPERTY, "10");
+        ProtocolCapabilities.Offer server = ProtocolCapabilities.currentOffer();
+        assertEquals(ProtocolLimits.VERSION, server.version());
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> ProtocolCapabilities.negotiate(
+                server.version(), server.features(), server.maxChunkBytes(),
+                server.maxTransferWindow(), server.healthIntervalMs()));
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> ProtocolCapabilities.negotiate(ProtocolLimits.clientHelloVersion(),
+                        server.features(), server.maxChunkBytes(), server.maxTransferWindow(),
+                        server.healthIntervalMs()));
     }
 
     @Test void helloSuppressionRequiresTheExplicitAcceptanceGate() {

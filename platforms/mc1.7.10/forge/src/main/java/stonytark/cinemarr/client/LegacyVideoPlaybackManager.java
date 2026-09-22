@@ -26,6 +26,7 @@ final class LegacyVideoPlaybackManager implements AutoCloseable {
                             && pipeline.retainReplacementFrameFrom(previous.getValue(), stream.session())) break;
             }
             pipeline.tick(stream);
+            stream.decodedWidth=pipeline.texture().width();stream.decodedHeight=pipeline.texture().height();
         }
         for (LegacyVideoClientState.StreamKey key : new ArrayList<LegacyVideoClientState.StreamKey>(pipelines.keySet())) if (!current.contains(key)) pipelines.remove(key).close();
     }

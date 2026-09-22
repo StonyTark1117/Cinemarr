@@ -17,7 +17,8 @@ import java.util.Map;
 
 public final class CinemarrVideoSavedData extends SavedData {
     private static final int MAX_SESSIONS=64;
-    public static final Factory<CinemarrVideoSavedData> FACTORY=new Factory<>(CinemarrVideoSavedData::new,CinemarrVideoSavedData::load,null);
+    // Forge 1.20.2 requires a non-null data-fix type when reopening saved files.
+    public static final Factory<CinemarrVideoSavedData> FACTORY=new Factory<>(CinemarrVideoSavedData::new,CinemarrVideoSavedData::load,net.minecraft.util.datafix.DataFixTypes.LEVEL);
     private final Map<String,Record> sessions=new LinkedHashMap<>(16,0.75F,true);
     public static CinemarrVideoSavedData get(MinecraftServer server){return server.overworld().getDataStorage().computeIfAbsent(FACTORY,"cinemarr_video_sessions");}
     public List<Record> records(){return Collections.unmodifiableList(new ArrayList<>(sessions.values()));}

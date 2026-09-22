@@ -18,6 +18,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CinemarrVideoClientStateTest {
 
+    @Test void actualDimensionsIgnoreRequestedBoundsAndAreScopedToTheDecodedStream() {
+        CinemarrVideoClientState state=CinemarrVideoClientState.INSTANCE;state.reset();
+        VideoPackets.SessionState tv=resumeState(false).withDisplay(
+                stonytark.cinemarr.core.video.TvDisplaySettings.defaults(PresentationMode.FIT),1920,1080);
+        state.accept(new VideoPayloads.SessionState(tv));
+        assertEquals("unknown",state.actualDimensions(tv.controllerPos()));
+        var stream=state.stream(new CinemarrVideoClientState.StreamKey(tv.identity()));
+        stream.decodedWidth=160;stream.decodedHeight=90;
+        assertEquals("160x90",state.actualDimensions(tv.controllerPos()));
+        state.reset();assertEquals("unknown",state.actualDimensions(tv.controllerPos()));
+    }
+
     @Test void manifestRefreshPreservesInFlightAndDeferredTransfers() throws Exception {
         for (boolean inFlight : new boolean[] { true, false }) {
             VideoPackets.SessionState session = resumeState(true);

@@ -23,7 +23,7 @@ health = module('check-video-underruns')
 def state(owner=True, generation=5, status='PLAYING', item='9001', session='party'):
     return (f'Acceptance video session: controller=1 session={session} generation={generation} status={status} '
             f'item={item} positionMs=0 canControl={str(owner).lower()} streams=1 audio=-1 subtitle=-1 '
-            'durationMs=300000 message=Playing next queued video\n')
+            f'durationMs=300000 timeline={session} timelineGeneration={generation} message=Playing next queued video\n')
 
 
 def pair(**kwargs):
@@ -42,6 +42,36 @@ class TerminalTests(unittest.TestCase):
         self.assertTrue(probe.same_playback(rows, 'PLAYING', 16, '9001', 'party'))
         rows['follower'][0]['streamGeneration'] += 1
         self.assertFalse(probe.same_playback(rows, 'PLAYING', 16, '9001', 'party'))
+
+    def test_queue_event_survives_immediate_stream_preparation_updates(self):
+        rows = {role: probe.states(state(role == 'leader', generation=6)
+                                  + state(role == 'leader', generation=6).replace(
+                                      'Playing next queued video', 'Preparing TV stream')
+                                  + state(role == 'leader', generation=6).replace(
+                                      'Playing next queued video', 'Playing'))
+                for role in ('leader', 'follower')}
+        self.assertTrue(probe.queue_advanced(rows, 5, '9001', 'party'))
+        for role in rows:
+            missing = {r: list(history) for r, history in rows.items()}
+            missing[role] = missing[role][1:]
+            self.assertFalse(probe.queue_advanced(missing, 5, '9001', 'party'))
+        rows['follower'].append(probe.states(state(False, generation=7))[0])
+        self.assertFalse(probe.queue_advanced(rows, 5, '9001', 'party'))
+
+    def test_queue_event_cannot_prove_a_later_generation_or_stopped_playback(self):
+        for status, item in [('PLAYING', '9001'), ('IDLE', '')]:
+            rows = {role: probe.states(state(role == 'leader', generation=6)
+                        + state(role == 'leader', generation=7, status=status, item=item).replace(
+                            'Playing next queued video', 'Playing'))
+                    for role in ('leader', 'follower')}
+            self.assertFalse(probe.queue_advanced(rows, 5, '9001', 'party'))
+
+    def test_queue_matches_timeline_even_when_tv_stream_identity_differs(self):
+        text = state().replace('session=party generation=5', 'session=stream generation=12')
+        current = probe.states(text)[-1]
+        queued = probe.queues('Acceptance video queue: session=party generation=5 entries=1 firstItem=9001')[-1]
+        self.assertEqual(current['session'], queued['session'])
+        self.assertEqual(current['generation'], queued['generation'])
 
     def test_idle_empty_item_is_latest_not_hidden_by_old_playing(self):
         rows = probe.states(state() + state(status='IDLE', item='', generation=6))

@@ -37,6 +37,8 @@ public final class CinemarrClient implements ClientModInitializer {
     private static final CinemarrVideoPlaybackManager VIDEO = new CinemarrVideoPlaybackManager();
     private static final CinemarrVideoRenderer VIDEO_RENDERER = new CinemarrVideoRenderer();
     private static final CinemarrVideoAudioManager VIDEO_AUDIO = new CinemarrVideoAudioManager();
+    /** Retire live handles before Minecraft destroys their sound context. */
+    public static void soundEngineReloading() { VIDEO_AUDIO.audioEngineReloaded(); }
     private int acceptanceVideoReadyTicks;
     private boolean acceptanceVideoScreenshotSaved;
     private final stonytark.cinemarr.core.client.ClientConnectionLifecycle connections =

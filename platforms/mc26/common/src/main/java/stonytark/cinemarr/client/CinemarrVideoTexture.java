@@ -56,6 +56,7 @@ public final class CinemarrVideoTexture implements AutoCloseable {
             Derived old=derived.remove(state.televisionId()); if(old!=null)old.texture.close();
             if(derived.isEmpty())presented.releaseRaster();
             budgetErrorShown=false;
+            captureFrame(state);
             return this;
         }
         if (source == null) return this;
@@ -77,11 +78,20 @@ public final class CinemarrVideoTexture implements AutoCloseable {
             value.texture.uploadRaw(state.screenWidth(),state.screenHeight(),raster,true);
             value.revision=frameRevision; value.width=state.screenWidth(); value.height=state.screenHeight(); value.layout=state.presentationMode();
         }
+        captureFrame(state);
         return value.texture;
+    }
+    private void captureFrame(stonytark.cinemarr.core.protocol.VideoPackets.SessionState state) {
+        if(!stonytark.cinemarr.core.client.DisplayFrameCapture.requested(state.controllerPos()))return;
+        double[] camera=CinemarrClientUi.acceptanceCamera();
+        String receipt=stonytark.cinemarr.core.client.DisplayFrameCapture.capture(state,source,width,height,
+                presented.retainedBytes(),derived.size(),camera);
+        if(!receipt.isEmpty())stonytark.cinemarr.Cinemarr.LOGGER.info("Acceptance display frame: {}",receipt);
     }
     public void retainDisplays(java.util.Set<java.util.UUID> visible) {
         java.util.Iterator<java.util.Map.Entry<java.util.UUID,Derived>> it=derived.entrySet().iterator();
         while(it.hasNext()){java.util.Map.Entry<java.util.UUID,Derived> entry=it.next();if(!visible.contains(entry.getKey())){entry.getValue().texture.close();it.remove();}}
+        if(derived.isEmpty())presented.releaseRaster();
     }
     private int width;
     private int height;
