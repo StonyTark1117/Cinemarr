@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import importlib.util
 from pathlib import Path
+import hashlib
+import tempfile
 import unittest
 
 spec = importlib.util.spec_from_file_location('display', Path(__file__).with_name('observe-video-display.py'))
@@ -18,6 +20,23 @@ def line(tv, owner=True, stream=None, generation=3):
 
 
 class DisplayTests(unittest.TestCase):
+    def test_paused_originals_wait_for_replacement_render_receipts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            logs = {role: root / (role + '.console.log') for role in ('leader', 'follower')}
+            for path in logs.values(): path.write_text('')
+            source = b'\x01\x02\x03\x04'
+            digest = hashlib.sha256(source).hexdigest()
+            receipt = {'sha256': digest, 'decodedWidth': 1, 'decodedHeight': 1}
+            receipts = {role: {'tv': receipt} for role in logs}
+            self.assertIsNone(display.retained_originals(logs, receipts))
+            for role, path in logs.items():
+                frames = path.with_name(path.name.removesuffix('.console.log') + '.control.frames')
+                frames.mkdir()
+                (frames / (digest + '.rgba')).write_bytes(source)
+                if role == 'leader': self.assertIsNone(display.retained_originals(logs, receipts))
+            self.assertEqual(2, len(display.retained_originals(logs, receipts)))
+
     def test_seek_requires_replacement_of_every_tv_without_settings_changes(self):
         before = display.states(''.join(line(i) for i in range(3)))
         after = display.states(''.join(line(i, generation=4) for i in range(3)).replace('timelineGeneration=7', 'timelineGeneration=8'))

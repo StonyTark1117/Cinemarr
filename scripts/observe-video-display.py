@@ -102,6 +102,30 @@ def render_matches(current, receipts, frames):
     return True
 
 
+def retained_originals(logs, receipts):
+    """Return complete original paused frames, or None while newer receipts settle."""
+    originals = []
+    for role, values in receipts.items():
+        original_dir = logs[role].with_name(logs[role].name.removesuffix('.console.log') + '.control.frames')
+        for receipt in values.values():
+            source = original_dir / (receipt['sha256'] + '.rgba')
+            expected_bytes = receipt['decodedWidth'] * receipt['decodedHeight'] * 4
+            if not 0 < expected_bytes <= 64 * 1024 * 1024:
+                raise RuntimeError('Original paused frame extent is invalid')
+            # A PAUSED state can precede the render receipt for the texture
+            # transferred into its replacement stream. An older PLAYING
+            # receipt therefore names no retained paused source yet.
+            if not source.exists():
+                return None
+            if source.is_symlink() or source.stat().st_size != expected_bytes:
+                raise RuntimeError('Original paused frame extent is invalid')
+            rgba = source.read_bytes()
+            if hashlib.sha256(rgba).hexdigest() != receipt['sha256']:
+                raise RuntimeError('Original paused frame differs from the render receipt')
+            originals.append((source, rgba))
+    return originals
+
+
 def unchanged_stream(before, after, target):
     return all(before[target][key] == after[target][key]
                for key in ('timeline', 'timelineGeneration', 'stream', 'streamGeneration'))
@@ -152,27 +176,27 @@ def main():
             time.sleep(.1)
 
     def capture(name, current):
-        phases.append({'phase': name, 'televisions': current,
-                       'rendered': {r: rendered(p.read_text(errors='replace')) for r, p in logs.items()},
-                       'decoded': {r: decoded(p.read_text(errors='replace')) for r, p in logs.items()}})
+        receipts = {r: rendered(p.read_text(errors='replace')) for r, p in logs.items()}
+        originals = None
         if all(state['status'] == 'PAUSED' for state in current.values()):
+            deadline = time.monotonic() + 30
+            while (originals := retained_originals(logs, receipts)) is None:
+                for desktop in desktops.values(): desktop.validate()
+                if time.monotonic() >= deadline:
+                    raise RuntimeError('Paused render receipts did not settle on retained original frames')
+                time.sleep(.1)
+                receipts = {r: rendered(p.read_text(errors='replace')) for r, p in logs.items()}
+        phases.append({'phase': name, 'televisions': current, 'rendered': receipts,
+                       'decoded': {r: decoded(p.read_text(errors='replace')) for r, p in logs.items()}})
+        if originals is not None:
             retained = args.output / 'frames'
             retained.mkdir(exist_ok=True)
-            for role, receipts in phases[-1]['rendered'].items():
-                original_dir = logs[role].with_name(logs[role].name.removesuffix('.console.log') + '.control.frames')
-                for receipt in receipts.values():
-                    source = original_dir / (receipt['sha256'] + '.rgba')
-                    expected_bytes = receipt['decodedWidth'] * receipt['decodedHeight'] * 4
-                    if not 0 < expected_bytes <= 64*1024*1024 or source.is_symlink() or source.stat().st_size != expected_bytes:
-                        raise RuntimeError('Original paused frame extent is missing or invalid')
-                    rgba = source.read_bytes()
-                    if hashlib.sha256(rgba).hexdigest() != receipt['sha256']:
-                        raise RuntimeError('Original paused frame differs from the render receipt')
-                    destination = retained / source.name
-                    if not destination.exists():
-                        with destination.open('xb') as stream: stream.write(rgba)
-                    elif destination.read_bytes() != rgba:
-                        raise RuntimeError('Retained original frame changed')
+            for source, rgba in originals:
+                destination = retained / source.name
+                if not destination.exists():
+                    with destination.open('xb') as stream: stream.write(rgba)
+                elif destination.read_bytes() != rgba:
+                    raise RuntimeError('Retained original frame changed')
         for role, desktop in desktops.items():
             path = args.output / (name + '-' + role + '.png')
             desktop.capture(path)
