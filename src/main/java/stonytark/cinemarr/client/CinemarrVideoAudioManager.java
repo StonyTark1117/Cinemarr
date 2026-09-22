@@ -19,7 +19,7 @@ public final class CinemarrVideoAudioManager {
             if(stonytark.cinemarr.core.protocol.ProtocolLimits.videoProbeEnabled()&&audio.ready()&&acceptanceReady.add(stream.key()))stonytark.cinemarr.Cinemarr.LOGGER.info(
                     "Acceptance video audio: session={} generation={} ready=true underruns={}",stream.key().sessionId(),stream.key().generation(),audio.underruns());
         }
-        for(CinemarrVideoClientState.StreamKey key:new ArrayList<>(players.keySet()))if(!current.contains(key)){players.remove(key).reset();acceptanceReady.remove(key);}
+        for(CinemarrVideoClientState.StreamKey key:new ArrayList<>(players.keySet()))if(!current.contains(key)){players.remove(key).reset();}
     }
     public boolean anyReady(){for(CinemarrVideoAudio value:players.values())if(value.ready())return true;return false;}
     /** Latched acceptance readiness survives the reconnect tick boundary. */
