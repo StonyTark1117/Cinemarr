@@ -149,6 +149,7 @@ public final class CinemarrServer {
             }
         }
         for(int x=-9;x<=9;x++)for(int z=1;z<=(ProtocolLimits.displaySceneProbeEnabled()?14:8);z++){level.setBlockAndUpdate(new BlockPos(x,99,z),Blocks.SMOOTH_STONE.defaultBlockState());for(int y=100;y<=109;y++)level.setBlockAndUpdate(new BlockPos(x,y,z),Blocks.AIR.defaultBlockState());}
+        AcceptanceDisplaySetup.prepare(level, player, videoManager);
         double cameraX = stonytark.cinemarr.core.protocol.ProtocolLimits.videoProbeCameraX(player.getGameProfile().name());player.teleportTo(level,cameraX,100.0,(ProtocolLimits.displaySceneProbeEnabled()?12.5:7.5),java.util.Set.of(),180.0F,0.0F,false);player.lookAt(EntityAnchorArgument.Anchor.EYES,Vec3.atCenterOf(new BlockPos(0,ProtocolLimits.displaySceneProbeEnabled()?107:104,0)));
     }
 }

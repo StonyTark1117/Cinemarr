@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
+# Hosted runners configure an isolated core destination for native failures.
+if [[ "${CINEMARR_NATIVE_CORES:-false}" == true ]]; then ulimit -c unlimited; fi
+
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 output_root=${CINEMARR_GATE_OUTPUT_ROOT:-"$repo_root/build/dedicated-server-gate"}
 if [[ "$output_root" != /* ]]; then
@@ -324,6 +327,16 @@ isolate_audio_cache() {
 }
 
 cleanup_all() {
+  local gate_status=$?
+  if (( gate_status != 0 )); then
+    local -a diagnostic_roots=("${active_audio_client_pids[@]}")
+    [[ -z "$active_client_pid" ]] || diagnostic_roots+=("$active_client_pid")
+    [[ -z "$active_server_pid" ]] || diagnostic_roots+=("$active_server_pid")
+    if (( ${#diagnostic_roots[@]} > 0 )); then
+      python3 "$repo_root/scripts/capture-owned-java-stacks.py" \
+        --output "$output_root/failed-processes" "${diagnostic_roots[@]}" || true
+    fi
+  fi
   cleanup_audio_processes
   if [[ -n "$active_client_pid" ]]; then
     terminate_client_launch "$active_client_pid" 10 || true
@@ -359,6 +372,10 @@ cleanup_all() {
 
 cleanup_audio_processes() {
   local pid module index
+  if [[ "${1:-0}" != 0 ]] && (( ${#active_audio_client_pids[@]} > 0 )); then
+    python3 "$repo_root/scripts/capture-owned-java-stacks.py" \
+      --output "$output_root/failed-processes" "${active_audio_client_pids[@]}" || true
+  fi
   for pid in "${active_audio_client_pids[@]}"; do
     terminate_client_launch "$pid" 10 || true
   done
@@ -1993,7 +2010,7 @@ run_two_client_audio() {
       result=1
     fi
   fi
-  cleanup_audio_processes
+  cleanup_audio_processes "$result"
   return "$result"
 }
 
@@ -2631,7 +2648,7 @@ run_two_client_video() {
     finish_client_launch "$leader_pid" 120 "$leader_log" || result=1
     finish_client_launch "$follower_pid" 120 "$follower_log" || result=1
   fi
-  cleanup_audio_processes
+  cleanup_audio_processes "$result"
   fatal_report=$(find "$leader_dir" "$follower_dir" -maxdepth 1 -type f \
     \( -name 'hs_err_pid*.log' -o -name 'core' -o -name 'core.*' \) -print -quit 2>/dev/null)
   if [[ -n "$fatal_report" ]]; then

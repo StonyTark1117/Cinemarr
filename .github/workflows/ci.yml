@@ -67,6 +67,7 @@ jobs:
       # private-X window when the runner selects a hardware GL provider.
       LIBGL_ALWAYS_SOFTWARE: '1'
       MESA_LOADER_DRIVER_OVERRIDE: llvmpipe
+      CINEMARR_NATIVE_CORES: 'true'
     steps:
       - uses: actions/checkout@v7
       - name: Install headless audio acceptance dependencies
@@ -74,7 +75,7 @@ jobs:
           installed=0
           for attempt in 1 2 3; do
             if sudo apt-get update && sudo apt-get install -y --fix-missing \
-                ffmpeg imagemagick iproute2 libasound2-plugins libgl1-mesa-dri \
+                ffmpeg gdb imagemagick iproute2 libasound2-plugins libgl1-mesa-dri \
                 libopenal1 pulseaudio pulseaudio-utils python3-pil x11-utils x11-xserver-utils \
                 xdotool xvfb; then
               installed=1
@@ -87,6 +88,8 @@ jobs:
             echo "Unable to install headless audio acceptance dependencies after three attempts" >&2
             exit 1
           fi
+          mkdir -p "$GITHUB_WORKSPACE/build/native-cores"
+          sudo sysctl -w "kernel.core_pattern=$GITHUB_WORKSPACE/build/native-cores/core.%p"
           pulseaudio --start --exit-idle-time=-1
           python3 scripts/test-private-xvfb.py
           python3 scripts/test-display-feature.py
@@ -282,6 +285,9 @@ jobs:
         run: |
           pulseaudio --kill 2>/dev/null || true
           pkill -TERM -f 'pulseaudio' 2>/dev/null || true
+      - name: Collect native failure backtraces
+        if: ${{ always() }}
+        run: python3 scripts/collect-native-core-backtraces.py build/native-cores
       - name: Upload runtime diagnostics
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
@@ -331,6 +337,8 @@ jobs:
             build/fabric-loader-0.19.2-gate/**/*.json
             build/fabric-loader-0.19.2-gate/**/*.tsv
             build/fabric-loader-0.19.2-gate/**/*.png
+            build/native-cores/*.backtrace.txt
+            build/video-display-gate/**/*.txt
             build/video-display-gate/**/*.log
             build/video-display-gate/**/*.json
             build/video-display-gate/**/*.png
