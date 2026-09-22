@@ -62,6 +62,11 @@ jobs:
     name: ${{ matrix.name }}
     runs-on: ubuntu-latest
     timeout-minutes: 300
+    env:
+      # Hosted Fabric clients can otherwise fail before creating a visible
+      # private-X window when the runner selects a hardware GL provider.
+      LIBGL_ALWAYS_SOFTWARE: '1'
+      MESA_LOADER_DRIVER_OVERRIDE: llvmpipe
     steps:
       - uses: actions/checkout@v7
       - name: Install headless audio acceptance dependencies
