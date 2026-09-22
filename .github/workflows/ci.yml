@@ -262,6 +262,11 @@ jobs:
           CINEMARR_GATE_OUTPUT_ROOT: ${{ github.workspace }}/build/fabric-loader-0.19.2-gate
           CINEMARR_FABRIC_LOADER_VERSION: 0.19.2
         run: bash scripts/run-dedicated-server-gate.sh ${{ matrix.runtime }}
+      - name: Stop headless audio before runner cleanup
+        if: ${{ always() }}
+        run: |
+          pulseaudio --kill 2>/dev/null || true
+          pkill -TERM -f 'pulseaudio' 2>/dev/null || true
       - name: Upload runtime diagnostics
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
