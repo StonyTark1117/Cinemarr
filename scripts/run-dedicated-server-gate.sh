@@ -34,9 +34,13 @@ fake_video_duration_seconds=${CINEMARR_GATE_VIDEO_DURATION_SECONDS:-300}
 # is actually starting.
 invalid_config_preparation_timeout_seconds=${CINEMARR_INVALID_CONFIG_PREPARATION_TIMEOUT_SECONDS:-1800}
 invalid_config_rejection_timeout_seconds=${CINEMARR_INVALID_CONFIG_REJECTION_TIMEOUT_SECONDS:-600}
+acceptance_client_preparation_timeout_seconds=${CINEMARR_ACCEPTANCE_CLIENT_PREPARATION_TIMEOUT_SECONDS:-1800}
+acceptance_client_rejection_timeout_seconds=${CINEMARR_ACCEPTANCE_CLIENT_REJECTION_TIMEOUT_SECONDS:-600}
 for timeout_spec in \
     "CINEMARR_INVALID_CONFIG_PREPARATION_TIMEOUT_SECONDS|$invalid_config_preparation_timeout_seconds" \
-    "CINEMARR_INVALID_CONFIG_REJECTION_TIMEOUT_SECONDS|$invalid_config_rejection_timeout_seconds"; do
+    "CINEMARR_INVALID_CONFIG_REJECTION_TIMEOUT_SECONDS|$invalid_config_rejection_timeout_seconds" \
+    "CINEMARR_ACCEPTANCE_CLIENT_PREPARATION_TIMEOUT_SECONDS|$acceptance_client_preparation_timeout_seconds" \
+    "CINEMARR_ACCEPTANCE_CLIENT_REJECTION_TIMEOUT_SECONDS|$acceptance_client_rejection_timeout_seconds"; do
   IFS='|' read -r timeout_name timeout_value <<< "$timeout_spec"
   if [[ ! "$timeout_value" =~ ^[1-9][0-9]*$ ]]; then
     echo "$timeout_name must be a positive integer" >&2
@@ -733,6 +737,26 @@ run_missing_hello_client() {
     'Cinemarr protocol handshake timed out'
 }
 
+acceptance_client_runtime_started() {
+  local client_dir=$1
+  # Gradle's runClient task can spend many minutes downloading assets before it
+  # launches Minecraft. The game creates one of these logs only after that
+  # preparation boundary, across every maintained modern and legacy wrapper.
+  [[ -s "$client_dir/logs/latest.log" || -s "$client_dir/logs/fml-client-latest.log" ]]
+}
+
+acceptance_client_wait_expired() {
+  local runtime_started=$1
+  local preparation_deadline=$2
+  local rejection_deadline=$3
+  local now=$4
+  if (( runtime_started == 1 )); then
+    (( now >= rejection_deadline ))
+  else
+    (( now >= preparation_deadline ))
+  fi
+}
+
 run_acceptance_client() {
   local label=$1
   local target_dir=$2
@@ -747,7 +771,8 @@ run_acceptance_client() {
   local client_dir="$output_root/$label.$scenario"
   local client_console="$output_root/$label.$scenario.console.log"
   local evidence="$output_root/$label.$scenario.server.txt"
-  local pid deadline exit_grace_deadline result=0
+  local pid exit_grace_deadline result=0 runtime_started=0
+  local timeout_phase='launcher preparation'
   local -a cache_args=()
   [[ "$active_disable_configuration_cache" == true ]] && cache_args+=(--no-configuration-cache)
   local -a runtime_args=()
@@ -780,7 +805,8 @@ run_acceptance_client() {
   pid=$!
   active_client_pid=$pid
 
-  deadline=$((SECONDS + 600))
+  local preparation_deadline=$((SECONDS + acceptance_client_preparation_timeout_seconds))
+  local rejection_deadline=0
   while ! rejection_observed "$server_console" "$client_console" "$rejection" \
       "$allow_generic_client_rejection"; do
     if client_bootstrap_failed "$client_console"; then
@@ -805,8 +831,14 @@ run_acceptance_client() {
       result=1
       break
     fi
-    if (( SECONDS >= deadline )); then
-      echo "$label: $scenario was not rejected within 600 seconds; see $client_console" >&2
+    if (( runtime_started == 0 )) && acceptance_client_runtime_started "$client_dir"; then
+      runtime_started=1
+      timeout_phase='runtime rejection'
+      rejection_deadline=$((SECONDS + acceptance_client_rejection_timeout_seconds))
+    fi
+    if acceptance_client_wait_expired "$runtime_started" "$preparation_deadline" \
+        "$rejection_deadline" "$SECONDS"; then
+      echo "$label: $scenario $timeout_phase timed out; see $client_console" >&2
       result=1
       break
     fi

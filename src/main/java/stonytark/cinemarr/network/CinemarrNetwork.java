@@ -1,11 +1,13 @@
 package stonytark.cinemarr.network;
 
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.common.ClientboundDisconnectPacket;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
+import stonytark.cinemarr.Cinemarr;
 import stonytark.cinemarr.server.CinemarrServer;
 import stonytark.cinemarr.core.protocol.ProtocolLimits;
 import stonytark.cinemarr.core.protocol.CinemarrMessage;
@@ -37,7 +39,12 @@ public final class CinemarrNetwork {
         registrar.playToClient(VideoPayloads.SegmentChunk.TYPE, VideoPayloads.SegmentChunk.CODEC, CinemarrNetwork::client);
         registrar.playToServer(CinemarrPayloads.ClientHello.TYPE, CinemarrPayloads.ClientHello.CODEC, (payload, context) -> {
             if (!payload.valid()) {
-                context.disconnect(Component.literal("Cinemarr protocol mismatch: server requires version " + PROTOCOL));
+                ServerPlayer player = (ServerPlayer) context.player();
+                String reason = "Cinemarr protocol mismatch: server requires version " + PROTOCOL;
+                Cinemarr.LOGGER.warn("Disconnecting {}: {}", player.getGameProfile().getName(), reason);
+                // NeoForge can close the connection before context.disconnect()
+                // delivers its terminal packet. The client closes on receipt.
+                player.connection.send(new ClientboundDisconnectPacket(Component.literal(reason)));
             } else {
                 context.enqueueWork(() -> CinemarrServer.instance().hello((ServerPlayer)context.player()));
             }

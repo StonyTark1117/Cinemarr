@@ -106,6 +106,51 @@ class LogMarkerPollingTest(unittest.TestCase):
         self.assertFalse(deadline(1, 1800, 2200, 1900), "runServer receives a fresh rejection budget")
         self.assertTrue(deadline(1, 1800, 2200, 2200))
 
+    def test_acceptance_client_rejection_clock_starts_after_asset_preparation(self):
+        source = (ROOT / "scripts/run-dedicated-server-gate.sh").read_text()
+        runtime = re.search(r"(?ms)^acceptance_client_runtime_started\(\) \{\n.*?^\}", source)
+        expired = re.search(r"(?ms)^acceptance_client_wait_expired\(\) \{\n.*?^\}", source)
+        gate = re.search(r"(?ms)^run_acceptance_client\(\) \{\n.*?^\}", source)
+        self.assertIsNotNone(runtime)
+        self.assertIsNotNone(expired)
+        self.assertIsNotNone(gate)
+        self.assertIn('acceptance_client_runtime_started "$client_dir"', gate.group())
+        self.assertIn('acceptance_client_wait_expired "$runtime_started"', gate.group())
+
+        with tempfile.TemporaryDirectory(prefix="cinemarr-client-clock-") as temporary:
+            client = pathlib.Path(temporary)
+
+            def started():
+                return subprocess.run(
+                    ["bash", "-c", runtime.group() + '\nacceptance_client_runtime_started "$1"',
+                     "acceptance-client-runtime", str(client)],
+                    capture_output=True, text=True, timeout=5,
+                ).returncode == 0
+
+            self.assertFalse(started(), "Gradle/asset preparation has no game log")
+            (client / "logs").mkdir()
+            (client / "logs/latest.log").touch()
+            self.assertFalse(started(), "an empty placeholder is not a runtime boundary")
+            (client / "logs/latest.log").write_text("Minecraft client started\n")
+            self.assertTrue(started())
+            (client / "logs/latest.log").unlink()
+            (client / "logs/fml-client-latest.log").write_text("legacy client started\n")
+            self.assertTrue(started(), "Forge 1.7.10 uses the legacy FML client log")
+
+        def deadline(runtime_started, preparation_deadline, rejection_deadline, now):
+            return subprocess.run(
+                ["bash", "-c", expired.group()
+                 + '\nacceptance_client_wait_expired "$1" "$2" "$3" "$4"',
+                 "acceptance-client-deadline", str(runtime_started), str(preparation_deadline),
+                 str(rejection_deadline), str(now)],
+                capture_output=True, text=True, timeout=5,
+            ).returncode == 0
+
+        self.assertFalse(deadline(0, 1800, 0, 1000), "cold assets retain their own budget")
+        self.assertTrue(deadline(0, 1800, 0, 1800))
+        self.assertFalse(deadline(1, 1800, 2200, 1900), "Minecraft receives a fresh rejection budget")
+        self.assertTrue(deadline(1, 1800, 2200, 2200))
+
     def test_early_display_workaround_is_scoped_preserving_and_wired(self):
         source = (ROOT / "scripts/run-dedicated-server-gate.sh").read_text()
         match = re.search(r"(?ms)^configure_acceptance_loader\(\) \{\n.*?^\}", source)
