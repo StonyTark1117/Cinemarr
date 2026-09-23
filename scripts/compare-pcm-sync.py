@@ -58,6 +58,40 @@ def correlation(left: list[float], right: list[float], lag: int) -> float:
     return numerator / denominator if denominator else -1.0
 
 
+def best_sync(left: list[float], right: list[float], maximum_lag: int) -> tuple[int, float]:
+    return max(
+        ((lag, correlation(left, right, lag))
+         for lag in range(-maximum_lag, maximum_lag + 1)),
+        key=lambda value: value[1],
+    )
+
+
+def best_carrier_sync(left_path: Path, right_path: Path, frequencies,
+                      maximum_lag: int) -> tuple[int, float, float, list[dict]]:
+    """Find one fixture carrier that survives a positional multi-TV mix.
+
+    Two listeners at different world positions receive different gains and
+    phases from each TV. Combining carrier power before correlation therefore
+    changes the measured envelope when more than one TV is audible. Each
+    fixture carrier carries the same program envelope, so one independently
+    correlated carrier is sufficient physical evidence while still requiring
+    the normal correlation and lag limits.
+    """
+    results = []
+    for frequency in frequencies:
+        left = envelope(left_path, frequencies=(frequency,))
+        right = envelope(right_path, frequencies=(frequency,))
+        lag, value = best_sync(left, right, maximum_lag)
+        results.append({
+            "frequency_hz": frequency,
+            "correlation": value,
+            "lag": lag,
+        })
+    selected = max(results, key=lambda result: result["correlation"])
+    return (selected["lag"], selected["correlation"],
+            selected["frequency_hz"], results)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("left", type=Path)
@@ -68,25 +102,39 @@ def main() -> None:
     parser.add_argument("--multitv-tone-fixture", action="store_true")
     args = parser.parse_args()
 
-    tones = MULTITV_TONES if args.multitv_tone_fixture else (997.0,)
-    left = envelope(args.left, frequencies=tones)
-    right = envelope(args.right, frequencies=tones)
     sample_rate = 48000 / 480
     maximum_lag = round(args.maximum_lag_ms * sample_rate / 1000)
-    best_lag, best_value = max(
-        ((lag, correlation(left, right, lag)) for lag in range(-maximum_lag, maximum_lag + 1)),
-        key=lambda value: value[1],
-    )
+    carrier_results = None
+    selected_carrier = 997.0
+    if args.multitv_tone_fixture:
+        best_lag, best_value, selected_carrier, carrier_results = best_carrier_sync(
+            args.left, args.right, MULTITV_TONES, maximum_lag)
+        duration_windows = len(envelope(args.left, frequencies=(selected_carrier,)))
+        right_duration_windows = len(envelope(args.right, frequencies=(selected_carrier,)))
+    else:
+        left = envelope(args.left)
+        right = envelope(args.right)
+        best_lag, best_value = best_sync(left, right, maximum_lag)
+        duration_windows = len(left)
+        right_duration_windows = len(right)
     lag_ms = best_lag * 1000.0 / sample_rate
     passed = best_value >= args.required_correlation and abs(lag_ms) <= args.required_lag_ms
-    print(json.dumps({
+    evidence = {
         "correlation": round(best_value, 6),
-        "carrier_frequencies_hz": tones,
+        "carrier_frequencies_hz": MULTITV_TONES if args.multitv_tone_fixture else (997.0,),
+        "selected_carrier_frequency_hz": selected_carrier,
         "lag_ms": round(lag_ms, 3),
-        "left_duration_seconds": round(len(left) / sample_rate, 3),
-        "right_duration_seconds": round(len(right) / sample_rate, 3),
+        "left_duration_seconds": round(duration_windows / sample_rate, 3),
+        "right_duration_seconds": round(right_duration_windows / sample_rate, 3),
         "passed": passed,
-    }, sort_keys=True))
+    }
+    if carrier_results is not None:
+        evidence["carrier_results"] = [{
+            "frequency_hz": result["frequency_hz"],
+            "correlation": round(result["correlation"], 6),
+            "lag_ms": round(result["lag"] * 1000.0 / sample_rate, 3),
+        } for result in carrier_results]
+    print(json.dumps(evidence, sort_keys=True))
     raise SystemExit(0 if passed else 1)
 
 
