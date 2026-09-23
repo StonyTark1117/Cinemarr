@@ -36,7 +36,15 @@ def exercise(observer, custom):
         for w,h,label in [('oops','240','malformed'),('1','240','below-minimum'),('8193','240','above-maximum'),('8192','8192','frame-budget')]:
             field(180,w);field(480,h);apply();cap('error-'+label);unchanged(baseline,label+'-not-sent')
         field(180,'12345');cap('four-character-limit')
-        field(180,'32');time.sleep(1.2);desktop.run('xdotool','type','--clearmodifiers','--delay','80','0')
+        field(180,'32');time.sleep(1.2)
+        # Xvfb has no window manager to preserve input focus for us. Reassert
+        # focus on the already verified Minecraft window before the delayed
+        # key, while deliberately leaving the in-game text-field focus alone.
+        # If the screen rebuilt and lost its field focus, the 320x180 apply
+        # below still fails; this only keeps an X focus loss from masquerading
+        # as that product regression.
+        desktop.run('xdotool','windowfocus','--sync',desktop.window)
+        desktop.run('xdotool','type','--clearmodifiers','--delay','80','0')
         field(480,'180');cap('focused-draft-after-ticks')
         if observer.fixture_state is not None:
             # Briefly suspend only this owned Java server to make an acknowledgement observable.

@@ -26,6 +26,16 @@ spec=importlib.util.spec_from_file_location('persistence',Path(__file__).with_na
 persistence=importlib.util.module_from_spec(spec);spec.loader.exec_module(persistence)
 
 class DisplayFeatureTests(unittest.TestCase):
+    def test_delayed_focus_probe_reasserts_private_x_window_before_typing(self):
+        source = Path(__file__).with_name('display_ui_edges.py').read_text()
+        delayed = source.split("field(180,'32');time.sleep(1.2)", 1)[1].split(
+            "field(480,'180')", 1)[0]
+        focus = "desktop.run('xdotool','windowfocus','--sync',desktop.window)"
+        typed = "desktop.run('xdotool','type','--clearmodifiers','--delay','80','0')"
+        self.assertIn(focus, delayed)
+        self.assertIn(typed, delayed)
+        self.assertLess(delayed.index(focus), delayed.index(typed))
+
     def test_page_observes_fresh_marker_in_crlf_and_unicode_logs(self):
         marker = 'Acceptance display UI: width=320 height=240 controller=-3996'
         for prefix in [b'old event\r\n' * 1000, ('old évent\n' * 1000).encode()]:
