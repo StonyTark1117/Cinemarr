@@ -329,6 +329,12 @@ def main() -> None:
                              "RenderSystem.assertOnRenderThread()", "Acceptance client JOIN reset complete"):
                 if contract not in lifecycle_text:
                     raise SystemExit(f"{lifecycle_source.relative_to(ROOT)} lacks client-thread connection ownership: {contract}")
+            if target["minecraft"] == "1.20.1" and target["loader"] == "fabric":
+                for contract in ("ClientLoginConnectionEvents.DISCONNECT.register",
+                                 "ClientLoginNetworkHandlerAccessor",
+                                 "logDisconnectReason(((ClientLoginNetworkHandlerAccessor) handler).getConnection())"):
+                    if contract not in lifecycle_text:
+                        raise SystemExit(f"{lifecycle_source.relative_to(ROOT)} loses login-stage protocol rejection evidence: {contract}")
         name = "LegacyVideoManager" if target["minecraft"] == "1.7.10" else "CinemarrServer"
         source = ROOT / target["path"] / f"src/main/java/stonytark/cinemarr/server/{name}.java"
         server_text = source.read_text("utf-8")

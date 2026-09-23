@@ -4,6 +4,7 @@ import com.mojang.blaze3d.platform.InputConstants;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+import net.fabricmc.fabric.api.client.networking.v1.ClientLoginConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
@@ -11,6 +12,7 @@ import net.fabricmc.fabric.api.networking.v1.PacketByteBufs;
 import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
 import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener;
 import net.fabricmc.loader.api.FabricLoader;
+import net.fabricmc.fabric.mixin.networking.client.accessor.ClientLoginNetworkHandlerAccessor;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
@@ -56,11 +58,14 @@ public final class CinemarrClient implements ClientModInitializer {
             else{CinemarrPayloads.write(payload, buffer);ClientPlayNetworking.send(CinemarrPayloads.idOf(payload), buffer);}
         });
         registerReceivers();
+        // A server can accept the player and reject Cinemarr's hello before Fabric creates the
+        // play listener. Preserve the server's exact rejection reason at that login boundary.
+        ClientLoginConnectionEvents.DISCONNECT.register((handler, client) ->
+                logDisconnectReason(((ClientLoginNetworkHandlerAccessor) handler).getConnection()));
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) ->
                 connections.joined(handler, this::helloAfterReset));
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
-            net.minecraft.network.chat.Component reason = handler.getConnection().getDisconnectedReason();
-            if (reason != null) Cinemarr.LOGGER.info("Client disconnected with reason: {}", reason.getString());
+            logDisconnectReason(handler.getConnection());
             connections.disconnected(handler);
         });
         ClientTickEvents.END_CLIENT_TICK.register(this::tick);
@@ -73,6 +78,11 @@ public final class CinemarrClient implements ClientModInitializer {
                 VIDEO_AUDIO.audioEngineReloaded();
             }
         });
+    }
+
+    private static void logDisconnectReason(net.minecraft.network.Connection connection) {
+        net.minecraft.network.chat.Component reason = connection.getDisconnectedReason();
+        if (reason != null) Cinemarr.LOGGER.info("Client disconnected with reason: {}", reason.getString());
     }
 
     private void helloAfterReset() {
