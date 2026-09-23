@@ -1555,6 +1555,29 @@ latest_video_generation() {
   sed -n 's/.*Acceptance video session:.*generation=\([0-9][0-9]*\).*/\1/p' "$1" | tail -n 1
 }
 
+wait_for_video_generation_after() {
+  local file=$1 first_line=$2 baseline=$3 required_pattern=$4 timeout=${5:-120}
+  local deadline=$((SECONDS + timeout)) generation
+  while :; do
+    generation=$(tail -n "+$((first_line + 1))" "$file" 2>/dev/null \
+      | awk -v baseline="$baseline" -v required="$required_pattern" '
+          /Acceptance video session:/ && $0 ~ required {
+            if (match($0, / generation=[0-9]+/)) {
+              value = substr($0, RSTART + 12, RLENGTH - 12) + 0
+              if (value > baseline && value > newest) newest = value
+            }
+          }
+          END { if (newest > baseline) print newest }
+        ')
+    if [[ "$generation" =~ ^[0-9]+$ ]]; then
+      printf '%s\n' "$generation"
+      return 0
+    fi
+    if (( SECONDS >= deadline )); then return 1; fi
+    sleep 1
+  done
+}
+
 run_video_control_scenarios() {
   local label=$1 target_dir=$2 java_home=$3 port=$4 sink_leader=$5 sink_follower=$6
   local leader_pid=$7 follower_pid=$8
@@ -1564,7 +1587,8 @@ run_video_control_scenarios() {
   local follower_ui="$output_root/$label.non-owner-small-window-ui.png"
   local evidence="$output_root/$label.video-controls.evidence.txt"
   local raw="$output_root/$label.video-control.s16le" metrics="$output_root/$label.video-control.metrics.txt"
-  local first_leader first_follower old_generation new_generation action target_audio target_subtitle
+  local first_leader first_follower old_generation new_generation follower_generation
+  local action target_audio target_subtitle
   : > "$evidence"
 
   first_follower=$(wc -l < "$follower_log")
@@ -1640,13 +1664,13 @@ run_video_control_scenarios() {
   if ! wait_for_pattern_after "$leader_log" "$first_leader" 'Acceptance video action: SEEK ' 30; then
     echo "$label: seek action was not issued" >&2; return 1
   fi
-  if ! wait_for_pattern_after "$leader_log" "$first_leader" 'Acceptance video session:.*status=PLAYING' 120 \
-      || ! wait_for_pattern_after "$follower_log" "$first_follower" 'Acceptance video session:.*status=PLAYING' 120; then
+  if ! new_generation=$(wait_for_video_generation_after \
+      "$leader_log" "$first_leader" "$old_generation" 'status=PLAYING' 120) \
+      || ! follower_generation=$(wait_for_video_generation_after \
+        "$follower_log" "$first_follower" "$old_generation" 'status=PLAYING' 120) \
+      || [[ "$follower_generation" != "$new_generation" ]]; then
     echo "$label: seek did not publish replacement playback to both clients" >&2; return 1
   fi
-  new_generation=$(latest_video_generation "$leader_log")
-  [[ "$new_generation" =~ ^[0-9]+$ ]] && (( new_generation > old_generation )) \
-    || { echo "$label: seek did not advance the playback generation" >&2; return 1; }
   wait_for_video_audio_pair_stable "$label" "$leader_pid" "$follower_pid" \
     || { echo "$label: seek replacement did not stabilize" >&2; return 1; }
   printf 'Seek advanced generation %s to %s and restored both clients.\n' "$old_generation" "$new_generation" >> "$evidence"
@@ -1666,12 +1690,16 @@ run_video_control_scenarios() {
   target_audio=$(sed -n 's/.* audio=\(-\{0,1\}[0-9][0-9]*\) subtitle=.*/\1/p' <<<"$action")
   target_subtitle=$(sed -n 's/.* subtitle=\(-\{0,1\}[0-9][0-9]*\).*/\1/p' <<<"$action")
   [[ "$target_audio" =~ ^-?[0-9]+$ && "$target_subtitle" =~ ^-?[0-9]+$ ]] || return 1
-  wait_for_pattern_after "$leader_log" "$first_leader" "Acceptance video session:.*status=PLAYING.*audio=$target_audio subtitle=$target_subtitle" 180 \
-    && wait_for_pattern_after "$follower_log" "$first_follower" "Acceptance video session:.*status=PLAYING.*audio=$target_audio subtitle=$target_subtitle" 180 \
-    || { echo "$label: selected stream IDs were not authoritative on both clients" >&2; return 1; }
-  new_generation=$(latest_video_generation "$leader_log")
-  [[ "$new_generation" =~ ^[0-9]+$ ]] && (( new_generation > old_generation )) \
-    || { echo "$label: stream selection did not restart playback generation" >&2; return 1; }
+  if ! new_generation=$(wait_for_video_generation_after \
+      "$leader_log" "$first_leader" "$old_generation" \
+      "status=PLAYING.*audio=$target_audio subtitle=$target_subtitle" 180) \
+      || ! follower_generation=$(wait_for_video_generation_after \
+        "$follower_log" "$first_follower" "$old_generation" \
+        "status=PLAYING.*audio=$target_audio subtitle=$target_subtitle" 180) \
+      || [[ "$follower_generation" != "$new_generation" ]]; then
+    echo "$label: selected stream IDs were not authoritative on the same replacement generation on both clients" >&2
+    return 1
+  fi
   wait_for_video_audio_pair_stable "$label" "$leader_pid" "$follower_pid" \
     || { echo "$label: stream-selected playback did not stabilize" >&2; return 1; }
   printf 'Stream selection chose audio=%s subtitle=%s and advanced generation %s to %s.\n' \
@@ -1756,7 +1784,7 @@ run_video_adverse_network_scenarios() {
   local follower_log="$output_root/$label.audio-follower.console.log"
   local server_log="$output_root/$label.console.log"
   local evidence="$output_root/$label.video-adverse-network.evidence.txt"
-  local first_leader first_follower first_server old_generation new_generation
+  local first_leader first_follower first_server old_generation new_generation follower_generation
   local transient_state slow_state offline_state transient_requests slow_requests offline_requests
   : > "$evidence"
 
@@ -1766,16 +1794,13 @@ run_video_adverse_network_scenarios() {
   printf '%s\n' "$transient_state" > "$fake_plex_state"
   send_audio_control "$label" leader 'video:seek-forward'
   if ! wait_for_pattern_after "$leader_log" "$first_leader" 'Acceptance video action: SEEK ' 30 \
-      || ! wait_for_pattern_after "$leader_log" "$first_leader" 'Acceptance video session:.*status=PLAYING' 120 \
-      || ! wait_for_pattern_after "$follower_log" "$first_follower" 'Acceptance video session:.*status=PLAYING' 120; then
+      || ! new_generation=$(wait_for_video_generation_after \
+        "$leader_log" "$first_leader" "$old_generation" 'status=PLAYING' 120) \
+      || ! follower_generation=$(wait_for_video_generation_after \
+        "$follower_log" "$first_follower" "$old_generation" 'status=PLAYING' 120) \
+      || [[ "$follower_generation" != "$new_generation" ]]; then
     printf 'online\n' > "$fake_plex_state"
     echo "$label: transient segment fault did not publish replacement playback" >&2; return 1
-  fi
-  new_generation=$(latest_video_generation "$leader_log")
-  if [[ ! "$old_generation" =~ ^[0-9]+$ || ! "$new_generation" =~ ^[0-9]+$ ]] \
-      || (( new_generation <= old_generation )); then
-    printf 'online\n' > "$fake_plex_state"
-    echo "$label: transient segment fault did not advance generation" >&2; return 1
   fi
   if ! transient_requests=$(wait_for_fault_segment_requests "$transient_state" 3 90) \
       || ! wait_for_video_audio_pair_stable "$label" "$leader_pid" "$follower_pid"; then
@@ -1795,16 +1820,13 @@ run_video_adverse_network_scenarios() {
   printf '%s\n' "$slow_state" > "$fake_plex_state"
   send_audio_control "$label" leader 'video:seek-forward'
   if ! wait_for_pattern_after "$leader_log" "$first_leader" 'Acceptance video action: SEEK ' 30 \
-      || ! wait_for_pattern_after "$leader_log" "$first_leader" 'Acceptance video session:.*status=PLAYING' 180 \
-      || ! wait_for_pattern_after "$follower_log" "$first_follower" 'Acceptance video session:.*status=PLAYING' 180; then
+      || ! new_generation=$(wait_for_video_generation_after \
+        "$leader_log" "$first_leader" "$old_generation" 'status=PLAYING' 180) \
+      || ! follower_generation=$(wait_for_video_generation_after \
+        "$follower_log" "$first_follower" "$old_generation" 'status=PLAYING' 180) \
+      || [[ "$follower_generation" != "$new_generation" ]]; then
     printf 'online\n' > "$fake_plex_state"
     echo "$label: delayed segment delivery did not publish replacement playback" >&2; return 1
-  fi
-  new_generation=$(latest_video_generation "$leader_log")
-  if [[ ! "$old_generation" =~ ^[0-9]+$ || ! "$new_generation" =~ ^[0-9]+$ ]] \
-      || (( new_generation <= old_generation )); then
-    printf 'online\n' > "$fake_plex_state"
-    echo "$label: delayed segment delivery did not advance generation" >&2; return 1
   fi
   if ! slow_requests=$(wait_for_fault_segment_requests "$slow_state" 3 120) \
       || ! wait_for_video_audio_pair_stable "$label" "$leader_pid" "$follower_pid"; then
@@ -1842,9 +1864,14 @@ run_video_adverse_network_scenarios() {
   if ! wait_for_video_audio_pair_stable "$label" "$leader_pid" "$follower_pid"; then
     echo "$label: clients did not recover in-session after exhausted segment fetches were restored" >&2; return 1
   fi
-  new_generation=$(latest_video_generation "$leader_log")
-  [[ "$new_generation" =~ ^[0-9]+$ ]] && (( new_generation > old_generation )) \
-    || { echo "$label: exhaustion recovery lost the replacement playback generation" >&2; return 1; }
+  if ! new_generation=$(wait_for_video_generation_after \
+      "$leader_log" "$first_leader" "$old_generation" 'status=PLAYING' 30) \
+      || ! follower_generation=$(wait_for_video_generation_after \
+        "$follower_log" "$first_follower" "$old_generation" 'status=PLAYING' 30) \
+      || [[ "$follower_generation" != "$new_generation" ]]; then
+    echo "$label: exhaustion recovery lost the shared replacement playback generation" >&2
+    return 1
+  fi
   capture_video_fault_recovery "$label" exhausted "$sink_leader" "$sink_follower" "$new_generation" || return 1
   printf 'Exhausted segment fault: generation %s to %s, HTTP attempts=%s, redacted failure observed, in-session recovery passed.\n' \
     "$old_generation" "$new_generation" "$offline_requests" >> "$evidence"

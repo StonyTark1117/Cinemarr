@@ -21,6 +21,49 @@ WAITERS = (
 
 
 class LogMarkerPollingTest(unittest.TestCase):
+    def test_generation_waiter_ignores_transitional_playing_state(self):
+        source = (ROOT / "scripts/run-dedicated-server-gate.sh").read_text()
+        waiter = re.search(r"(?ms)^wait_for_video_generation_after\(\) \{\n.*?^\}", source)
+        self.assertIsNotNone(waiter)
+        with tempfile.TemporaryDirectory(prefix="cinemarr-generation-wait-") as temporary:
+            log = pathlib.Path(temporary) / "client.log"
+
+            def invoke(content, baseline=7, pattern="status=PLAYING"):
+                log.write_text(content)
+                return subprocess.run(
+                    ["bash", "-c", "set -uo pipefail\n" + waiter.group()
+                     + '\nwait_for_video_generation_after "$1" 1 "$2" "$3" 0',
+                     "generation-wait", str(log), str(baseline), pattern],
+                    capture_output=True, text=True, timeout=5,
+                )
+
+            prefix = "Acceptance video session: generation=7 status=PLAYING audio=101 subtitle=-1\n"
+            transitional = prefix + (
+                "Acceptance video session: generation=7 status=PLAYING audio=102 subtitle=-1\n"
+            )
+            rejected = invoke(transitional)
+            self.assertNotEqual(rejected.returncode, 0,
+                                "a repeated PLAYING row from the old generation cannot prove replacement")
+            advanced = invoke(transitional + (
+                "Acceptance video session: generation=8 status=BUFFERING audio=102 subtitle=-1\n"
+                "Acceptance video session: generation=8 status=PLAYING audio=102 subtitle=-1\n"
+            ))
+            self.assertEqual(advanced.returncode, 0, advanced.stderr)
+            self.assertEqual(advanced.stdout.strip(), "8")
+            selected = invoke(transitional + (
+                "Acceptance video session: generation=8 status=PLAYING audio=101 subtitle=-1\n"
+                "Acceptance video session: generation=9 status=PLAYING audio=102 subtitle=-1\n"
+            ), pattern="status=PLAYING.*audio=102 subtitle=-1")
+            self.assertEqual(selected.returncode, 0, selected.stderr)
+            self.assertEqual(selected.stdout.strip(), "9")
+
+        controls = re.search(r"(?ms)^run_video_control_scenarios\(\) \{\n.*?^\}", source)
+        adverse = re.search(r"(?ms)^run_video_adverse_network_scenarios\(\) \{\n.*?^\}", source)
+        self.assertIsNotNone(controls)
+        self.assertIsNotNone(adverse)
+        self.assertGreaterEqual(controls.group().count("wait_for_video_generation_after"), 4)
+        self.assertGreaterEqual(adverse.group().count("wait_for_video_generation_after"), 6)
+
     def test_public_key_refresh_reset_is_not_a_game_connection_failure(self):
         source = (ROOT / "scripts/run-dedicated-server-gate.sh").read_text()
         function = re.search(r"(?ms)^client_playback_failed\(\) \{\n.*?^\}", source)
