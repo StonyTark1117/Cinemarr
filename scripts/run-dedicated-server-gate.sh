@@ -27,6 +27,22 @@ fake_audio_duration_seconds=${CINEMARR_GATE_AUDIO_DURATION_SECONDS:-600}
 # Keep enough deterministic program runway for both clients to start and then
 # satisfy the steady-playback window without colliding with natural EOS.
 fake_video_duration_seconds=${CINEMARR_GATE_VIDEO_DURATION_SECONDS:-300}
+# Keep dependency preparation separate from the product assertion. A cold
+# NeoGradle launch may need to fetch the full Minecraft asset index before it
+# enters runServer; that work must remain bounded, but it must not consume the
+# time allowed for Cinemarr to reject an invalid configuration once Minecraft
+# is actually starting.
+invalid_config_preparation_timeout_seconds=${CINEMARR_INVALID_CONFIG_PREPARATION_TIMEOUT_SECONDS:-1800}
+invalid_config_rejection_timeout_seconds=${CINEMARR_INVALID_CONFIG_REJECTION_TIMEOUT_SECONDS:-600}
+for timeout_spec in \
+    "CINEMARR_INVALID_CONFIG_PREPARATION_TIMEOUT_SECONDS|$invalid_config_preparation_timeout_seconds" \
+    "CINEMARR_INVALID_CONFIG_REJECTION_TIMEOUT_SECONDS|$invalid_config_rejection_timeout_seconds"; do
+  IFS='|' read -r timeout_name timeout_value <<< "$timeout_spec"
+  if [[ ! "$timeout_value" =~ ^[1-9][0-9]*$ ]]; then
+    echo "$timeout_name must be a positive integer" >&2
+    exit 2
+  fi
+done
 fake_plex_pid=""
 active_client_pid=""
 active_server_pid=""
@@ -3125,6 +3141,23 @@ ensure_runtime_files() {
   fi
 }
 
+invalid_config_runtime_started() {
+  local console_log=$1
+  grep -Eq '(^|[[:space:]])(:|> Task :)runServer([[:space:]]|$)' "$console_log" 2>/dev/null
+}
+
+invalid_config_wait_expired() {
+  local runtime_started=$1
+  local preparation_deadline=$2
+  local rejection_deadline=$3
+  local now=$4
+  if (( runtime_started == 1 )); then
+    (( now >= rejection_deadline ))
+  else
+    (( now >= preparation_deadline ))
+  fi
+}
+
 run_invalid_config_check() {
   local label=$1
   local target_dir=$2
@@ -3134,7 +3167,8 @@ run_invalid_config_check() {
   local level_name=$6
   local console_log="$output_root/$label.invalid-config.console.log"
   local latest_log="$run_dir/logs/latest.log"
-  local pid server_pid server_group result=0 rejection_seen=0
+  local pid server_pid server_group result=0 rejection_seen=0 runtime_started=0
+  local timeout_phase='launcher preparation'
   local -a cache_args=()
   local -a runtime_args=(-PcinemarrServerGameDir="$run_dir")
   [[ "$label" == *-quilt ]] && runtime_args+=(-PcinemarrRuntimeLoader=quilt)
@@ -3153,8 +3187,9 @@ run_invalid_config_check() {
   pid=$!
   active_server_pid=$pid
 
-  local deadline=$((SECONDS + 600))
-  while (( SECONDS < deadline )); do
+  local preparation_deadline=$((SECONDS + invalid_config_preparation_timeout_seconds))
+  local rejection_deadline=0
+  while :; do
     if [[ -z "$active_server_group" ]]; then
       server_pid=$(ss -ltnp "sport = :$port" \
         | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -n 1)
@@ -3170,6 +3205,15 @@ run_invalid_config_check() {
       rejection_seen=1
       break
     fi
+    # Gradle prints this boundary immediately before launching Minecraft on
+    # every maintained wrapper, including Forge 1.7.10. Start the strict
+    # product-rejection clock here so cold dependency and asset preparation
+    # cannot produce a false application timeout.
+    if (( runtime_started == 0 )) && invalid_config_runtime_started "$console_log"; then
+      runtime_started=1
+      timeout_phase='runtime rejection'
+      rejection_deadline=$((SECONDS + invalid_config_rejection_timeout_seconds))
+    fi
     # Some Gradle versions fork a single-use daemon into a different process
     # group while downloading Minecraft assets. Only treat an exited wrapper
     # as terminal once its server port is also closed and Gradle logged an end.
@@ -3177,11 +3221,12 @@ run_invalid_config_check() {
         && grep -Eq 'BUILD (FAILED|SUCCESSFUL)|FAILURE:' "$console_log" 2>/dev/null; then
       break
     fi
+    if invalid_config_wait_expired "$runtime_started" "$preparation_deadline" "$rejection_deadline" "$SECONDS"; then break; fi
     sleep 1
   done
 
   if (( rejection_seen == 0 )); then
-    echo "$label: invalid-configuration rejection timed out or the launcher exited without the rejected key" >&2
+    echo "$label: invalid-configuration $timeout_phase timed out or the launcher exited without the rejected key" >&2
     result=1
   fi
   local close_deadline=$((SECONDS + 120))

@@ -67,6 +67,45 @@ class LogMarkerPollingTest(unittest.TestCase):
                     self.assertEqual(result.returncode, status, result.stderr)
                     self.assertEqual(result.stdout.splitlines(), [f"launch:{label}:wrong-protocol-client"])
 
+    def test_invalid_config_rejection_clock_starts_at_runtime_boundary(self):
+        source = (ROOT / "scripts/run-dedicated-server-gate.sh").read_text()
+        runtime = re.search(r"(?ms)^invalid_config_runtime_started\(\) \{\n.*?^\}", source)
+        expired = re.search(r"(?ms)^invalid_config_wait_expired\(\) \{\n.*?^\}", source)
+        gate = re.search(r"(?ms)^run_invalid_config_check\(\) \{\n.*?^\}", source)
+        self.assertIsNotNone(runtime)
+        self.assertIsNotNone(expired)
+        self.assertIsNotNone(gate)
+        self.assertIn('invalid_config_runtime_started "$console_log"', gate.group())
+        self.assertIn('invalid_config_wait_expired "$runtime_started"', gate.group())
+
+        with tempfile.TemporaryDirectory(prefix="cinemarr-invalid-config-clock-") as temporary:
+            log = pathlib.Path(temporary) / "console.log"
+            def started(content):
+                log.write_text(content)
+                return subprocess.run(
+                    ["bash", "-c", runtime.group() + '\ninvalid_config_runtime_started "$1"',
+                     "invalid-config-runtime", str(log)],
+                    capture_output=True, text=True, timeout=5,
+                ).returncode == 0
+
+            self.assertFalse(started("> Task :neoFormJoined1.20.2DownloadAssets\nDownloading: asset.ogg\n"))
+            self.assertTrue(started("> Task :runServer\n"))
+            self.assertTrue(started(":runServer\n"), "Gradle 2.x legacy task syntax must remain supported")
+
+        def deadline(runtime_started, preparation_deadline, rejection_deadline, now):
+            return subprocess.run(
+                ["bash", "-c", expired.group()
+                 + '\ninvalid_config_wait_expired "$1" "$2" "$3" "$4"',
+                 "invalid-config-deadline", str(runtime_started), str(preparation_deadline),
+                 str(rejection_deadline), str(now)],
+                capture_output=True, text=True, timeout=5,
+            ).returncode == 0
+
+        self.assertFalse(deadline(0, 1800, 0, 1000), "cold preparation retains its own budget")
+        self.assertTrue(deadline(0, 1800, 0, 1800))
+        self.assertFalse(deadline(1, 1800, 2200, 1900), "runServer receives a fresh rejection budget")
+        self.assertTrue(deadline(1, 1800, 2200, 2200))
+
     def test_early_display_workaround_is_scoped_preserving_and_wired(self):
         source = (ROOT / "scripts/run-dedicated-server-gate.sh").read_text()
         match = re.search(r"(?ms)^configure_acceptance_loader\(\) \{\n.*?^\}", source)
