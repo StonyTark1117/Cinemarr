@@ -107,6 +107,12 @@ send_audio_control() {
   fi
 }
 wait_for_pattern_after() { return 0; }
+wait_for_video_generation_after() {
+  local baseline=$3 value
+  read -r value < generation
+  [[ "$value" =~ ^[0-9]+$ ]] && (( value > baseline )) || return 1
+  printf '%s\n' "$value"
+}
 wait_for_fault_segment_requests() { printf 'requests %s\n' "$1" >> "$trace"; printf '6\n'; }
 wait_for_video_audio_pair_stable() { printf 'stable\n' >> "$trace"; }
 capture_video_fault_recovery() {
