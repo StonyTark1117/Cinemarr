@@ -27,6 +27,7 @@ jobs:
           python3 scripts/test-compare-pcm-sync.py
           python3 scripts/test-redact-evidence-values.py
           python3 scripts/test-log-marker-polling.py
+          python3 scripts/test-prefetch-minecraft-assets.py
           python3 scripts/test-legacy-probe-player-state.py
           python3 scripts/check-client-join-order.py --self-test
           python3 scripts/test-private-minecraft-window.py
@@ -162,6 +163,13 @@ jobs:
             echo "NeoForm asset download failed once; retrying with the populated cache."
             sleep 15
           done
+      - name: Warm Forge 1.21.1 runtime assets
+        if: ${{ matrix.name == '1.21.1-forge' }}
+        run: |
+          python3 scripts/prefetch-minecraft-assets.py \
+            --minecraft-version 1.21.1 \
+            --assets-dir "$HOME/.minecraft/assets" \
+            --summary build/forge-1.21.1-asset-prefetch.json
       - name: Upload verified artifact
         uses: actions/upload-artifact@v7
         with:
@@ -343,6 +351,7 @@ jobs:
             build/video-capacity-gate/**/*.json
             build/video-capacity-gate/**/*.png
             build/video-capacity-gate/**/*.s16le
+            build/forge-1.21.1-asset-prefetch.json
             build/gametest-gate.log
             build/release-rerun-tests/*.log
             build/release-rerun-tests/*.json
