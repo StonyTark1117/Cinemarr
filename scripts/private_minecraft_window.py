@@ -272,11 +272,25 @@ class PrivateMinecraftWindow:
 
     def reload_resources(self):
         # Legacy Minecraft checks the currently held F3 state while consuming
-        # the T event. An instantaneous chord may be released between ticks.
+        # the T key-down event. Normalize both key states before every deliberate
+        # cycle: the client can spend a tick reloading while X's prior key-up is
+        # still queued, which otherwise makes a later F3+T a no-op.
+        self.run("xdotool", "keyup", "t")
+        self.run("xdotool", "keyup", "F3")
+        time.sleep(0.2)
         self.run("xdotool", "keydown", "F3")
+        t_pressed = False
         try:
             time.sleep(0.35)
-            self.run("xdotool", "key", "t")
+            self.run("xdotool", "keydown", "t")
+            t_pressed = True
+            time.sleep(0.2)
+            self.run("xdotool", "keyup", "t")
+            t_pressed = False
             time.sleep(0.35)
         finally:
-            self.run("xdotool", "keyup", "F3")
+            try:
+                if t_pressed:
+                    self.run("xdotool", "keyup", "t")
+            finally:
+                self.run("xdotool", "keyup", "F3")

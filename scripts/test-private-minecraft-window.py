@@ -171,14 +171,16 @@ class PrivateWindowTests(unittest.TestCase):
         # without coupling the test to that probe count.
         self.assertGreaterEqual(self.run.call_count, 4)
 
-    def test_reload_holds_f3_across_game_ticks_and_releases_it(self):
+    def test_reload_normalizes_stale_keys_and_holds_f3_across_explicit_t_transition(self):
         window = PrivateMinecraftWindow(self.log, 42)
         events = []
         with patch.object(window, 'run', side_effect=lambda *args: events.append(args)), \
                 patch('private_minecraft_window.time.sleep', side_effect=lambda delay: events.append(('wait', delay))):
             window.reload_resources()
-        self.assertEqual([('xdotool', 'keydown', 'F3'), ('wait', 0.35),
-                          ('xdotool', 'key', 't'), ('wait', 0.35),
+        self.assertEqual([('xdotool', 'keyup', 't'), ('xdotool', 'keyup', 'F3'), ('wait', 0.2),
+                          ('xdotool', 'keydown', 'F3'), ('wait', 0.35),
+                          ('xdotool', 'keydown', 't'), ('wait', 0.2),
+                          ('xdotool', 'keyup', 't'), ('wait', 0.35),
                           ('xdotool', 'keyup', 'F3')], events)
 
     def test_reload_releases_f3_when_t_delivery_fails(self):
@@ -186,12 +188,24 @@ class PrivateWindowTests(unittest.TestCase):
         events = []
         def command(*args):
             events.append(args)
-            if args == ('xdotool', 'key', 't'):
+            if args == ('xdotool', 'keydown', 't'):
                 raise RuntimeError('injected input failure')
         with patch.object(window, 'run', side_effect=command), patch('private_minecraft_window.time.sleep'):
             with self.assertRaisesRegex(RuntimeError, 'injected input failure'):
                 window.reload_resources()
         self.assertEqual(('xdotool', 'keyup', 'F3'), events[-1])
+
+    def test_reload_releases_t_when_delivery_fails_after_keydown(self):
+        window = PrivateMinecraftWindow(self.log, 42)
+        events = []
+        def command(*args):
+            events.append(args)
+            if args == ('xdotool', 'keyup', 't') and events.count(args) >= 2:
+                raise RuntimeError('injected key-up failure')
+        with patch.object(window, 'run', side_effect=command), patch('private_minecraft_window.time.sleep'):
+            with self.assertRaisesRegex(RuntimeError, 'injected key-up failure'):
+                window.reload_resources()
+        self.assertEqual([('xdotool', 'keyup', 't'), ('xdotool', 'keyup', 'F3')], events[-2:])
 
 
 def sample_png(raw=b'\0\xff\0\0\0\xff\0', width=2, height=1):
