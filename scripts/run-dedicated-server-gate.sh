@@ -2545,10 +2545,12 @@ run_two_client_video() {
       start_audio_client "$label" "$target_dir" "$java_home" "$port" leader CinemarrVideoA "$sink_leader"
       leader_pid=$started_audio_client_pid
     fi
-  elif [[ "$label" == "1.21.1-neoforge" || "$label" == *-quilt \
+  elif [[ "$label" == *-neoforge || "$label" == *-quilt \
       || "$label" == "1.7.10-forge" ]]; then
-    # Two cold NeoGradle clients can retain the same project lock, while two
-    # simultaneous Forge 1.7.10 handshakes can race inside FML's shared network
+    # Two concurrent NeoGradle clients share generated run state as well as
+    # project locks. That can make one launch consume the other launch's
+    # username or game directory; the server then evicts the first viewer as a
+    # duplicate login. Forge 1.7.10 clients can race inside FML's shared network
     # dispatcher. Quilt clients can rebuild Loom's shared remap cache while
     # another client is still reading it during loader initialization. Minecraft
     # 1.20.2 can also concurrently mutate RegistryOps' login lookup cache.

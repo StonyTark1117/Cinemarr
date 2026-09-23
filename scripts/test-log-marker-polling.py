@@ -340,13 +340,13 @@ wait_for_audio_playing() {
                                "startup-test", label, fail_role],
                               capture_output=True, text=True, timeout=5)
 
-    def test_every_quilt_profile_finishes_first_start_before_second_remap(self):
+    def test_every_quilt_and_neoforge_profile_finishes_first_start_before_second(self):
         profiles = subprocess.check_output(
             ["python3", "scripts/target-matrix.py", "gate-lines"], cwd=ROOT, text=True)
         labels = [line.split("|")[0] for line in profiles.splitlines()
-                  if line.split("|")[0].endswith("-quilt")]
-        self.assertEqual(len(labels), 5)
-        for label in labels + ["1.21.1-neoforge", "1.7.10-forge"]:
+                  if line.split("|")[0].endswith(("-quilt", "-neoforge"))]
+        self.assertEqual(len(labels), 10)
+        for label in labels + ["1.7.10-forge"]:
             with self.subTest(label=label):
                 result = self.invoke_video_startup(label)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
