@@ -104,7 +104,8 @@ cleanup() {
   (( remote_prepared )) && update_overrides "$original_overrides"
   if [[ -n "${output_root:-}" && -d "$output_root" ]]; then
     if ! printf '%s\0%s\0' "$server_host" "$DISCOPANEL_TOKEN" \
-        | python3 "$repo_root/scripts/redact-evidence-values.py" "$output_root"; then
+        | python3 "$repo_root/scripts/redact-evidence-values.py" --minecraft-client-addresses \
+            --receipt "$output_root/$label.redaction.json" "$output_root"; then
       status=1
     fi
   fi

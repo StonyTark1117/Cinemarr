@@ -29,6 +29,7 @@ jobs:
           python3 scripts/test-log-marker-polling.py
           python3 scripts/test-prefetch-minecraft-assets.py
           python3 scripts/test-legacy-probe-player-state.py
+          python3 scripts/test-acceptance-weather-state.py
           python3 scripts/check-client-join-order.py --self-test
           python3 scripts/test-private-minecraft-window.py
           python3 scripts/test-client-exit.py

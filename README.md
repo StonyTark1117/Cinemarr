@@ -8,12 +8,14 @@ Cinemarr is a required client-and-server Minecraft mod for server-authoritative 
 
 This checkout targets **Cinemarr 1.0.0**, with custom TV display controls and
 independent streams across the **16-artifact / 21-runtime** matrix.
-The current handshake correction is awaiting artifact certification, so the
-target manifest records `prerelease`. Earlier artifact evidence remains bound
-to its recorded hashes. The final gate at `1ea796f` failed a protocol-rejection
-check; the correction passed repeated focused modern and legacy checks.
-Release readiness requires the new exact commit's complete local gate, fully
-green hosted aggregate, matching downloaded artifacts and clean teardown.
+The [September 24 checkpoint](docs/1.0_CANDIDATE_LEDGER.md#verified-checkpoint-september-24)
+has two reproducible builds, all ten GameTests, eighteen green hosted jobs and
+matching downloaded artifacts. Local acceptance is 61/62 cases, with a Forge
+1.20.2 startup failure still open. Native decoder checks passed for the recorded
+JARs; real-Plex acceptance and final certification are incomplete. The target
+manifest therefore remains `prerelease`. Final release readiness requires the
+complete local gate, remaining live checks and review, scans, clean teardown,
+and green hosted CI with matching artifacts on the final containing commit.
 No tag or publication is part of this work.
 
 Protocol 11 separates watch-party and TV-stream identities. Saved-data migration

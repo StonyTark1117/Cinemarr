@@ -1,0 +1,182 @@
+{
+  "schema": 1,
+  "recordedDate": "2026-09-24",
+  "candidate": "5e83b1e7bf11d2273d334b5b0c1e0b37711a1b58",
+  "releaseReady": false,
+  "scope": "Verified product checkpoint; subsequent harness/documentation changes require final containing-commit certification. Earlier evidence retains its original source/artifact identities.",
+  "builds": {
+    "forced": 2,
+    "byteIdentical": true,
+    "artifacts": 16,
+    "gameTests": 10,
+    "bundleSha256": {
+      "SHA256SUMS": "e0c17083fce8ba7f0e6fe3d14d3e9bd917503918b355d222c927a918c50210ee",
+      "cinemarr-1.0.0+mc1.20.1-fabric.jar": "b85e1a295b3756b49410ace4eca7ef71301630b19d700992e9a744cd5fbbbebf",
+      "cinemarr-1.0.0+mc1.20.1-forge.jar": "9fd0165c9e2bfbb1f99145f05bb239693f88d79ba6b1a1b9141ccf6643897d31",
+      "cinemarr-1.0.0+mc1.20.1-neoforge.jar": "197a27d14af10df363d53056443ac9c067f77029300ee67f1ca9ac264ffc5e8d",
+      "cinemarr-1.0.0+mc1.20.2-fabric.jar": "896295cb2604eb9ee87266579d2e054605410127bc84199da48c0f0d26456b45",
+      "cinemarr-1.0.0+mc1.20.2-forge.jar": "ab7dfa7cf2f0b52466c42cad0e250e3fbcd0c0d9198052d09f163afe38cd42d9",
+      "cinemarr-1.0.0+mc1.20.2-neoforge.jar": "f227d78a1412f7acee991651b60f4d00cab7ab84ffacc1a72d28ed74aa759061",
+      "cinemarr-1.0.0+mc1.21.1-fabric.jar": "2056473b88f5e4f692b5ddbfdcc9238bc452ad6abe2dfbb4add826c82cb6e697",
+      "cinemarr-1.0.0+mc1.21.1-forge.jar": "97b030c0356de51c3ef500ebddaf246cf15856ee0dfed9979daaa6417531bbbe",
+      "cinemarr-1.0.0+mc1.21.1-neoforge.jar": "8f2c7905a8dae58fdf43a248dab08ba8c2ffba7ead704de90905cc23911553d5",
+      "cinemarr-1.0.0+mc1.7.10-forge.jar": "6753fc55a15e302dd2a037dc35539ea774cb785a24d7bed86efdc7d91bd7ef9c",
+      "cinemarr-1.0.0+mc26.1.2-fabric.jar": "6c373e4d837f92a4137407ba500ef79d91a0c22f18bdb69afed57edf58b1676d",
+      "cinemarr-1.0.0+mc26.1.2-forge.jar": "9d6576ac18a98ffb39ded4c8293c64de3d871bd644f1d59f60229fd1f1a40e63",
+      "cinemarr-1.0.0+mc26.1.2-neoforge.jar": "4d0314965187da4a2aabf6afe4799f86678431580a6b3a719b8bdea2b8316ef4",
+      "cinemarr-1.0.0+mc26.2-fabric.jar": "07cc657eb0f8e2b8dfc837fab15903b4d3c89eb25930690909df0fe319f8e76d",
+      "cinemarr-1.0.0+mc26.2-forge.jar": "63c15152980b40d0269a7a508f5cc369fc838f7aab7c11ec80de35f0aea17ab3",
+      "cinemarr-1.0.0+mc26.2-neoforge.jar": "d6a7e1636d2d9e152d55c40cc85f5076e8e527f99847e3f764b16b5e4875b6db",
+      "manifest.json": "e5cddb0413cdac0359b86db8b0f1e1d389065a161d521683a73cccb332f0ec1c"
+    }
+  },
+  "hosted": {
+    "runUrl": "https://github.com/StonyTark1117/Cinemarr/actions/runs/35926936307",
+    "headSha": "5e83b1e7bf11d2273d334b5b0c1e0b37711a1b58",
+    "jobs": 18,
+    "conclusion": "success",
+    "downloadedBundleMatchesLocal": true
+  },
+  "local": {
+    "requiredCases": 62,
+    "acceptedCases": 61,
+    "groups": [
+      {
+        "id": "main-runtimes",
+        "required": 21,
+        "accepted": 20
+      },
+      {
+        "id": "quilt-modmenu",
+        "required": 5,
+        "accepted": 5
+      },
+      {
+        "id": "minimum-fabric-loader",
+        "required": 5,
+        "accepted": 5
+      },
+      {
+        "id": "terminal",
+        "required": 2,
+        "accepted": 2
+      },
+      {
+        "id": "pressure",
+        "required": 2,
+        "accepted": 2
+      },
+      {
+        "id": "network-fault",
+        "required": 2,
+        "accepted": 2
+      },
+      {
+        "id": "independent-display",
+        "required": 21,
+        "accepted": 21
+      },
+      {
+        "id": "capacity-and-failure",
+        "required": 4,
+        "accepted": 4
+      }
+    ],
+    "freshLegacyRuns": 2,
+    "fullMatrixPassed": false,
+    "unresolvedProfile": "1.20.2-forge"
+  },
+  "native": {
+    "acceptedPlatforms": [
+      "windows-x86_64",
+      "linux-arm64"
+    ],
+    "exactCoreVariants": 3,
+    "runs": 6,
+    "scope": "Software decoder ABI/functionality; ARM emulated, not physical performance or full Minecraft clients.",
+    "retention": "1080p retained16 frames with2 drops, equal to reference; not a zero-drop performance claim"
+  },
+  "realPlex": {
+    "requiredCases": 14,
+    "acceptedCases": [
+      "controls-1.7.10-forge"
+    ],
+    "failedCases": [
+      "controls-1.20.1-quilt"
+    ],
+    "unstartedCases": 12,
+    "failure": "Animated rain changed five sparse-hole background samples; all48 visible pixel samples matched. Fresh acceptance required after deterministic-weather repair."
+  },
+  "scans": {
+    "localAndBundles": "passed",
+    "nativeOutputs": "passed",
+    "originalLegacyPlex": "failed: deployment endpoint in two server logs, no configured credential match",
+    "sanitizedLegacyPlexExport": "passed, original hashes preserved and transformations mapped",
+    "remaining": "Further real-Plex evidence, final containing-commit source and outputs, complete cleanup audit"
+  },
+  "pending": [
+    "Resolve Forge1.20.2 initialization failure and pass complete final local matrix",
+    "Run and review remaining exact-artifact real-Plex controls/display/recovery/lifecycle",
+    "Validate weather restoration and address redaction on fresh live runs",
+    "Certify final containing commit with reproducible builds, green hosted CI and downloaded parity",
+    "Finish configured scans and global resource cleanup"
+  ],
+  "receipts": [
+    {
+      "path": "build/certification-20260924-5e83b1e/recorded-checkpoint-01/closed-build-evidence.json",
+      "sha256": "e11f53e0890f035b0dcebb26821e513ff2d59724b604bd49c2e0cf9834db40a7"
+    },
+    {
+      "path": "build/certification-20260924-5e83b1e/recorded-checkpoint-01/source-inputs.json",
+      "sha256": "0c22b697712bca28e0f5b56c08c654799ddc8ba4f1f761e626562038ec442969"
+    },
+    {
+      "path": "build/certification-20260924-5e83b1e/recorded-checkpoint-01/requirements.json",
+      "sha256": "05b23eb2bc0bde7f9cf2fa7e61145c382dfca8f0c53eeb32e157efca178c5d01"
+    },
+    {
+      "path": "build/certification-20260924-5e83b1e/recorded-checkpoint-01/releaseMatrixGate.json",
+      "sha256": "677b72e1b364020863318bfcf03172c16847dd26144615ae28ebde0a3a440bad"
+    },
+    {
+      "path": "build/certification-20260924-5e83b1e/recorded-checkpoint-01/legacy-main-scoped-acceptance.json",
+      "sha256": "661b3c45df786a98683ed17ee286c5e27f9328ebd3c2303ba41b1dac8d4f05b4"
+    },
+    {
+      "path": "build/certification-20260924-5e83b1e/recorded-checkpoint-01/legacy-main-second-scoped-acceptance.json",
+      "sha256": "7496251e5ec43fb709f02ec32d42da6fa16e4adc80fd22b1ae15ecd107414240"
+    },
+    {
+      "path": "build/certification-20260924-5e83b1e/recorded-checkpoint-01/native-variants-scoped-acceptance.json",
+      "sha256": "040b0d8a64d11ba24c92e550f3a14555611c5b7327c95a82873acdb278a13ba4"
+    },
+    {
+      "path": "build/certification-20260924-5e83b1e/recorded-checkpoint-01/external-controls-1.7.10-forge-scoped-acceptance.json",
+      "sha256": "d8e4848971c2a1448ab39fdac8bea05a16cb40cf66e98328b46011a594b28e93"
+    },
+    {
+      "path": "build/certification-20260924-5e83b1e/recorded-checkpoint-01/configured-local-source-bundle-runtime-scan.json",
+      "sha256": "da9eb47adba24391000b3263295f05803011da44f79be07226b02c35bbaa1394"
+    },
+    {
+      "path": "build/certification-20260924-5e83b1e/recorded-checkpoint-01/configured-native-evidence-scan.json",
+      "sha256": "08c0df194efd86c1cdf274807886a46aadf24a7ddfa301209eefdeb00b2cfaaa"
+    },
+    {
+      "path": "build/certification-20260924-5e83b1e/recorded-checkpoint-01/configured-legacy-sanitized-export-scan.json",
+      "sha256": "be7a4b0b53640a3411c8044a9d6e6f83765756a5ec70794bc51a1856ecd3a14e"
+    },
+    {
+      "path": "build/certification-20260924-5e83b1e/recorded-checkpoint-01/legacy-plex-sanitized-export.json",
+      "sha256": "9aa5f1e39a3dcce8e7f42730611d53db2f7f10f0174b6f1b2225a1099bffc241"
+    },
+    {
+      "path": "build/certification-20260924-5e83b1e/recorded-checkpoint-01/forensics/forge-1.20.2-initialization/failure-analysis.json",
+      "sha256": "df0cb0498abd510c989cf4e6c61f53aacb7d77696f034446fc9537084b260d7c"
+    },
+    {
+      "path": "build/certification-20260924-5e83b1e/recorded-checkpoint-01/forensics/quilt-real-plex-rain/failure-analysis.json",
+      "sha256": "1132b8f5f1f49a519f1f7abd6d2efb642d61f1ce8923df4937efd4fc262e10b0"
+    }
+  ]
+}

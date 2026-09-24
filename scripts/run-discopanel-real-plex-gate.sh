@@ -218,6 +218,11 @@ restore_properties() {
       '{serverId:$id,path:"server.properties",content:$content}')" >/dev/null
 }
 
+# Animated rain cannot be compared between sequential sparse-hole captures.
+# Prepare only saved weather while stopped; cleanup merges its original values
+# into the current save without undoing TV, player or other world changes.
+source "$repo_root/scripts/acceptance-weather-state.sh"
+
 # Reusable test worlds can retain dead or falling probe identities on every loader. Prepare only the
 # two named offline test players while stopped, never heal during playback,
 # and restore their original NBT bytes after the run (including failure).
@@ -373,10 +378,15 @@ cleanup_remote() {
     echo "Failed to restore saved legacy probe identities; cleanup is incomplete" >&2
     cleanup_status=1
   fi
+  if ! restore_acceptance_weather; then
+    echo "Failed to restore original world weather; cleanup is incomplete" >&2
+    cleanup_status=1
+  fi
   if [[ -n "${CINEMARR_GATE_OUTPUT_ROOT:-}" && -d "$CINEMARR_GATE_OUTPUT_ROOT" ]]; then
     if ! printf '%s\0%s\0%s\0%s\0' "$server_host" "${CINEMARR_PLEX_TOKEN:-}" \
         "${CINEMARR_PLEX_URL:-}" "$DISCOPANEL_TOKEN" \
-        | python3 "$repo_root/scripts/redact-evidence-values.py" "$CINEMARR_GATE_OUTPUT_ROOT"; then
+        | python3 "$repo_root/scripts/redact-evidence-values.py" --minecraft-client-addresses \
+            --receipt "$CINEMARR_GATE_OUTPUT_ROOT/$label.redaction.json" "$CINEMARR_GATE_OUTPUT_ROOT"; then
       cleanup_status=1
     fi
   fi
@@ -480,6 +490,7 @@ acceptance_overrides=$(jq -c --arg display "$display_gate" '
 remote_prepared=1
 update_overrides "$acceptance_overrides"
 prepare_legacy_probe_players
+prepare_acceptance_weather
 
 started_at=$(date -u +%Y-%m-%dT%H:%M:%S.%NZ)
 api_call discopanel.v1.ServerService/StartServer "$(jq -cn --arg id "$server_id" '{id:$id}')" >/dev/null
@@ -608,6 +619,7 @@ wait_for_status SERVER_STATUS_STOPPED
 remote_started=0
 check_legacy_probe_players_alive
 restore_legacy_probe_players
+restore_acceptance_weather
 restore_properties
 update_overrides "$original_overrides"
 remote_prepared=0
