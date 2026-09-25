@@ -2,6 +2,7 @@
 """Exercise the actual shell waiters with logs larger than a pipe buffer."""
 
 import pathlib
+import json
 import re
 import subprocess
 import tempfile
@@ -21,6 +22,52 @@ WAITERS = (
 
 
 class LogMarkerPollingTest(unittest.TestCase):
+    def test_discopanel_retries_only_confirmed_pre_dispatch_failures(self):
+        source = (ROOT / "scripts/run-discopanel-real-plex-gate.sh").read_text()
+        function = re.search(r"(?ms)^command_output\(\) \{\n.*?^\}", source)
+        self.assertIsNotNone(function)
+        connection_error = (
+            "rcon path failed: rcon command failed: failed to establish connection: "
+            "authentication failed: invalid password/response; fallback exec failed: "
+            "command failed with exit code 1: Failed to connect to RCON serverread tcp: "
+            "connection reset by peer"
+        )
+        cases = [
+            ("success", 0, "", 0, 1),
+            ("transient connection", 1, connection_error, 0, 2),
+            ("persistent connection", 3, connection_error, 1, 3),
+            ("command error", 3, "command execution failed", 1, 1),
+            ("unknown fallback outcome", 3, connection_error.replace(
+                "Failed to connect to RCON server", "command may have executed"), 1, 1),
+            ("panel failure only", 3, connection_error.split("; fallback")[0], 1, 1),
+        ]
+        for name, failures, error, expected_exit, expected_calls in cases:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as temporary:
+                state = pathlib.Path(temporary) / "calls"
+                state.write_text("0")
+                response = pathlib.Path(temporary) / "response.json"
+                response.write_text(json.dumps({"success": False, "error": error}))
+                shell = r'''
+set -euo pipefail
+server_id=fixture
+case_state=$1; case_response=$2; case_failures=$3
+api_call() {
+  local n
+  n=$(cat "$case_state"); n=$((n+1)); printf '%s' "$n" > "$case_state"
+  if (( n <= case_failures )); then cat "$case_response"
+  else printf '%s' '{"success":true,"output":"command-result"}'; fi
+}
+sleep() { :; }
+''' + function.group() + '\ncommand_output "setblock 22 103 0 air"\n'
+                result = subprocess.run(
+                    ["bash", "-c", shell, "rcon-test", str(state), str(response), str(failures)],
+                    capture_output=True, text=True, timeout=5,
+                )
+                self.assertEqual(result.returncode, expected_exit, result.stderr)
+                self.assertEqual(int(state.read_text()), expected_calls)
+                if expected_exit == 0:
+                    self.assertEqual(result.stdout.strip(), "command-result")
+
     def test_generation_waiter_ignores_transitional_playing_state(self):
         source = (ROOT / "scripts/run-dedicated-server-gate.sh").read_text()
         waiter = re.search(r"(?ms)^wait_for_video_generation_after\(\) \{\n.*?^\}", source)

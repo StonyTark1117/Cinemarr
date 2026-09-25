@@ -160,15 +160,29 @@ send_command() {
 }
 
 command_output() {
-  local command=$1 response
-  response=$(api_call discopanel.v1.ServerService/SendCommand \
-    "$(jq -cn --arg id "$server_id" --arg command "$command" '{id:$id,command:$command,silent:false}')")
-  [[ $(jq -r '.success // false' <<<"$response") == true ]] || {
+  local command=$1 response error attempt
+  for attempt in 1 2 3; do
+    response=$(api_call discopanel.v1.ServerService/SendCommand \
+      "$(jq -cn --arg id "$server_id" --arg command "$command" '{id:$id,command:$command,silent:false}')") || return 1
+    if [[ $(jq -r '.success // false' <<<"$response") == true ]]; then
+      jq -r '.output // empty' <<<"$response"
+      return 0
+    fi
+    error=$(jq -r '.error // .output // "unknown command failure"' <<<"$response")
+    # The legacy RCON transport can reject a new connection before dispatch.
+    # Retry only when BOTH panel and fallback explicitly failed to connect;
+    # an unknown outcome or an executed command must never be repeated here.
+    if (( attempt < 3 )) \
+        && [[ "$error" == 'rcon path failed: rcon command failed: failed to establish connection:'* ]] \
+        && [[ "$error" == *'fallback exec failed:'*'Failed to connect to RCON server'* ]]; then
+      echo "DiscPanel RCON connection failed before command dispatch; retry $attempt/2" >&2
+      sleep "$attempt"
+      continue
+    fi
     echo "DiscPanel command failed: $command" >&2
-    jq -r '.error // .output // "unknown command failure"' <<<"$response" >&2
+    printf '%s\n' "$error" >&2
     return 1
-  }
-  jq -r '.output // empty' <<<"$response"
+  done
 }
 
 new_logs() {
