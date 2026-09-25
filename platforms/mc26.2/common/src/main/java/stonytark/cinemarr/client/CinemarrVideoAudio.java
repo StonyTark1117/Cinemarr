@@ -144,7 +144,7 @@ public final class CinemarrVideoAudio {
                 if (terminal && ProtocolLimits.videoProbeEnabled()) Cinemarr.LOGGER.info(
                         "Acceptance video audio terminal drain: targetMs={} audioMs={}",
                         targetUs / 1_000L, audioTimelineUs / 1_000L);
-                resetChannel();
+                resetChannel(!terminal);
             }
         }
         if (ProtocolLimits.videoProbeEnabled() && System.currentTimeMillis() - lastAcceptanceLogMs >= 1_000) {
@@ -451,9 +451,19 @@ public final class CinemarrVideoAudio {
         resetChannel();
         audioEngineGeneration = stonytark.cinemarr.core.client.AudioEngineGeneration.current();
     }
-    public void reset() { resetChannel(); pending.clear(); identity=null; underruns=0;caughtUpTicks=0;lastAcceptanceLogMs=0; }
+    public void reset() { resetChannel(false); pending.clear(); identity=null; underruns=0;caughtUpTicks=0;lastAcceptanceLogMs=0; }
     private void resetChannel() {
+        resetChannel(true);
+    }
+    private void resetChannel(boolean recover) {
         channelAttempt++;
+        // Preserve program data before scheduling stop(), which may close the
+        // bridge immediately on the sound worker. A prior engine reload may
+        // already have closed it; the recovery queue survives that callback.
+        if (stream != null) {
+            var frames = stream.drainRecoveryFrames();
+            if (recover) pending.addAll(frames);
+        }
         if (channel != null) { channel.execute(com.mojang.blaze3d.audio.Channel::stop); channel=null; }
         if (stream != null) { stream.close(); stream=null; }
         channelPending=false;observedStarvations=0;driftTicks=0;stableTicks=0;audioTimelineUs=0;audioTimelineNanos=Long.MIN_VALUE;

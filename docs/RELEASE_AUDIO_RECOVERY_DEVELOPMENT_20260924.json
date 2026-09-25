@@ -1,0 +1,165 @@
+{
+  "schema": 1,
+  "recordedDate": "2026-09-24",
+  "baseCommit": "ac25666cb05bd13abef8cbcbe5c6cb870e9ebc1c",
+  "scope": "Uncommitted bounded-audio-recovery development evidence preceding final freeze; not final release acceptance.",
+  "releaseReady": false,
+  "build": {
+    "forcedFinalBuilds": 0,
+    "developmentBuildPassed": true,
+    "artifactCount": 16,
+    "gameTests": 10,
+    "reportedTests": 775,
+    "skippedTests": 5,
+    "failures": 0,
+    "errors": 0,
+    "newRecoveryTests": 13,
+    "bundleSha256": {
+      "cinemarr-1.0.0+mc1.7.10-forge.jar": "6406c25e012ea56d95bb26909f141c2f6ea7ec98915d8f9bfae9b259ccb71d4c",
+      "cinemarr-1.0.0+mc1.20.1-fabric.jar": "611d9e7e9e5407443491d63cd172e67d3b51b89b2bd3b91ac3e7bcccc9b2ad5c",
+      "cinemarr-1.0.0+mc1.20.1-forge.jar": "7d69dcc05083fcda920d76325032934acfbae857f2d73f7dbbe095d239322fd5",
+      "cinemarr-1.0.0+mc1.20.1-neoforge.jar": "b0edd9ac579561fb68a7a0f48be266d948ef2fa145214c64ea8b2f60cbec5727",
+      "cinemarr-1.0.0+mc1.20.2-fabric.jar": "48519719c2441546ed30684d3247ae0563ccdae52ad57ef884072c3f0912251f",
+      "cinemarr-1.0.0+mc1.20.2-forge.jar": "77c5d68ff2468278cb9e794546d824fe08a97636c3e92aa91c69374b70c4bdd7",
+      "cinemarr-1.0.0+mc1.20.2-neoforge.jar": "fffc6bfc93b8dce883072a545c5aa1aab148b745a4d68708bd5cd9ef8be20e36",
+      "cinemarr-1.0.0+mc1.21.1-fabric.jar": "6e1bb8843443b0b42cb79ecbaf994711f35bd7cc296564d99ea887e4459139b8",
+      "cinemarr-1.0.0+mc1.21.1-forge.jar": "40f248fd976b1e2cb591cf4bd79546df468a73ab5d8ad52528a754e4c5571318",
+      "cinemarr-1.0.0+mc1.21.1-neoforge.jar": "823fd00e1a6548db544ac627a096d07df44b198c8300060822735c4e7641e8fb",
+      "cinemarr-1.0.0+mc26.1.2-fabric.jar": "25274d02e1a3e3a324874876db0e038f7d399483bfac76014b32ba16674a2d43",
+      "cinemarr-1.0.0+mc26.1.2-forge.jar": "5b5fa52c957055e785e3a301ef25b5622f5f24e3a60a3eeeca89b9662c902306",
+      "cinemarr-1.0.0+mc26.1.2-neoforge.jar": "3d9005e54972ba14635a884c620faf6534b03c9fff43bc045f9bd10f63b45acf",
+      "cinemarr-1.0.0+mc26.2-fabric.jar": "9254a6a47f1d8690a0d5261ec34070040f02bfcc1a1223f4cc1b45648f6ee4d7",
+      "cinemarr-1.0.0+mc26.2-forge.jar": "fc34826c14e272a29cab3fd14cc61c3cef2d172abcf8912797b256a45ebe88d0",
+      "cinemarr-1.0.0+mc26.2-neoforge.jar": "ab3fd462c1bd536e9b10e9330e15b96a8ff65963667e596a2e2836ccb94501e0",
+      "manifest.json": "f628636c15dc58d7fc15c18d48e5d7131383a86cd8c956fb3c9efc2307fbb017",
+      "SHA256SUMS": "bc6c97aab2fe73e514bd536ea5a651d44da8c7262529c2ff7765f9b58d5b0ac5"
+    }
+  },
+  "developmentProfiles": [
+    {
+      "profile": "1.21.1-neoforge",
+      "automatedMainPassed": true,
+      "continuousReloadGapMs": 1700,
+      "continuousRecoveredSync": {
+        "carrier_frequencies_hz": [
+          997.0
+        ],
+        "correlation": 0.994935,
+        "lag_ms": -10.0,
+        "left_duration_seconds": 4.0,
+        "passed": true,
+        "right_duration_seconds": 4.0,
+        "selected_carrier_frequency_hz": 997.0
+      },
+      "postReconnectSync": {
+        "carrier_frequencies_hz": [
+          997.0
+        ],
+        "correlation": 0.996875,
+        "lag_ms": 10.0,
+        "left_duration_seconds": 8.0,
+        "passed": true,
+        "right_duration_seconds": 8.0,
+        "selected_carrier_frequency_hz": 997.0
+      },
+      "directlyReviewedImages": 4,
+      "unreviewedFeatureImages": 88,
+      "finalRuntimeAccepted": false,
+      "elapsedSeconds": 407.7486629486084
+    },
+    {
+      "profile": "1.7.10-forge",
+      "automatedMainPassed": true,
+      "continuousReloadGapMs": 3080,
+      "continuousRecoveredSync": {
+        "carrier_frequencies_hz": [
+          997.0
+        ],
+        "correlation": 0.995855,
+        "lag_ms": 20.0,
+        "left_duration_seconds": 4.0,
+        "passed": true,
+        "right_duration_seconds": 4.0,
+        "selected_carrier_frequency_hz": 997.0
+      },
+      "postReconnectSync": {
+        "carrier_frequencies_hz": [
+          997.0
+        ],
+        "correlation": 0.999866,
+        "lag_ms": 10.0,
+        "left_duration_seconds": 8.0,
+        "passed": true,
+        "right_duration_seconds": 8.0,
+        "selected_carrier_frequency_hz": 997.0
+      },
+      "directlyReviewedImages": 6,
+      "unreviewedFeatureImages": 92,
+      "finalRuntimeAccepted": false,
+      "elapsedSeconds": 477.19774651527405
+    }
+  ],
+  "receipts": [
+    {
+      "path": "build/audio-recovery-development-20260924-02/status.json",
+      "sha256": "7760bf8f368e01094c4dc1ef7369f64a5655774864387c9f8ef54707a1a51965"
+    },
+    {
+      "path": "build/audio-recovery-development-20260924-02/source-inputs.json",
+      "sha256": "32d14be41d24147bd068b19c510ccfb3c657359bfea32e41489cffa167a52dfa"
+    },
+    {
+      "path": "build/audio-recovery-development-20260924-02/build-development-audit.json",
+      "sha256": "f204c60cae5a668a8f0358afdfd68518121487a29d4ade2d54ce620d24641598"
+    },
+    {
+      "path": "build/audio-recovery-main-neo-20260924-03/status.json",
+      "sha256": "db0f2a8ac47cf0d42f44e04ecda74d66b042f66cdaba35e8a6d5e4220c1357b2"
+    },
+    {
+      "path": "build/audio-recovery-main-neo-20260924-03/development-evidence-review.json",
+      "sha256": "db69a704f33d7b418da06c9b815469ed47794483e977d47153946c8715fadd52"
+    },
+    {
+      "path": "build/audio-recovery-development-audit-20260924/neo-before-legacy-audit.json",
+      "sha256": "3504b5a67b3a4c235703616c3cd0d8ff09d89c1d61a6e42df63eafe1eb988683"
+    },
+    {
+      "path": "build/audio-recovery-main-legacy-20260924-01/status.json",
+      "sha256": "46ce39bc00614f7aa69e3f7b9464b5497d836842dd3b5707c93e8ce7c228fd4a"
+    },
+    {
+      "path": "build/audio-recovery-main-legacy-20260924-01/development-evidence-review.json",
+      "sha256": "d00be97d97ff2fcd845cd6260c0c3efe50c7cbd4bdd53e896ddee5359c0226da"
+    },
+    {
+      "path": "build/audio-recovery-main-legacy-20260924-01/terminal-cleanup.json",
+      "sha256": "68f3c082d8cf446b1b1cad53f2264bf7496cd12102b796bf239a8c469095e3ff"
+    },
+    {
+      "path": "build/audio-recovery-development-audit-20260924/configured-repaired-audio-development-scan.json",
+      "sha256": "9e8bba82a99197b2d755a26a36e4b47dd8f52d92df25c23d77f9966312a0eb53"
+    },
+    {
+      "path": "build/audio-recovery-development-audit-20260924/configured-repaired-neo-main-scan.json",
+      "sha256": "b70a923e442a96d8abf6dce389492bf05706e0de23b348d2ba2df5657dd17966"
+    },
+    {
+      "path": "build/audio-recovery-development-audit-20260924/configured-repaired-legacy-main-scan.json",
+      "sha256": "e9bf6e967a8e163c4f99de03985dead6295c4e2e571bdd9bff99270c57ae6cdb"
+    }
+  ],
+  "retainedFailedDiagnosticAttempts": [
+    "build/audio-recovery-focused-neo-20260924-01",
+    "build/audio-recovery-focused-neo-20260924-02"
+  ],
+  "remaining": [
+    "Two forced frozen-commit builds and exact artifact inspection",
+    "All62localcases plus secondfreshlegacy",
+    "FourrealPlexprofiles anddisplay/recovery/lifecyclesupplements14total",
+    "FinalJARnativepayloadbindingandguestoffaudit",
+    "Complete directimageandphysicalaudioreview",
+    "Exactfinalcommit greenCI18jobs anddownloadedbundleparity",
+    "Finalconfiguredscans,resourcecleanupandrelease-recordclosure"
+  ]
+}

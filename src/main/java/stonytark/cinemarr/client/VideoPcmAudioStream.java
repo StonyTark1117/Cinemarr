@@ -6,13 +6,20 @@ import javax.sound.sampled.AudioFormat;
 import java.nio.ByteBuffer;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.List;
 import java.util.function.LongSupplier;
 
 /** Non-blocking, bounded PCM bridge from the decoder thread to Minecraft's streaming OpenAL worker. */
 final class VideoPcmAudioStream implements AudioStream {
     private static final long MAX_BUFFERED_MS = 4_000;
+    // Cover the four-second Java bridge and three-second backend queue, with
+    // one second of scheduling margin. Keep independent byte and entry bounds.
+    private static final long MAX_RECOVERY_MS = 8_000;
+    private static final int MAX_RECOVERY_FRAMES = 1_024;
     private final AudioFormat format;
     private final Deque<byte[]> queue = new ArrayDeque<>();
+    private final Deque<DecodedAudioFrame> recovery = new ArrayDeque<>();
+    private long recoveryBytes;
     private final LongSupplier nanoTime;
     private byte[] current;
     private int offset;
@@ -77,7 +84,28 @@ final class VideoPcmAudioStream implements AudioStream {
         byte[] source = frame.pcmView();
         byte[] pcm = new byte[source.length - offset];
         System.arraycopy(source, offset, pcm, 0, pcm.length);
+        retainForRecovery(frame, frameEndUs);
         queue.add(pcm); bufferedBytes += pcm.length; starving = false; return true;
+    }
+
+    private void retainForRecovery(DecodedAudioFrame frame, long frameEndUs) {
+        long maximumBytes = MAX_RECOVERY_MS * (long) format.getSampleRate() * format.getFrameSize() / 1_000L;
+        if (frame.byteLength() > maximumBytes) return;
+        recovery.addLast(frame);
+        recoveryBytes += frame.byteLength();
+        while (!recovery.isEmpty()) {
+            DecodedAudioFrame oldest = recovery.peekFirst();
+            long oldestEndUs = oldest.presentationTimeUs() + durationUsForBytes(oldest.byteLength());
+            if (recoveryBytes <= maximumBytes && recovery.size() <= MAX_RECOVERY_FRAMES
+                    && oldestEndUs > frameEndUs - MAX_RECOVERY_MS * 1_000L) break;
+            recoveryBytes -= recovery.removeFirst().byteLength();
+        }
+    }
+
+    synchronized List<DecodedAudioFrame> drainRecoveryFrames() {
+        List<DecodedAudioFrame> frames = List.copyOf(recovery);
+        recovery.clear(); recoveryBytes = 0;
+        return frames;
     }
 
     synchronized boolean offerSilence(long durationUs) {
@@ -210,6 +238,9 @@ final class VideoPcmAudioStream implements AudioStream {
 
     @Override public synchronized void close() {
         closed = true; queue.clear(); current = null; bufferedBytes = 0; scheduledSkipBytes = 0;
+        // SoundEngine may close the bridge before the render thread sees its
+        // reload. Its bounded recovery data belongs to that owner until drained
+        // or until this bridge is released.
         nextPresentationTimeUs = Long.MIN_VALUE;
     }
 }

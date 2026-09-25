@@ -1,0 +1,205 @@
+{
+  "schema": 1,
+  "recordedDate": "2026-09-24",
+  "candidate": "ac25666cb05bd13abef8cbcbe5c6cb870e9ebc1c",
+  "releaseReady": false,
+  "scope": "Frozen failed checkpoint. Current audio-recovery source changes require new artifact and final-commit certification.",
+  "builds": {
+    "forced": 2,
+    "byteIdentical": true,
+    "artifacts": 16,
+    "gameTests": 10,
+    "bundleSha256": {
+      "SHA256SUMS": "e0c17083fce8ba7f0e6fe3d14d3e9bd917503918b355d222c927a918c50210ee",
+      "cinemarr-1.0.0+mc1.20.1-fabric.jar": "b85e1a295b3756b49410ace4eca7ef71301630b19d700992e9a744cd5fbbbebf",
+      "cinemarr-1.0.0+mc1.20.1-forge.jar": "9fd0165c9e2bfbb1f99145f05bb239693f88d79ba6b1a1b9141ccf6643897d31",
+      "cinemarr-1.0.0+mc1.20.1-neoforge.jar": "197a27d14af10df363d53056443ac9c067f77029300ee67f1ca9ac264ffc5e8d",
+      "cinemarr-1.0.0+mc1.20.2-fabric.jar": "896295cb2604eb9ee87266579d2e054605410127bc84199da48c0f0d26456b45",
+      "cinemarr-1.0.0+mc1.20.2-forge.jar": "ab7dfa7cf2f0b52466c42cad0e250e3fbcd0c0d9198052d09f163afe38cd42d9",
+      "cinemarr-1.0.0+mc1.20.2-neoforge.jar": "f227d78a1412f7acee991651b60f4d00cab7ab84ffacc1a72d28ed74aa759061",
+      "cinemarr-1.0.0+mc1.21.1-fabric.jar": "2056473b88f5e4f692b5ddbfdcc9238bc452ad6abe2dfbb4add826c82cb6e697",
+      "cinemarr-1.0.0+mc1.21.1-forge.jar": "97b030c0356de51c3ef500ebddaf246cf15856ee0dfed9979daaa6417531bbbe",
+      "cinemarr-1.0.0+mc1.21.1-neoforge.jar": "8f2c7905a8dae58fdf43a248dab08ba8c2ffba7ead704de90905cc23911553d5",
+      "cinemarr-1.0.0+mc1.7.10-forge.jar": "6753fc55a15e302dd2a037dc35539ea774cb785a24d7bed86efdc7d91bd7ef9c",
+      "cinemarr-1.0.0+mc26.1.2-fabric.jar": "6c373e4d837f92a4137407ba500ef79d91a0c22f18bdb69afed57edf58b1676d",
+      "cinemarr-1.0.0+mc26.1.2-forge.jar": "9d6576ac18a98ffb39ded4c8293c64de3d871bd644f1d59f60229fd1f1a40e63",
+      "cinemarr-1.0.0+mc26.1.2-neoforge.jar": "4d0314965187da4a2aabf6afe4799f86678431580a6b3a719b8bdea2b8316ef4",
+      "cinemarr-1.0.0+mc26.2-fabric.jar": "07cc657eb0f8e2b8dfc837fab15903b4d3c89eb25930690909df0fe319f8e76d",
+      "cinemarr-1.0.0+mc26.2-forge.jar": "63c15152980b40d0269a7a508f5cc369fc838f7aab7c11ec80de35f0aea17ab3",
+      "cinemarr-1.0.0+mc26.2-neoforge.jar": "d6a7e1636d2d9e152d55c40cc85f5076e8e527f99847e3f764b16b5e4875b6db",
+      "manifest.json": "e5cddb0413cdac0359b86db8b0f1e1d389065a161d521683a73cccb332f0ec1c"
+    }
+  },
+  "hosted": {
+    "runUrl": "https://github.com/StonyTark1117/Cinemarr/actions/runs/36065898806",
+    "jobs": 18,
+    "conclusion": "success",
+    "downloadedBundleMatchesLocal": true
+  },
+  "local": {
+    "requiredCases": 62,
+    "scopedAcceptedCases": 17,
+    "mainAutomatedPassed": 20,
+    "mainRequired": 21,
+    "freshLegacyAccepted": 1,
+    "freshLegacyRequired": 2,
+    "matrixExit": 1,
+    "failure": "NeoForge1.21.1 MAIN reconnect follower captured5.362seconds initial silence after drift-triggered rebuffer",
+    "remainingSupplementsAndSecondLegacyNotCompleted": true,
+    "directReviewComplete": false
+  },
+  "realPlex": {
+    "required": 14,
+    "accepted": 14,
+    "exactArtifacts": true
+  },
+  "native": {
+    "accepted": 2,
+    "scope": "Windowsx64 and emulatedLinuxARM64 decoder functionality only; not full clients or physicalARMperformance"
+  },
+  "groups": [
+    {
+      "id": "two-forced-builds",
+      "required": 2,
+      "accepted": 2
+    },
+    {
+      "id": "release-artifacts",
+      "required": 16,
+      "accepted": 16
+    },
+    {
+      "id": "gametests",
+      "required": 10,
+      "accepted": 10
+    },
+    {
+      "id": "main-runtimes",
+      "required": 21,
+      "accepted": 11
+    },
+    {
+      "id": "quilt-modmenu",
+      "required": 5,
+      "accepted": 0
+    },
+    {
+      "id": "minimum-fabric-loader",
+      "required": 5,
+      "accepted": 0
+    },
+    {
+      "id": "terminal",
+      "required": 2,
+      "accepted": 2
+    },
+    {
+      "id": "pressure",
+      "required": 2,
+      "accepted": 2
+    },
+    {
+      "id": "network-fault",
+      "required": 2,
+      "accepted": 2
+    },
+    {
+      "id": "independent-display",
+      "required": 21,
+      "accepted": 0
+    },
+    {
+      "id": "capacity-and-failure",
+      "required": 4,
+      "accepted": 0
+    },
+    {
+      "id": "fresh-legacy-main-runs",
+      "required": 2,
+      "accepted": 1
+    },
+    {
+      "id": "real-plex-controls",
+      "required": 4,
+      "accepted": 4
+    },
+    {
+      "id": "real-plex-display",
+      "required": 4,
+      "accepted": 4
+    },
+    {
+      "id": "real-plex-recovery",
+      "required": 4,
+      "accepted": 4
+    },
+    {
+      "id": "real-plex-lifecycle",
+      "required": 2,
+      "accepted": 2
+    },
+    {
+      "id": "native-platforms",
+      "required": 2,
+      "accepted": 2
+    },
+    {
+      "id": "local-hosted-bundle-parity",
+      "required": 18,
+      "accepted": 18
+    }
+  ],
+  "runtimeCleanup": {
+    "unitTerminal": true,
+    "remainingOwnedProcesses": 0,
+    "remainingRecordedPrivateX": 0,
+    "gameAndRconPortsChecked": 42,
+    "openPorts": 0,
+    "frozenInputsUnchanged": 947,
+    "frozenBundleFilesUnchanged": 18
+  },
+  "evidenceRoot": "build/certification-20260924-ac25666",
+  "evidenceReceipts": {
+    "build-parity.json": "b113a282c0646495bfeb0efeba4c574ef2c790f8c1e5d21f2ba4391dd76eb7b1",
+    "external-controls-1.20.1-quilt-scoped-acceptance.json": "3c168e9c08bfb882db093d6b48fbb67c19d1ca438ac4bfe2c7fabd0781bc0f80",
+    "external-controls-1.21.1-neoforge-scoped-acceptance.json": "110a61826cf6be0ea85ebddeab64e1a6959209e9bdcc9ad65a10cd9435ebc07f",
+    "external-controls-1.7.10-forge-scoped-acceptance.json": "c3b9ffd15e04a0a0bbe000df1a19a38c0e4ed04d6ef999f1002dcbc1183f57a7",
+    "external-controls-26.2-fabric-scoped-acceptance.json": "7478b263701694264aa1a343c29413cbb4ab487530427183fd48cd444c895884",
+    "external-display-1.20.1-quilt-scoped-acceptance.json": "46128340dde6f20ba7639fe5204d7f365e0ff3f7381893985735651c194be923",
+    "external-display-1.21.1-neoforge-scoped-acceptance.json": "006bc0470cbb38559d4a013a7bb68056a862506c8450bec793ac6752b6850779",
+    "external-display-1.7.10-forge-scoped-acceptance.json": "10bfec722a4a7dd113ee44e68bd6bb2189667d9d18ec20091ac6776b9d060228",
+    "external-display-26.2-fabric-scoped-acceptance.json": "aaaeed2e19f13ff2d5edb3369e3c4c86dc75124e9744781abe504336a018bfb2",
+    "external-supplements-scoped-acceptance.json": "807a0a0ff6b7a349200fd62a75673520ef1961517dad884bf87ddef06edc108e",
+    "forensics/1.21.1-neoforge-main-audio-failure/failure-analysis.json": "a14b2519cc74605ae8ee448ffea53d9495fa93c545e3838efd42ef36996b4f79",
+    "hosted-bundle-acceptance.json": "608bb7325d6c0fa5be0a794bdea703408891f0f1a3a4c58f827adab12459d0c1",
+    "local-build-pair-acceptance.json": "0dc54b76f81bf5e24f73e40cbeb7b8e9fd59fa60be9ef4bdac1835e6d6e0ff2c",
+    "local-fault-1.21.1-neoforge-scoped-acceptance.json": "4dd3b53b0183aabaa5db3253a631daec4c859a0232ff75a377e870176fb441a9",
+    "local-fault-1.7.10-forge-scoped-acceptance.json": "9f28794625cff36866f0baa7b66ec69b9e4bb0f4fd364a63cd53bd05701c8247",
+    "local-main-1.20.1-fabric-scoped-acceptance.json": "e409301c55d292f035bd58269d49d3577a25379ce38e383050bd695586617c16",
+    "local-main-1.20.1-forge-scoped-acceptance.json": "f7b454ae85810ae3d538fb5fd56274c511c52792b914782b8ca2fdfca58c8596",
+    "local-main-1.20.1-neoforge-scoped-acceptance.json": "9a82d296944b0776bcb5ebcaab03136b586f24b0479971ee1312c1523d260084",
+    "local-main-1.20.1-quilt-scoped-acceptance.json": "bee068efee19a45d76a10a133c6c2acd53b2d4b4ab1abdc93580ed82f8e4f0be",
+    "local-main-1.20.2-fabric-scoped-acceptance.json": "7d5a90a88018b14eb26fdadaee2f871163c665566487544b1c9a29d11841c8df",
+    "local-main-1.20.2-forge-scoped-acceptance.json": "faaa5bba9dbc1ed0f6e8978854e050ba4c8e53fcef1e9da2c9e19f8c98dd0237",
+    "local-main-1.20.2-neoforge-scoped-acceptance.json": "8c0a4126f26f23f097ea39aae64bf9822a73a67af9a29db834717c17cb129eed",
+    "local-main-1.20.2-quilt-scoped-acceptance.json": "1c3bddb5403743ff36294362fe6d8a6c9c47f95049987ae827e2d7f0ac74acc2",
+    "local-main-1.21.1-fabric-scoped-acceptance.json": "302a2969ac11871c0be0f3dbad8284f529c52f80feb37ecfd117b2b87f436c31",
+    "local-main-1.21.1-quilt-scoped-acceptance.json": "3a0ec5f4bfc0365f858c0f529aea79e2aeae28888d3bb6bd01c20bf3213ac906",
+    "local-main-1.7.10-forge-scoped-acceptance.json": "3ac2b4f5a3cd91278cb470d5efae9e2afc78788673dd82ae414ca04120877fd4",
+    "local-pressure-1.21.1-neoforge-scoped-acceptance.json": "db871bca6a0555b94eea059816bbf0b96ec9fd5ca522e643f54249b1b77a31d0",
+    "local-pressure-1.7.10-forge-scoped-acceptance.json": "0a3195171254f2747cd494430b5ffdeb8147072b8d035f67e69621db1f3d5567",
+    "local-terminal-1.21.1-neoforge-scoped-acceptance.json": "7d45fd1722b2a1e868fa98a06c2132c28979e4398b826c7656929585b73856be",
+    "local-terminal-1.7.10-forge-scoped-acceptance.json": "36009bb36d0b003d840009e5cda4cd745a30c852f7eb5facd0d66ad7f1830d6f",
+    "native-artifact-acceptance.json": "c645557150dca74c1af63eaf9747868de4dbb08d3e070c1ac556261e15ca05b5",
+    "releaseMatrixGate.json": "ecd2abd5b7362ee82a6ce9bb82c27fb1b03cb32ef4979f129e5734ef0c25773b",
+    "runtime-terminal-audit.json": "6e0d57932f6e5b87aa845ca5b36dc19f2751cb5097bae7450d27a16f3e6586ad",
+    "runtime-terminal-ports.json": "752a2915b2d1dcd1d9fb123b3ee183915f12b010259f6525a384f3c7236e3c9c"
+  },
+  "remaining": [
+    "Repair and measure bounded audio recovery on actual modern and legacy clients",
+    "Complete frozen final-commit build pair/full62case matrix/secondlegacy/directreview",
+    "Bind realPlex/native acceptance to finalJARs",
+    "Final exactcommit greenCI/artifactparity/scans/globalcleanup/release-record closure"
+  ],
+  "historicalOpenInvestigation": "Earlier5e83b1eForge1.20.2startup failure did not reproduce in current fullcase; originalcause unresolved."
+}

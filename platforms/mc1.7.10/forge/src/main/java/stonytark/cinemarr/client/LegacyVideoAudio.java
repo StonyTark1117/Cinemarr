@@ -47,7 +47,11 @@ final class LegacyVideoAudio {
     // decoder can use the transport's twenty-second lead instead of being
     // throttled back to the old five-second PCM handoff window.
     private static final int MAX_PENDING_FRAMES = 768;
+    private static final long MAX_RECOVERY_US = 8_000_000L;
+    private static final int MAX_RECOVERY_FRAMES = 1_024;
     private final Queue<LegacyDecodedAudioFrame> pending = new ArrayDeque<LegacyDecodedAudioFrame>();
+    private final Queue<LegacyDecodedAudioFrame> recovery = new ArrayDeque<LegacyDecodedAudioFrame>();
+    private long recoveryBytes;
     private final Queue<OpenAlBuffer> backendBuffers = new ArrayDeque<OpenAlBuffer>();
     private VideoStreamIdentity identity;
     private String acceptanceIdentity() {
@@ -144,7 +148,7 @@ final class LegacyVideoAudio {
                 if (terminal) {
                     if (ProtocolLimits.videoProbeEnabled()) Cinemarr.LOGGER.info(
                             "Acceptance legacy video audio terminal drain: targetMs={}", targetUs / 1_000L);
-                    stopSource();
+                    stopSource(false);
                 } else rebuffer(targetUs, scheduledStartUs, "source-stopped");
                 return;
             }
@@ -176,7 +180,7 @@ final class LegacyVideoAudio {
                 underruns += AudioUnderrunPolicy.additionalUnderruns(0, 0, true, false, terminal);
                 if (!terminal && ProtocolLimits.videoProbeEnabled()) Cinemarr.LOGGER.info(
                         "Acceptance legacy video audio active underrun: underruns={}", underruns);
-                stopSource();
+                stopSource(!terminal);
             }
         }
         if (ProtocolLimits.videoProbeEnabled() && System.currentTimeMillis() - lastAcceptanceLogMs >= 1_000L) {
@@ -341,12 +345,34 @@ final class LegacyVideoAudio {
             if (offset < pcm.length) {
                 bytes.write(pcm, offset, pcm.length - offset);
                 durationUs += durationUs(pcm.length - offset, frame.sampleRate(), frame.channels());
+                retainForRecovery(frame, frameEndUs);
             }
             queuedProgramUntilUs = Math.max(queuedProgramUntilUs, frameEndUs);
         }
         if (bytes.size() == 0) return 0L;
         queuePcm(bytes.toByteArray());
         return durationUs;
+    }
+
+    private void retainForRecovery(LegacyDecodedAudioFrame frame, long frameEndUs) {
+        long maximumBytes = MAX_RECOVERY_US * frame.sampleRate() * frame.channels() * 2L / 1_000_000L;
+        if (frame.pcmView().length > maximumBytes) return;
+        recovery.add(frame);
+        recoveryBytes += frame.pcmView().length;
+        while (!recovery.isEmpty() && (recoveryBytes > maximumBytes || recovery.size() > MAX_RECOVERY_FRAMES
+                || endUs(recovery.peek()) <= frameEndUs - MAX_RECOVERY_US)) {
+            recoveryBytes -= recovery.remove().pcmView().length;
+        }
+    }
+
+    private void restoreRecovery(boolean recover) {
+        if (recover && !recovery.isEmpty()) {
+            // Backend frames precede frames not yet submitted to the backend.
+            Queue<LegacyDecodedAudioFrame> restored = new ArrayDeque<LegacyDecodedAudioFrame>(recovery);
+            restored.addAll(pending);
+            pending.clear(); pending.addAll(restored);
+        }
+        recovery.clear(); recoveryBytes = 0;
     }
 
     private long queueSilence(long durationUs) {
@@ -417,11 +443,14 @@ final class LegacyVideoAudio {
         // Its sources/buffers have already been released by context destruction.
         // Calling AL10 here can hit unloaded native stubs, or delete recycled
         // IDs belonging to the new context. Only discard our old ownership.
-        forgetSource();
+        forgetSource(true);
     }
-    void reset() { stopSource(); pending.clear(); identity = null; underruns = 0;
+    void reset() { stopSource(false); pending.clear(); identity = null; underruns = 0;
         driftTicks = stableTicks = 0; lastAcceptanceLogMs = 0L; }
     private void stopSource() {
+        stopSource(true);
+    }
+    private void stopSource(boolean recover) {
         try {
             if (source != 0 && ownsCurrentContext()) {
                 AL10.alSourceStop(source);
@@ -432,7 +461,7 @@ final class LegacyVideoAudio {
         } catch (RuntimeException ignored) {
             // Preserve cleanup behavior for an already-stopped native source.
         } finally {
-            forgetSource();
+            forgetSource(recover);
         }
     }
 
@@ -444,7 +473,8 @@ final class LegacyVideoAudio {
         return created && owned != null && owned == current;
     }
 
-    private void forgetSource() {
+    private void forgetSource(boolean recover) {
+        restoreRecovery(recover);
         soundSystem = null; format = null; prepared = false; started = false;
         sourcePaused = false; activationGraceUntilMs=0L;queuedUntilLocalUs = preparedDurationUs = queuedProgramUntilUs = scheduledStartUs = programOffsetUs = mediaBoundaryLocalUs = sourceRequestedAtUs = sourcePausedAtUs = 0L;
         backendCompletedUs = 0L; driftTicks = stableTicks = 0;
