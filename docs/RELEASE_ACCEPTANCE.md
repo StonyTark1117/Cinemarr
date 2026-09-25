@@ -18,6 +18,14 @@ native and hosted certification, downloaded artifact parity and final scans
 remain required. The [development manifest](RELEASE_PLEX_SEGMENT_ORIGIN_DEVELOPMENT_20260925.json)
 records the evidence and its limits. No tag or publication is authorized.
 
+The legacy real-Plex setup failure now has a focused transport repair in
+`a0155d1`: bounded retries only when both RCON routes explicitly failed before
+command dispatch. Focused regressions, scene preparation and the affected
+legacy controls integration pass, with independent cleanup readback. The
+ledger records these results and the separate hosted startup investigation.
+The final matrix remains required. Direct review uses the coverage specified
+below; all 92 captures per shared-adapter profile are not a separate gate.
+
 ## Historical audio-recovery checkpoint
 
 The [current ledger](1.0_CANDIDATE_LEDGER.md#current-work-bounded-audio-recovery)
