@@ -13,6 +13,59 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ClientExitTest(unittest.TestCase):
+    def test_probe_failures_capture_owned_process_before_termination(self):
+        source = (ROOT / 'scripts/run-dedicated-server-gate.sh').read_text()
+        for name in ('run_acceptance_client', 'run_command_client'):
+            body = re.search(r'(?ms)^' + name + r'\(\) \{\n.*?^\}', source).group()
+            tail = body[body.index('  if (( result == 0 )); then finish_client_launch'):]
+            for initial, finish, diagnostic in ((1, 0, 0), (1, 0, 23), (0, 1, 0), (0, 0, 0)):
+                with self.subTest(function=name, initial=initial, finish=finish,
+                                  diagnostic=diagnostic), tempfile.TemporaryDirectory() as directory:
+                    shell = '''
+set -euo pipefail
+output_root=$1
+repo_root=$2
+result=$3
+finish_status=$4
+diagnostic_status=$5
+label=fixture
+scenario=probe
+client_console="$output_root/client.log"
+sleep 60 &
+pid=$!
+active_client_pid=$pid
+trap 'kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true' EXIT
+finish_client_launch() { return "$finish_status"; }
+python3() {
+  [[ "$#" == 4 && "$1" == "$repo_root/scripts/capture-owned-java-stacks.py" &&
+     "$2" == --output && "$3" == "$output_root/$label.$scenario.failed-processes" &&
+     "$4" == "$pid" && "$active_client_pid" == "$pid" ]] || exit 91
+  kill -0 "$pid" || exit 92
+  printf 'capture\\n' >> "$output_root/events"
+  return "$diagnostic_status"
+}
+terminate_client_launch() {
+  [[ "$1" == "$pid" ]] || exit 93
+  printf 'terminate\\n' >> "$output_root/events"
+  kill "$pid"
+  wait "$pid" 2>/dev/null || true
+}
+probe_tail() {
+'''
+                    shell += tail + '''
+status=0
+probe_tail || status=$?
+[[ -z "$active_client_pid" ]] || exit 94
+exit "$status"
+'''
+                    result = subprocess.run(['bash', '-c', shell, 'probe-cleanup-test', directory,
+                                             str(ROOT), str(initial), str(finish), str(diagnostic)],
+                                            capture_output=True, text=True, timeout=5)
+                    failed = bool(initial or finish)
+                    self.assertEqual(int(failed), result.returncode, result.stderr)
+                    events = (Path(directory) / 'events').read_text().splitlines()
+                    self.assertEqual(['capture', 'terminate'] if failed else ['terminate'], events)
+
     def test_audio_readiness_waits_for_a_live_launcher_before_setsid(self):
         self.assertEqual(0, self.audio_readiness_probe(True).returncode)
 

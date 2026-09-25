@@ -477,7 +477,7 @@
       "log": "probe-client-startup-group-race.log",
       "sha256": "518be35660e80a1d32358ecb4ca2fabbb1f2e17ba6a98c983cf23411d78148bc"
     },
-    "next": "Investigate actual launcher exit/liveness before another live run. Preserve this failed attempt and all current JAR hashes; no blind retry. Full final certification remains open."
+    "next": "Historical failed attempt retained. Subsequent launcher repair and fresh reviewed development cases are recorded in completedDevelopment."
   },
   "launcherReadinessRepair": {
     "baselineRegressionTests": 2,
@@ -496,7 +496,101 @@
       "servers-after-live.json": "b23a71f470c92445dd7f52b8060c38a80bc3d48ce3606415cf903658f6f3d290",
       "deployment.json": "2cf9f1864c3a07500cb5de01c703c37c06ebac968465137eefa942f906aec2df"
     },
-    "containingBuild": "pending",
-    "freshPackagedLiveVerification": "pending"
-  }
+    "containingBuild": "passed at0a30986; see completedDevelopment",
+    "freshPackagedLiveVerification": "NeoForge and legacy display cases passed, directly reviewed and scanned; final certification incomplete"
+  },
+  "completedDevelopment": {
+    "head": "0a3098629d1a85bbb04d6bcbad12121728339aed",
+    "build": {
+      "candidate": "0a3098629d1a85bbb04d6bcbad12121728339aed",
+      "singleDevelopmentBuildPassed": true,
+      "xmlReports": {
+        "tests": 783,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 5
+      },
+      "artifacts": 16,
+      "bundleFiles": 18,
+      "gameTests": 10,
+      "sourceUnchanged": true,
+      "previousDevelopmentCommit": "c39c1e06c01f34c8fc160a3d9932a0ecbe89892c",
+      "all18BundleFilesMatchPreviousDevelopmentBuild": true,
+      "scope": "Development comparison across a harness-only commit; not two frozen final-commit certification builds"
+    },
+    "profiles": [
+      {
+        "head": "0a3098629d1a85bbb04d6bcbad12121728339aed",
+        "case": "NeoForge development display",
+        "passed": true,
+        "checkedAt": 1790338344.8921638,
+        "unitInactiveSuccessful": true,
+        "ownedRuntimeProcesses": [],
+        "independentRemoteAudit": "servers-after-live.json",
+        "normalClientExits": 3,
+        "directlyReviewedOriginalImages": 49,
+        "originalMovieMatches": 6,
+        "mixedProgramAudioLagMs": 20,
+        "mixedProgramAudioCorrelation": 0.976664,
+        "configuredReviewScanPassed": true,
+        "finalCertificationComplete": false
+      },
+      {
+        "head": "0a3098629d1a85bbb04d6bcbad12121728339aed",
+        "case": "Legacy development display",
+        "passed": true,
+        "checkedAt": 1790339276.1328442,
+        "unitInactiveSuccessful": true,
+        "ownedRuntimeProcesses": [],
+        "independentRemoteAudit": "servers-after-legacy.json",
+        "normalClientExits": 3,
+        "directlyReviewedOriginalImages": 49,
+        "originalMovieMatches": 6,
+        "playingPhaseRoleGroups": 6,
+        "playingFrameJoins": 18,
+        "rawPausedFrames": 6,
+        "mixedProgramAudioLagMs": 20,
+        "mixedProgramAudioCorrelation": 0.814442,
+        "configuredReviewScanPassed": true,
+        "configuredReviewScanFiles": 1773,
+        "configuredReviewScanPayloads": 4828,
+        "finalCertificationComplete": false
+      }
+    ],
+    "evidence": {
+      "/home/braydon/Cinemarr/build/plex-segment-origin-development-20260925-attempt3/neo-development-completion.json": "ca02fa14c7b1b0f73abc02ea49421f5ea0432a6b4ffe36a84b5afb25ff02121e",
+      "/home/braydon/Cinemarr-plex-segment-origin/build/plex-segment-origin-live-20260925-attempt2/development-display-1.21.1-neoforge-review.json": "8b8916eba033df7e4c0ee3ba4835cc73e1adf2b127c42884debe914f66389072",
+      "/home/braydon/Cinemarr-plex-segment-origin/build/plex-segment-origin-live-20260925-attempt2/original-content/1.21.1-neoforge/matches.json": "dfefe7cf7a68dbef71b6cad09486a315cc20bf65117cd3a987860f42bfa74808",
+      "/home/braydon/Cinemarr-plex-segment-origin/build/plex-segment-origin-live-20260925-attempt2/audio-review/external-display-1.21.1-neoforge/review.json": "dd4a9a35304c89e2a5cf75b765622261baad1e258819d5b47ad0136facdb7db1",
+      "/home/braydon/Cinemarr/build/plex-segment-origin-development-20260925-attempt3/legacy-development-completion.json": "aad11f9053cba7f7aed92d4c6401096eac8deeda2d4151a1ece34635d4579cbd",
+      "/home/braydon/Cinemarr-plex-segment-origin/build/plex-segment-origin-live-20260925-attempt2/development-display-1.7.10-forge-review.json": "93f9b804512fea3e98288ac5fba9017ce81d30448d92ba36a7dbe5341e4e3071",
+      "/home/braydon/Cinemarr-plex-segment-origin/build/plex-segment-origin-live-20260925-attempt2/original-content/1.7.10-forge/matches.json": "79500c1e2386f1f8ca691892ca05b5b5aa32aea7c70d730fa7b3bf719c768af0",
+      "/home/braydon/Cinemarr-plex-segment-origin/build/plex-segment-origin-live-20260925-attempt2/audio-review/external-display-1.7.10-forge/review.json": "30aec4be3756f714580bd4e70be4027eae5497d009340c1f90124953a21a752e",
+      "/home/braydon/Cinemarr/build/plex-segment-origin-development-20260925-attempt3/configured-legacy-live-review-scan.json": "8c80496f30a6e23db104ad50e76249f0e74f7fd93b1902bca8e93d4acc31fc17",
+      "/home/braydon/Cinemarr/build/plex-segment-origin-development-20260925-attempt3/servers-after-legacy.json": "3cc1f1cb61f9f2878af60030db0082d5b279e17f572ff8565ad9893810677842",
+      "/home/braydon/Cinemarr/build/plex-segment-origin-development-20260925-attempt3/verified-development-build.json": "55abb07baa6e432e556c1a760041ebc7580c06c7bbf02e0378d684306e20cb1d"
+    }
+  },
+  "probePreterminationDiagnostics": {
+    "hostedFailureResolved": false,
+    "baselineSubcaseFailures": 6,
+    "repairedClientExitTests": 9,
+    "repairedFailures": 0,
+    "scope": "Capture bounded owned-JVM stacks before terminating failed protocol/command clients; no capture on success, failures remain failures even if diagnostics fail.",
+    "sourceSha256": {
+      "scripts/run-dedicated-server-gate.sh": "dd4fc8e0436ed49acb0a758a972d04bc110512ee363fed390de34ebc8d181ec3",
+      "scripts/test-client-exit.py": "2ead6300ef2593915f74dd7290068b9c2c42d2d17bccbe3247354a0ab1114434"
+    },
+    "evidenceSha256": {
+      "pretermination-regression-baseline.log": "7a6b43ec247fd9c37585075c7e7f9dbf0e3b96877354dd7f87c3fb1e4957bf66",
+      "pretermination-regression-repaired.log": "3c76ee84ddb9139d2446a299aae79a678ef4507468b49f85212af78cb119423e"
+    },
+    "manifestChecks": {
+      "commands": 30,
+      "allPassed": true,
+      "receipt": "/home/braydon/Cinemarr/build/plex-segment-origin-development-20260925-attempt3/pre-freeze-manifest-checks.json",
+      "sha256": "78adebc152db3f6008f8d5f1b054274aab66ca9e629794ed167e6c13fc10118e"
+    }
+  },
+  "remaining": "Entire final containing-commit certification: two forced builds,62local cases,two fresh legacy main runs,14real-Plex cases,native payload binding,direct review,configured scans,cleanup,18green hosted jobs and downloaded bundle parity. Hosted Forge1.20.2 startup and legacy real-Plex controls setup failures remain unresolved."
 }

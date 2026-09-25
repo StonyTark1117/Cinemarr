@@ -13,7 +13,9 @@ records candidate `7266eac`: two identical builds, all ten GameTests, all 62 loc
 cases and two fresh legacy runs accepted. Real-Plex review then found that a
 quality replacement could show content seven seconds behind its reported clock.
 The shared HLS parser now preserves each segment's original VOD start time;
-development regressions pass, but the repaired artifacts need fresh acceptance.
+its full development build and modern/legacy packaged display reviews pass,
+including original-movie frame comparisons and measured audio. These scoped
+checks do not replace final certification of the repaired artifacts.
 The candidate's hosted run also failed Forge 1.20.2 startup; an older green run
 does not certify this repair. Final readiness requires the complete frozen-commit
 build/runtime matrix, direct image/audio review, exact-artifact live/native

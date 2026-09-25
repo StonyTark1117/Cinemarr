@@ -1,6 +1,24 @@
 # Release acceptance
 
-**Cinemarr 1.0 prerelease: audio recovery repair under validation.**
+**Cinemarr 1.0 prerelease: segment timestamp repair awaiting final certification.**
+
+The [current ledger](1.0_CANDIDATE_LEDGER.md#current-work-plex-segment-timestamps)
+records the rejected `7266eac` candidate and the repaired development evidence.
+That candidate passed two identical builds, all sixteen artifacts, ten GameTests,
+all sixty-two local cases and two fresh legacy runs. Real-Plex review then found
+a seven-second content offset after changing quality. Its hosted CI also failed
+Forge 1.20.2 startup; the previous green run does not certify the repair.
+
+The repaired `0a30986` development build passes with 783 reported tests, five
+skips and no failures. Modern and legacy packaged display cases passed with all
+98 original screenshots reviewed, original-movie matches, measured audio and
+scoped scans/cleanup. The containing diagnostic change captures owned JVM stacks
+before failed probe clients are terminated. Full final-commit local, live,
+native and hosted certification, downloaded artifact parity and final scans
+remain required. The [development manifest](RELEASE_PLEX_SEGMENT_ORIGIN_DEVELOPMENT_20260925.json)
+records the evidence and its limits. No tag or publication is authorized.
+
+## Historical audio-recovery checkpoint
 
 The [current ledger](1.0_CANDIDATE_LEDGER.md#current-work-bounded-audio-recovery)
 and [frozen checkpoint manifest](RELEASE_CERTIFICATION_AC25666.json) record

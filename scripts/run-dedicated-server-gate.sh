@@ -854,6 +854,11 @@ run_acceptance_client() {
     } > "$evidence"
   fi
   if (( result == 0 )); then finish_client_launch "$pid" 120 "$client_console" true || result=1; fi
+  if (( result != 0 )); then
+    # Global cleanup runs after this client is gone. Preserve its owned JVMs now.
+    python3 "$repo_root/scripts/capture-owned-java-stacks.py" \
+      --output "$output_root/$label.$scenario.failed-processes" "$pid" || true
+  fi
   terminate_client_launch "$pid" 20 || result=1
   active_client_pid=""
   return "$result"
@@ -1023,6 +1028,11 @@ run_command_client() {
   fi
 
   if (( result == 0 )); then finish_client_launch "$pid" 120 "$client_console" true || result=1; fi
+  if (( result != 0 )); then
+    # Global cleanup runs after this client is gone. Preserve its owned JVMs now.
+    python3 "$repo_root/scripts/capture-owned-java-stacks.py" \
+      --output "$output_root/$label.$scenario.failed-processes" "$pid" || true
+  fi
   terminate_client_launch "$pid" 20 || result=1
   active_client_pid=""
   return "$result"
