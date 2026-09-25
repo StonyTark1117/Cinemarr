@@ -18,12 +18,17 @@ class LegacyVideoManagerTest {
     }
 
     @Test
-    void skipsPlexPlaceholderSegmentsBeforeSeekOffset() {
+    void skipsPlexPlaceholdersWhilePreservingOriginalSegmentBoundaries() {
         StringBuilder playlist = new StringBuilder("#EXTM3U\n");
         for (int index = 0; index < 40; index++) playlist.append("#EXTINF:8, nodesc\nsegment-").append(index).append(".ts\n");
         List<stonytark.cinemarr.core.server.ActiveVideoMedia.SegmentReference> values = LegacyVideoManager.parsePlaylist(playlist.toString(), 290_000);
         assertEquals("segment-36.ts", values.get(0).uri);
-        assertEquals(290_000, values.get(0).pts);
+        // Segment 36 contains the requested time but begins at 36 * 8 seconds.
+        assertEquals(288_000, values.get(0).pts);
+        assertEquals(8_000, values.get(0).duration);
+        assertEquals("segment-37.ts", values.get(1).uri);
+        assertEquals(296_000, values.get(1).pts);
+        assertEquals(4, values.size());
     }
 
     @Test

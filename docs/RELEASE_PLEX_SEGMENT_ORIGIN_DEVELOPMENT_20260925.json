@@ -319,5 +319,22 @@
     "All original final-commit builds, runtime/live/native binding, reviews, scans, cleanup, greenCI and downloaded parity remain required."
   ],
   "configuredScanReceipt": "build/certification-20260924-audio-recovery/configured-plex-segment-origin-development-scan.json",
-  "publicationAuthorized": false
+  "publicationAuthorized": false,
+  "developmentBuildAttempt": {
+    "head": "f0fa2f4cd61ff5ab2570b950c6f57ac81c1171b8",
+    "exit": 1,
+    "sourceUnchanged": true,
+    "failedTest": "LegacyVideoManagerTest.skipsPlexPlaceholderSegmentsBeforeSeekOffset",
+    "expectedMs": 290000,
+    "actualMs": 288000,
+    "assessment": "The old adapter test relabeled a complete VOD segment with the requested seek time. Segment 36 begins at 288 seconds; the corrected test verifies that boundary, duration, next segment and retained count. No production code change was required.",
+    "receipt": "build/plex-segment-origin-development-20260925/build-receipt.json",
+    "correctedFocusedTests": {
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "xmlSha256": "b0aafe42d3c455555b634dad03f962aac6e8e378d2cdbd7ebc4f08ee60c360e4"
+    },
+    "fullBuildAfterCorrection": "pending"
+  }
 }
