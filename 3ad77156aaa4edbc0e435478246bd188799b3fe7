@@ -1,0 +1,158 @@
+# Cinemarr candidate validation result
+
+Recorded 2026-09-25T21:58:11.211794+00:00. Candidate `3ad77156aaa4edbc0e435478246bd188799b3fe7` is on `origin/main`; both worktrees are clean. This is **not a release-ready or goal-complete declaration**. Two original incidents remain unresolved.
+
+All required validation scopes now have passing evidence:
+
+| Scope | Result |
+| --- | --- |
+| Forced builds | 2; all 18 bundle files identical |
+| JAR inspections / GameTests | 16 / 10 |
+| Local runtime cases / fresh legacy runs | 62 / 2 |
+| Exact-main hosted CI | 18 jobs; 62 runtime cases; matching artifacts |
+| Native verification | Windows x64 and Linux ARM64; 6 runs |
+| Representative rendering adapters | 6 reviewed |
+| Real Plex | 4 controls, 4 display, 4 recovery, 2 lifecycle |
+| Plex image review | All 580 originals inspected |
+| Original-movie content checks | 24 paused frames; maximum timestamp difference below 0.169 seconds |
+| Configured scans | 75 passed; all 25,274 covered files unchanged |
+| Cleanup / delivery | Owned runtimes and native VMs stopped; four servers restored/stopped; both artifact directories match |
+
+The final-record scan and its closure are separate receipts named in `certification-outcome.json`. The original failed invocations remain preserved. No complete-suite retry was launched. No tagging, publication or release creation was authorized or performed.
+
+## What still prevents completion
+
+1. Fabric 26.2's original 3.272-second client stall produced PCM silence and a failed correlation result. The isolated check and subsequently required local display, capacity and Plex checks passed, but neither cause nor a product fix has been established.
+2. Legacy 1.7.10's original independent-display input sequence submitted unchanged dimensions. An observed diagnostic case and subsequent live controls/display cases passed without repair. The original input loss remains unexplained.
+
+These require an explicit disposition under the goal's requirement to resolve known failures. Later passes have not been used to erase the original failures. No additional diagnostic-only run is queued.
+
+## Findings resolved without another runtime run
+
+- The NeoForge reconnect screenshot was black during the original movie's black-to-bicycle transition. A bounded three-second original-media excerpt and saved timestamps explain the sequential screenshot difference; no product change was made.
+- The legacy manual-retry diagnostic used a supported short ready format. The runtime independently required the library-installation log; the review now records that evidence without inventing uncaptured manual counters.
+- Helper path/hash and scan-configuration corrections were applied only to retained-evidence processing. Their failed attempts and provenance are preserved.
+
+The earlier NeoForge 1.20.2 native-loader deadlock was proven from native stacks; the host OpenGL-library workaround passed focused and affected integration checks. It did not change the product JARs.
+
+See `requirements.json` for scope receipts and `certification-outcome.json` for their hashes. The exact tested artifacts are already in `/home/braydon/Cinemarr/build/releases`. The deadline is 2026-09-26 02:22:23 UTC.
+
+## Evidence manifest
+
+```json
+{
+  "candidate": "3ad77156aaa4edbc0e435478246bd188799b3fe7",
+  "recordedAt": "2026-09-25T21:58:11.211794+00:00",
+  "goalComplete": false,
+  "releaseReady": false,
+  "publicationAuthorized": false,
+  "requiredValidationScopesHavePassingEvidence": true,
+  "completeSuiteRetried": false,
+  "counts": {
+    "forcedBuilds": 2,
+    "jarArtifacts": 16,
+    "gameTests": 10,
+    "localCases": 62,
+    "freshLegacyRuns": 2,
+    "hostedJobs": 18,
+    "bundleFiles": 18,
+    "nativePlatforms": 2,
+    "nativeRuns": 6,
+    "deepAdapterReviews": 6,
+    "plexCases": 14,
+    "directlyReviewedPlexImages": 580,
+    "originalMoviePausedFrameMatches": 24,
+    "configuredScopeScans": 75,
+    "unchangedScannedFiles": 25274
+  },
+  "unresolvedIncidents": [
+    {
+      "profile": "26.2-fabric",
+      "incident": "Original3.272second client stall and physicalPCM failure",
+      "rootCauseProven": false,
+      "productFixClaimed": false,
+      "laterPassingChecksDoNotResolveOriginal": true,
+      "disposition": "pending-user-decision"
+    },
+    {
+      "profile": "1.7.10-forge",
+      "incident": "Original malformed-input sequence submitted unchanged dimensions",
+      "rootCauseProven": false,
+      "productFixClaimed": false,
+      "laterPassingChecksDoNotResolveOriginal": true,
+      "disposition": "unresolved-original-incident"
+    }
+  ],
+  "resolvedEnvironmentIssue": "NeoForge1.20.2 LWJGL native-loader deadlock; verified host workaround and affected integration",
+  "focusedVisualFinding": "NeoForge reconnect black screenshot matches original movie transition timing; no code change or runtime rerun",
+  "cleanup": "Owned local runtimes and both nativeVMs stopped; fourtestservers restored/stopped; current source and artifact delivery verified",
+  "finalRecordScanRequired": "configured-final-records-scan.json",
+  "finalClosureRequired": "final-record-closure.json",
+  "evidence": {
+    "requirements.json": "780b911e57318e1902c98cfcfc59f45755723c38cee72f009eea4187b11f4152",
+    "local-build-pair-acceptance.json": "fc48bc09c8119f9564b5b72d73c3b7329d4caf9cd70c67bf7b9535904f26b9cb",
+    "hosted-scoped-acceptance.json": "8f7043f1ba9e68ab388bc5e34b3ef8dea7680da61c3874646e0a382a80ac59df",
+    "native-variants-scoped-acceptance.json": "6c514c25bec20992cd2d1bf0a0090e99a43c999ade1bb60d617eaad080a9b63b",
+    "consolidated-runtime-coverage.json": "953da4063dea4240791b8240848de0d9b4a929ba0a698bb1d25618bd89f19339",
+    "legacy-main-second-scoped-acceptance.json": "456118df080cccf49521e41277685426b10c5b389413ba1dbe242b547f534efc",
+    "same-artifact-deep-review.json": "4741b4ad7a16e4f26c9cb6d5f832630f0bcb11956ed286bd51d2b33771db6898",
+    "external-supplements-scoped-acceptance.json": "3a6694513dbaf1716e3225b50ab9afbf289f097fbf6e9248fd54b8f2932ff781",
+    "completed-scan-inventory.json": "d86868f19eb3b20a51e52d09d47eb5c88db961110097231de59a6fd600f4d8a3",
+    "completed-scan-inventory-current-hashes.json": "1e3be89923d67dd9e5422f7ba337fddcacc2bee94ad2e4980b4e2d87dbe5c44a",
+    "final-delivery-and-local-cleanup.json": "5ee82f4a21204f9a1a76fbb94900dbb7fa9fb564dbe9d48ba8f34bf977e62cca",
+    "native-final-cleanup.json": "7359371d3b4ce0ab3b0d8cbd316f2abdc6a0b469af915debe84d4a9b7a100fae",
+    "servers-after-live.json": "d0829b314f789d1120a1aecf6b0c62661d0fd4ccfdc2fc3380240d9ffc52d8e2",
+    "fabric262-audio-investigation.json": "81eff6db55e3e93553a59d081e8e86e773e06f4315a045287339aa99e561a371",
+    "legacy-display-input-investigation.json": "bb8b4693b737761ecc96b0fd2e73808631d148398d7451c2adbb79102a421d41",
+    "host-lwjgl-workaround-acceptance.json": "70c81fba2a50d4b9b5bf53bcad5e2a0402514008010597e3c31500b5cf167fcd",
+    "external-controls-1.20.1-quilt-scoped-acceptance.json": "4b5bdb1ae6c0c1a3aacbadee5df6d3e866152e1027c039dcc4093eedbbc0d0e6",
+    "external-controls-1.7.10-forge-scoped-acceptance.json": "0ee199bf3becc959fd32a1f31063ee2eae186dee1d722c6c20d755398617c8b2",
+    "external-controls-1.21.1-neoforge-scoped-acceptance.json": "9f7b9d17173eabc04751fd58dabf8a56d932dbf88351b328b11d32f1e04f7ef2",
+    "external-controls-26.2-fabric-scoped-acceptance.json": "19f13e71245afb68fd0eefd51dae6b5924e2ddbcec283e43e0cc6a19e687acb8",
+    "external-display-1.20.1-quilt-scoped-acceptance.json": "fd9cd3233990543c09a3159bff9971fe1cd0b09695357745b05973180389f5ae",
+    "external-display-1.7.10-forge-scoped-acceptance.json": "a0ef3460a417bac0739a921907c2df1bd18a4ec72eaf300be4c0e88add516cf3",
+    "external-display-1.21.1-neoforge-scoped-acceptance.json": "a5f14afa58143c7dfd76c5d65f2646acc7acda57fdaca2789c0216fd8d525d67",
+    "external-display-26.2-fabric-scoped-acceptance.json": "c9cfda5960fb1fdc6e95f93d7b94068728ab5b95d7d976031cdfb7d9a88e4b2b",
+    "forensics/neoforge-live-reconnect-black/diagnosis.json": "985f82a6dca968f69fb396bff7c8999b7fc5fbcf976e72c938ab481d19ec61ca",
+    "forensics/review-helper-paths/legacy-manual-ready-diagnostic.json": "4199932fbdbf1bb7acb0e642525c05c5e92491cd3da5e824eb9e4f6da2349ea8"
+  },
+  "deadlineUtc": "2026-09-26T02:22:23Z"
+}
+```
+
+## Final record closure
+
+```json
+{
+  "candidate": "3ad77156aaa4edbc0e435478246bd188799b3fe7",
+  "checkedAt": 1790373642.2494636,
+  "recordsAndEvidenceBindingsVerified": true,
+  "finalConfiguredScanPassed": true,
+  "scopeScanCount": 75,
+  "finalRecordScanFiles": 1134,
+  "scannedRecordSha256": "7bd99b442fa9aecc5db30a8f0fadd78e21bf7ca88131e2f3a16f037f05584aaa",
+  "reportSha256": "d0e6f46d41184cad10e066add24d9dc99e88fcc9f1abb6469157be3279155747",
+  "configuredFinalScanSha256": "a10a21e276b0528631d406716c8341abf40f8f889a27d161224061f45107e6a3",
+  "goalComplete": false,
+  "releaseReady": false,
+  "unresolvedIncidents": [
+    {
+      "profile": "26.2-fabric",
+      "incident": "Original3.272second client stall and physicalPCM failure",
+      "rootCauseProven": false,
+      "productFixClaimed": false,
+      "laterPassingChecksDoNotResolveOriginal": true,
+      "disposition": "pending-user-decision"
+    },
+    {
+      "profile": "1.7.10-forge",
+      "incident": "Original malformed-input sequence submitted unchanged dimensions",
+      "rootCauseProven": false,
+      "productFixClaimed": false,
+      "laterPassingChecksDoNotResolveOriginal": true,
+      "disposition": "unresolved-original-incident"
+    }
+  ],
+  "remainingWork": "Explicit disposition of two original incidents; no automatic runtime retries queued"
+}
+```
