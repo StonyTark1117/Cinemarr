@@ -1263,8 +1263,11 @@ wait_for_audio_playing() {
       echo "$label: $role client failed before playback; see $client_console" >&2
       return 2
     fi
-    if ! group_alive "$pid"; then
+    if ! client_launch_alive "$pid"; then
       echo "$label: $role client did not reach the real-client acceptance-ready state; see $client_console" >&2
+      local launcher_status=0
+      wait "$pid" || launcher_status=$?
+      echo "$label: $role launcher exit status=$launcher_status" >&2
       (( initialized == 0 )) && return 1 || return 2
     fi
     if (( initialized == 0 && SECONDS >= initialization_deadline )); then
@@ -3001,6 +3004,15 @@ group_alive() {
   local group_id=$1
   ps -eo pgid=,stat= | awk -v expected="$group_id" \
     '$1 == expected && $2 !~ /^Z/ { found = 1 } END { exit !found }'
+}
+
+client_launch_alive() {
+  local root=$1
+  # A background launcher can still be alive before exec setsid creates its
+  # private group. Group membership alone would reject that valid startup
+  # interval and kill the client before it can produce any console output.
+  ps -eo pid=,pgid=,stat= | awk -v expected="$root" \
+    '($1 == expected || $2 == expected) && $3 !~ /^Z/ { found = 1 } END { exit !found }'
 }
 
 stop_group() {

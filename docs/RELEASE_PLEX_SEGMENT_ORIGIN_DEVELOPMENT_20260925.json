@@ -313,7 +313,7 @@
     "conclusion": "failure"
   },
   "limitations": [
-    "No repaired release JARs or packaged Minecraft runtime passes yet.",
+    "The HLS repair has a passing full development build and deployed JARs, but no successful repaired packaged runtime yet. The additional launcher harness correction still requires its containing build and live verification.",
     "Direct original-content reference is12fps sampled, providing1/12s sample resolution; strong image matches prove multi-second mismatch, not frame-exact source timestamps.",
     "Existing accepted scope receipts describe only the baseline candidate and cannot certify this source change.",
     "All original final-commit builds, runtime/live/native binding, reviews, scans, cleanup, greenCI and downloaded parity remain required."
@@ -335,6 +335,168 @@
       "errors": 0,
       "xmlSha256": "b0aafe42d3c455555b634dad03f962aac6e8e378d2cdbd7ebc4f08ee60c360e4"
     },
-    "fullBuildAfterCorrection": "pending"
+    "fullBuildAfterCorrection": {
+      "head": "c39c1e06c01f34c8fc160a3d9932a0ecbe89892c",
+      "verified": {
+        "candidate": "c39c1e06c01f34c8fc160a3d9932a0ecbe89892c",
+        "singleDevelopmentBuildPassed": true,
+        "xmlReports": {
+          "tests": 783,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 5
+        },
+        "groups": {
+          "platforms/mc26.2/neoforge/test": {
+            "tests": 1,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0
+          },
+          "platforms/mc26.2/forge/test": {
+            "tests": 1,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0
+          },
+          "platforms/mc26.2/fabric/test": {
+            "tests": 1,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0
+          },
+          "platforms/mc26.1.2/neoforge/test": {
+            "tests": 1,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0
+          },
+          "platforms/mc26.1.2/forge/test": {
+            "tests": 1,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0
+          },
+          "platforms/mc26.1.2/fabric/test": {
+            "tests": 1,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0
+          },
+          "platforms/mc1.7.10/forge/test": {
+            "tests": 385,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 2
+          },
+          "platforms/mc1.21.1/forge/test": {
+            "tests": 1,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0
+          },
+          "platforms/mc1.21.1/fabric/test": {
+            "tests": 1,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0
+          },
+          "platforms/mc1.20.2/neoforge/test": {
+            "tests": 1,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0
+          },
+          "platforms/mc1.20.2/forge/test": {
+            "tests": 2,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0
+          },
+          "platforms/mc1.20.2/fabric/test": {
+            "tests": 1,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0
+          },
+          "platforms/mc1.20.1/neoforge/test": {
+            "tests": 1,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0
+          },
+          "platforms/mc1.20.1/forge/test": {
+            "tests": 1,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0
+          },
+          "platforms/mc1.20.1/fabric/test": {
+            "tests": 1,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0
+          },
+          "root/test": {
+            "tests": 66,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 2
+          },
+          "core/test": {
+            "tests": 317,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 1
+          }
+        },
+        "artifacts": 16,
+        "bundleFiles": 18,
+        "gameTests": 10,
+        "sourceUnchanged": true,
+        "scope": "Development only; full frozen certification and packaged playback pending"
+      },
+      "receiptSha256": "f748381cb8808be6fa8a8f88e5d2fb26574b0dfead9b58b103f4de653babebc4",
+      "configuredScanSha256": "a22ad245326eb9d42f30ca5231440bc7f25f74a93c431da67722bdde34356aa0"
+    }
+  },
+  "developmentLiveAttempt": {
+    "head": "c39c1e06c01f34c8fc160a3d9932a0ecbe89892c",
+    "state": "failed-before-client-ready",
+    "accepted": false,
+    "elapsedSeconds": 47.68020462989807,
+    "leaderConsoleBytes": 0,
+    "screenshots": 0,
+    "displayReceiptPresent": false,
+    "sourceAndBundleUnchanged": true,
+    "managedServerReadback": "servers-after-live.json",
+    "independentCleanupReceipt": "/home/braydon/Cinemarr-plex-segment-origin/build/plex-segment-origin-live-20260925/external-display-1.21.1-neoforge-cleanup-verification.json",
+    "remainingOwnedLocalRuntimeProcesses": [],
+    "hypothesis": "Immediate process-group readiness check may race with child setsid. The deterministic delayed-child probe proves this liveness check can reject a live pre-setsid child. Twenty ordinary launcher-shape probes did not reproduce a false-dead observation; the exact cause of this live failure is not yet proven.",
+    "localProbe": {
+      "log": "probe-client-startup-group-race.log",
+      "sha256": "518be35660e80a1d32358ecb4ca2fabbb1f2e17ba6a98c983cf23411d78148bc"
+    },
+    "next": "Investigate actual launcher exit/liveness before another live run. Preserve this failed attempt and all current JAR hashes; no blind retry. Full final certification remains open."
+  },
+  "launcherReadinessRepair": {
+    "baselineRegressionTests": 2,
+    "baselineFailures": 1,
+    "repairedClientExitTests": 8,
+    "repairedFailures": 0,
+    "productionCodeChanged": false,
+    "exactLiveFailureCauseProven": false,
+    "sourceSha256": {
+      "scripts/run-dedicated-server-gate.sh": "d343c9a9a8760faa2f6fb798782251db444e628eefcb2af252f246bc1d8cc818",
+      "scripts/test-client-exit.py": "d489dafce622bf639e30b0db831213193290a410936b85a8c5690224b87581ab"
+    },
+    "evidenceSha256": {
+      "startup-regression-baseline.log": "990d0adf50e37d21775752370ca8db1c77212cbc0b2b22be0b072b5bb6d79daa",
+      "startup-regression-repaired-with-exit-status.log": "e24aaeddbef8e1e3d2c7f47910352e1b69c76aab7b00a637503f8ebe49200ad7",
+      "servers-after-live.json": "b23a71f470c92445dd7f52b8060c38a80bc3d48ce3606415cf903658f6f3d290",
+      "deployment.json": "2cf9f1864c3a07500cb5de01c703c37c06ebac968465137eefa942f906aec2df"
+    },
+    "containingBuild": "pending",
+    "freshPackagedLiveVerification": "pending"
   }
 }

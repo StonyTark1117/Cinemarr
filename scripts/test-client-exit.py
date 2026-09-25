@@ -13,6 +13,55 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ClientExitTest(unittest.TestCase):
+    def test_audio_readiness_waits_for_a_live_launcher_before_setsid(self):
+        self.assertEqual(0, self.audio_readiness_probe(True).returncode)
+
+    def test_audio_readiness_rejects_a_launcher_that_exited_before_setsid(self):
+        result = self.audio_readiness_probe(False)
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn('did not reach the real-client acceptance-ready state', result.stderr)
+        self.assertIn('launcher exit status=7', result.stderr)
+
+    def audio_readiness_probe(self, becomes_ready):
+        source = (ROOT / 'scripts/run-dedicated-server-gate.sh').read_text()
+        functions = []
+        for name in ('group_alive', 'client_launch_alive', 'wait_for_audio_playing'):
+            match = re.search(r'(?ms)^' + name + r'\(\) \{\n.*?^\}', source)
+            if match is not None:
+                functions.append(match.group())
+        with tempfile.TemporaryDirectory(prefix='cinemarr-launch-ready-') as directory:
+            root = Path(directory)
+            child = root / 'client.sh'
+            child.write_text('#!/bin/sh\nprintf "Acceptance video ready: fixture\\n"\n')
+            shell = '''
+set -uo pipefail
+output_root=$1
+video_client_gate=true
+client_bootstrap_failed() { return 1; }
+client_playback_failed() { return 1; }
+'''
+            if becomes_ready:
+                # The maintained launcher forks before setsid. Hold that valid
+                # scheduling state deterministically; no Minecraft or X needed.
+                shell += '''
+( sleep .4; exec setsid sh "$output_root/client.sh" ) > "$output_root/test.audio-leader.console.log" 2>&1 &
+pid=$!
+'''
+            else:
+                shell += '''
+( exit 7 ) > "$output_root/test.audio-leader.console.log" 2>&1 &
+pid=$!
+wait "$pid" || true
+'''
+            shell += '\n'.join(functions) + '''
+wait_for_audio_playing test leader "$pid"
+result=$?
+wait "$pid" 2>/dev/null || true
+exit "$result"
+'''
+            return subprocess.run(['bash', '-c', shell, 'readiness-test', directory],
+                                  capture_output=True, text=True, timeout=5)
+
     def test_all_client_exec_boundaries_strip_server_credentials(self):
         source = (ROOT / 'scripts/run-dedicated-server-gate.sh').read_text()
         prefixes = re.findall(r'exec setsid (env[^\n]* XDG_SESSION_TYPE=x11)', source)
