@@ -51,6 +51,28 @@ class PlexVideoServiceTest {
         }
     }
 
+    @Test void replacementRequestsPreserveTheActualVodSegmentStart() throws Exception {
+        StringBuilder playlist = new StringBuilder("#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:0\n");
+        for (int i = 0; i < 6; i++) playlist.append("#EXTINF:8,\nsegment").append(i).append(".ts\n");
+        transcodePlaylist.set(playlist.toString());
+        PlexVideoService service = new PlexVideoService(baseUrl, "secret-token");
+        VideoMediaItem movie = service.metadata("10");
+        for (long requested : new long[] {31_000, 31_750}) {
+            PlexVideoService.VideoSession session = service.start(movie,
+                    RenditionPolicy.choose(426, 240, 1920, 1080, 640, 360), requested, null, null);
+            try {
+                assertTrue(transcodeQuery.get().contains("offset=31&"));
+                PlexVideoService.MediaPlaylist media = service.mediaPlaylist(session, requested);
+                assertEquals("segment3.ts", media.segments().get(0).uri());
+                assertEquals(24_000, media.segments().get(0).presentationTimeMs(),
+                        "The segment returned for a 31-second seek still contains the 24-32 second interval");
+                assertEquals(32_000, media.segments().get(1).presentationTimeMs());
+            } finally {
+                service.stop(session);
+            }
+        }
+    }
+
     @BeforeEach void start() throws Exception {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();

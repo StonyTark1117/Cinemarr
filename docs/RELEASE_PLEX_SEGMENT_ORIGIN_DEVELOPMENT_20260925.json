@@ -1,0 +1,323 @@
+{
+  "schemaVersion": 1,
+  "state": "development-repair-not-certified",
+  "baselineCandidate": "7266eacd6e3c3b412f773337b363bfa80cf0ceb3",
+  "repairBranch": "codex/fix-plex-segment-origin",
+  "problem": "A replacement requested at31s retained the24-32s VOD segment but labeled its start31s, causing seven-second content lag despite matching reported clocks.",
+  "independentContentEvidence": [
+    {
+      "role": "leader",
+      "television": "9aec70bf-bb0a-429b-aab9-6cd967f591a4",
+      "mapping": "ONE_PIXEL_PER_BLOCK",
+      "requested": "240p",
+      "retainedRawSha256": "cfe8a443155f43d1f206c7a37fabe592671f621110c50aa67a275aa2dd76463a",
+      "reportedPtsSeconds": 32.921611,
+      "bestOriginalSampleSeconds": 25.916666666666668,
+      "bestCorrelation": 0.9801547049454408,
+      "reportedPtsSampleCorrelation": -0.06204822202268796,
+      "reportedMinusBestSeconds": 7.004944333333331,
+      "distinctPeaks": [
+        {
+          "frameIndex": 311,
+          "sampleTimeSeconds": 25.916666666666668,
+          "correlation": 0.9801547049454408
+        },
+        {
+          "frameIndex": 323,
+          "sampleTimeSeconds": 26.916666666666668,
+          "correlation": 0.6150824758354895
+        },
+        {
+          "frameIndex": 291,
+          "sampleTimeSeconds": 24.25,
+          "correlation": 0.531587460836778
+        },
+        {
+          "frameIndex": 279,
+          "sampleTimeSeconds": 23.25,
+          "correlation": 0.5070065624783564
+        },
+        {
+          "frameIndex": 335,
+          "sampleTimeSeconds": 27.916666666666668,
+          "correlation": 0.4162892753210778
+        }
+      ],
+      "matchedPreview": "forensics/neoforge-real-plex-display-frame-difference/leader-9aec70bf-bb0a-429b-aab9-6cd967f591a4-matched-original.png",
+      "matchedPreviewSha256": "b85143d1da922d55ce159bfc5cf6ecb0a518c5d7fb9977858e52b0d9140331d6"
+    },
+    {
+      "role": "leader",
+      "television": "e038c3d1-f454-4930-b67e-8b3b677da1d5",
+      "mapping": "DETAILED",
+      "requested": "144p",
+      "retainedRawSha256": "c7f7481cd192176446efee3bb7509de2dc9539f8336e9f32f08a51d83700032b",
+      "reportedPtsSeconds": 32.909989,
+      "bestOriginalSampleSeconds": 32.833333333333336,
+      "bestCorrelation": 0.8021352651027107,
+      "reportedPtsSampleCorrelation": 0.5363067783377636,
+      "reportedMinusBestSeconds": 0.07665566666666734,
+      "distinctPeaks": [
+        {
+          "frameIndex": 394,
+          "sampleTimeSeconds": 32.833333333333336,
+          "correlation": 0.8021352651027107
+        },
+        {
+          "frameIndex": 252,
+          "sampleTimeSeconds": 21.0,
+          "correlation": 0.2634262934170115
+        },
+        {
+          "frameIndex": 240,
+          "sampleTimeSeconds": 20.0,
+          "correlation": 0.22861018118806473
+        },
+        {
+          "frameIndex": 425,
+          "sampleTimeSeconds": 35.416666666666664,
+          "correlation": 0.22053127889271637
+        },
+        {
+          "frameIndex": 382,
+          "sampleTimeSeconds": 31.833333333333332,
+          "correlation": 0.20720232244664777
+        }
+      ],
+      "matchedPreview": "forensics/neoforge-real-plex-display-frame-difference/leader-e038c3d1-f454-4930-b67e-8b3b677da1d5-matched-original.png",
+      "matchedPreviewSha256": "8134acf96c58de21160eee1a535c642202891a0ff69a07b13a7625418e9d5d5c"
+    },
+    {
+      "role": "leader",
+      "television": "534f2c4f-d667-4b24-b2ff-331b327661eb",
+      "mapping": "DETAILED",
+      "requested": "480p",
+      "retainedRawSha256": "64aba8c20253e223925bbcfa96bbc712645d6f7110dfb7c52f36c4f77e6363c7",
+      "reportedPtsSeconds": 32.826578,
+      "bestOriginalSampleSeconds": 32.75,
+      "bestCorrelation": 0.8328760308238342,
+      "reportedPtsSampleCorrelation": 0.54580691363346,
+      "reportedMinusBestSeconds": 0.07657799999999781,
+      "distinctPeaks": [
+        {
+          "frameIndex": 393,
+          "sampleTimeSeconds": 32.75,
+          "correlation": 0.8328760308238342
+        },
+        {
+          "frameIndex": 251,
+          "sampleTimeSeconds": 20.916666666666668,
+          "correlation": 0.2611392177082182
+        },
+        {
+          "frameIndex": 239,
+          "sampleTimeSeconds": 19.916666666666668,
+          "correlation": 0.24185556776510794
+        },
+        {
+          "frameIndex": 424,
+          "sampleTimeSeconds": 35.333333333333336,
+          "correlation": 0.22953436885228015
+        },
+        {
+          "frameIndex": 227,
+          "sampleTimeSeconds": 18.916666666666668,
+          "correlation": 0.22367966472446035
+        }
+      ],
+      "matchedPreview": "forensics/neoforge-real-plex-display-frame-difference/leader-534f2c4f-d667-4b24-b2ff-331b327661eb-matched-original.png",
+      "matchedPreviewSha256": "a4741ff5e1b2575987b18757f3a0fbf1bfd5638db96de3a82010eaf7ff3ea80e"
+    },
+    {
+      "role": "follower",
+      "television": "e038c3d1-f454-4930-b67e-8b3b677da1d5",
+      "mapping": "DETAILED",
+      "requested": "144p",
+      "retainedRawSha256": "043824721baed324373354c7b162abba522d050b2065c202ae0129d5f47c3424",
+      "reportedPtsSeconds": 32.868278,
+      "bestOriginalSampleSeconds": 32.75,
+      "bestCorrelation": 0.9064788108531139,
+      "reportedPtsSampleCorrelation": 0.6511320646613906,
+      "reportedMinusBestSeconds": 0.11827799999999655,
+      "distinctPeaks": [
+        {
+          "frameIndex": 393,
+          "sampleTimeSeconds": 32.75,
+          "correlation": 0.9064788108531139
+        },
+        {
+          "frameIndex": 251,
+          "sampleTimeSeconds": 20.916666666666668,
+          "correlation": 0.25362913131407777
+        },
+        {
+          "frameIndex": 239,
+          "sampleTimeSeconds": 19.916666666666668,
+          "correlation": 0.22534028822779636
+        },
+        {
+          "frameIndex": 419,
+          "sampleTimeSeconds": 34.916666666666664,
+          "correlation": 0.21124579589128148
+        },
+        {
+          "frameIndex": 227,
+          "sampleTimeSeconds": 18.916666666666668,
+          "correlation": 0.19803262920202938
+        }
+      ],
+      "matchedPreview": "forensics/neoforge-real-plex-display-frame-difference/follower-e038c3d1-f454-4930-b67e-8b3b677da1d5-matched-original.png",
+      "matchedPreviewSha256": "a4741ff5e1b2575987b18757f3a0fbf1bfd5638db96de3a82010eaf7ff3ea80e"
+    },
+    {
+      "role": "follower",
+      "television": "9aec70bf-bb0a-429b-aab9-6cd967f591a4",
+      "mapping": "ONE_PIXEL_PER_BLOCK",
+      "requested": "240p",
+      "retainedRawSha256": "f1ae1bfe8a47fa851c7d5517f16fbf60530638eb2acfce4fa47d550b8d25ad86",
+      "reportedPtsSeconds": 32.8799,
+      "bestOriginalSampleSeconds": 25.916666666666668,
+      "bestCorrelation": 0.8688411533911474,
+      "reportedPtsSampleCorrelation": -0.06468356301268997,
+      "reportedMinusBestSeconds": 6.963233333333331,
+      "distinctPeaks": [
+        {
+          "frameIndex": 311,
+          "sampleTimeSeconds": 25.916666666666668,
+          "correlation": 0.8688411533911474
+        },
+        {
+          "frameIndex": 323,
+          "sampleTimeSeconds": 26.916666666666668,
+          "correlation": 0.609972909938314
+        },
+        {
+          "frameIndex": 298,
+          "sampleTimeSeconds": 24.833333333333332,
+          "correlation": 0.5376287734428221
+        },
+        {
+          "frameIndex": 281,
+          "sampleTimeSeconds": 23.416666666666668,
+          "correlation": 0.5284768700108452
+        },
+        {
+          "frameIndex": 335,
+          "sampleTimeSeconds": 27.916666666666668,
+          "correlation": 0.42695803783542985
+        }
+      ],
+      "matchedPreview": "forensics/neoforge-real-plex-display-frame-difference/follower-9aec70bf-bb0a-429b-aab9-6cd967f591a4-matched-original.png",
+      "matchedPreviewSha256": "b85143d1da922d55ce159bfc5cf6ecb0a518c5d7fb9977858e52b0d9140331d6"
+    },
+    {
+      "role": "follower",
+      "television": "534f2c4f-d667-4b24-b2ff-331b327661eb",
+      "mapping": "DETAILED",
+      "requested": "480p",
+      "retainedRawSha256": "64aba8c20253e223925bbcfa96bbc712645d6f7110dfb7c52f36c4f77e6363c7",
+      "reportedPtsSeconds": 32.826578,
+      "bestOriginalSampleSeconds": 32.75,
+      "bestCorrelation": 0.8328760308238342,
+      "reportedPtsSampleCorrelation": 0.54580691363346,
+      "reportedMinusBestSeconds": 0.07657799999999781,
+      "distinctPeaks": [
+        {
+          "frameIndex": 393,
+          "sampleTimeSeconds": 32.75,
+          "correlation": 0.8328760308238342
+        },
+        {
+          "frameIndex": 251,
+          "sampleTimeSeconds": 20.916666666666668,
+          "correlation": 0.2611392177082182
+        },
+        {
+          "frameIndex": 239,
+          "sampleTimeSeconds": 19.916666666666668,
+          "correlation": 0.24185556776510794
+        },
+        {
+          "frameIndex": 424,
+          "sampleTimeSeconds": 35.333333333333336,
+          "correlation": 0.22953436885228015
+        },
+        {
+          "frameIndex": 227,
+          "sampleTimeSeconds": 18.916666666666668,
+          "correlation": 0.22367966472446035
+        }
+      ],
+      "matchedPreview": "forensics/neoforge-real-plex-display-frame-difference/follower-534f2c4f-d667-4b24-b2ff-331b327661eb-matched-original.png",
+      "matchedPreviewSha256": "a4741ff5e1b2575987b18757f3a0fbf1bfd5638db96de3a82010eaf7ff3ea80e"
+    }
+  ],
+  "actualPlaylistReplay": {
+    "baseline": [
+      "00003.ts 31000",
+      "00004.ts 39000"
+    ],
+    "repaired": [
+      "00003.ts 24000",
+      "00004.ts 32000"
+    ]
+  },
+  "regressionBaseline": {
+    "tests": 26,
+    "failed": 4
+  },
+  "repairedTests": {
+    "root": {
+      "tests": 66,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 2
+    },
+    "core": {
+      "tests": 317,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 1
+    }
+  },
+  "repairedSourceSha256": {
+    "core/src/main/java/stonytark/cinemarr/core/server/HlsPlaylist.java": "764d1477400af8975aecbf0878bd09adbf5a36facbbcd68b69a206dd5d0f6968",
+    "core/src/main/java/stonytark/cinemarr/core/server/PlexVideoService.java": "6d3f8d92f372f3edab470a46e582e3a02be8d8e9d04e90389501cb659f9a5c68",
+    "core/src/test/java/stonytark/cinemarr/core/server/HlsPlaylistTest.java": "f01211d73c039d80305b835df6a722266a8fd16582599a4b9d1d97057cdd4f2d",
+    "core/src/test/java/stonytark/cinemarr/core/server/PlexVideoServiceTest.java": "f6f0a63c361d92c9495d82d4761f5c5a474c6f450308427836d9cf1ba43703b7"
+  },
+  "evidence": {
+    "build/certification-20260924-audio-recovery/forensics/neoforge-real-plex-display-frame-difference/original-content-matches.json": "164db0ea395a3ef5f236036bc9144e0ddc276d689e7da049998cc190919fa4fb",
+    "build/certification-20260924-audio-recovery/forensics/neoforge-real-plex-display-frame-difference/original-opening-01/receipt.json": "aa7570816b75d9cab670a73a0ffdf5bf31d3dc1d73e62b0584b6af6b6bcf93cd",
+    "build/certification-20260924-audio-recovery/forensics/neoforge-real-plex-display-frame-difference/replacement-segment-offset31-01/receipt.json": "3cbf587994da8e7a2d61b1bc29e0e60fcca9859b78007f3bc821f0b00bcebd1d",
+    "build/certification-20260924-audio-recovery/forensics/neoforge-real-plex-display-frame-difference/replacement-segment-offset31-01/original-content-matches.json": "6c9bbd22c2f8a001781aced6825b93888d869eda4f365e555194ada432f74f22",
+    "build/certification-20260924-audio-recovery/forensics/neoforge-real-plex-display-frame-difference/compiled-parser-replay.json": "b5a2944c4eda624a9525472b251ab17d18f87e288e9409eaaba02227c0194276",
+    "build/certification-20260924-audio-recovery/forensics/neoforge-real-plex-display-frame-difference/baseline-test-results-hashes.json": "e0272c80a6a4cdf514813665c3b4669a3eae2f7772403de0691138ce1a51b259",
+    "build/certification-20260924-audio-recovery/forensics/neoforge-real-plex-display-frame-difference/baseline-regression.log": "a64eebfd0cd6b224c2edfb0ec769fbeb5fb9c92a45997321e77ef07320fa0bf3",
+    "build/certification-20260924-audio-recovery/forensics/neoforge-real-plex-display-frame-difference/repaired-core-tests.log": "5f66d5a0381cab3328adaa78dbe39e25c4873b127ef9d4d2bb8336aefb4748c1",
+    "build/certification-20260924-audio-recovery/forensics/neoforge-real-plex-display-frame-difference/repaired-root-core-tests.log": "60b69d9bcfb4b912ff429508bd2cfe645469598beb413f2a5adb11d3a2bd0741"
+  },
+  "operations": {
+    "originalMediaReadOnly": true,
+    "diagnosticTranscodes": 1,
+    "ownedDiagnosticSessionStopped": true,
+    "cinemarrSessionsAfter": 0,
+    "minecraftServerRemainedStopped": true
+  },
+  "hostedBaseline": {
+    "run": 36089558294,
+    "success": 16,
+    "failure": 1,
+    "skipped": 1,
+    "failedProfile": "1.20.2-forge",
+    "conclusion": "failure"
+  },
+  "limitations": [
+    "No repaired release JARs or packaged Minecraft runtime passes yet.",
+    "Direct original-content reference is12fps sampled, providing1/12s sample resolution; strong image matches prove multi-second mismatch, not frame-exact source timestamps.",
+    "Existing accepted scope receipts describe only the baseline candidate and cannot certify this source change.",
+    "All original final-commit builds, runtime/live/native binding, reviews, scans, cleanup, greenCI and downloaded parity remain required."
+  ],
+  "configuredScanReceipt": "build/certification-20260924-audio-recovery/configured-plex-segment-origin-development-scan.json",
+  "publicationAuthorized": false
+}

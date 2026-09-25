@@ -191,10 +191,9 @@ public final class PlexVideoService {
             if (HlsPlaylist.isMediaPlaylist(current)) {
                 List<HlsPlaylist.MediaSegment> segments;
                 try {
-                    // The upstream offset parameter is expressed in whole seconds.
-                    // Labeling its first frame with the unrounded request delays
-                    // each independently started TV by a different fraction of a
-                    // second, despite apparently matching client clock telemetry.
+                    // Select using the same whole-second seek sent upstream.
+                    // Complete VOD playlists retain their original segment start;
+                    // only already seek-relative windows use this offset as an anchor.
                     segments = HlsPlaylist.mediaSegments(current, Math.max(0, offsetMs) / 1000 * 1000);
                 } catch (IllegalArgumentException malformed) {
                     throw new PlexException(PlexException.Kind.INVALID_RESPONSE,

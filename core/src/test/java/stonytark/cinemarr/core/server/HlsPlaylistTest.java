@@ -28,14 +28,43 @@ class HlsPlaylistTest {
         assertThrows(IllegalArgumentException.class, () -> HlsPlaylist.durationMillis("#EXT-X-ENDLIST"));
     }
 
-    @Test void removesPlexPreSeekPlaceholderEntriesAndRebasesPresentationTime() {
+    @Test void removesPlexPreSeekPlaceholdersWithoutMovingTheRetainedSegment() {
         StringBuilder playlist = new StringBuilder("#EXTM3U\n");
         for (int index = 0; index < 40; index++) playlist.append("#EXTINF:8, nodesc\nmedia-").append(index).append(".ts\n");
         java.util.List<HlsPlaylist.MediaSegment> segments = HlsPlaylist.mediaSegments(playlist.toString(), 290_000);
         assertEquals("media-36.ts", segments.get(0).uri());
+        assertEquals(288_000, segments.get(0).presentationTimeMs());
+        assertEquals(296_000, segments.get(1).presentationTimeMs());
+        assertEquals(4, segments.size());
+    }
+
+    @Test void requestsInsideOneVodSegmentKeepTheSameContentAnchor() {
+        StringBuilder playlist = new StringBuilder("#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:0\n");
+        for (int index = 0; index < 6; index++) playlist.append("#EXTINF:8,\nmedia-").append(index).append(".ts\n");
+        for (long offset : new long[] {0, 1000, 7999, 8000, 8050, 31_000, 31_999, 32_000}) {
+            java.util.List<HlsPlaylist.MediaSegment> segments = HlsPlaylist.mediaSegments(playlist.toString(), offset);
+            long segmentStart = offset / 8000 * 8000;
+            assertEquals("media-" + offset / 8000 + ".ts", segments.get(0).uri());
+            assertEquals(segmentStart, segments.get(0).presentationTimeMs(),
+                    "Seeking inside a segment must not relabel earlier content as the requested time");
+            assertEquals(segmentStart + 8000, segments.get(1).presentationTimeMs());
+        }
+    }
+
+    @Test void variableDurationVodSegmentsKeepTheirCumulativeTimeline() {
+        String playlist = "#EXTM3U\n#EXTINF:2.5,\na.ts\n#EXTINF:5.5,\nb.ts\n#EXTINF:3.25,\nc.ts\n";
+        java.util.List<HlsPlaylist.MediaSegment> segments = HlsPlaylist.mediaSegments(playlist, 7500);
+        assertEquals("b.ts", segments.get(0).uri());
+        assertEquals(2500, segments.get(0).presentationTimeMs());
+        assertEquals(8000, segments.get(1).presentationTimeMs());
+    }
+
+    @Test void preservesShortSeekRelativeFallbackWithoutAnAbsoluteTimeline() {
+        String playlist = "#EXTM3U\n#EXTINF:8,\na.ts\n#EXTINF:8,\nb.ts\n";
+        java.util.List<HlsPlaylist.MediaSegment> segments = HlsPlaylist.mediaSegments(playlist, 290_000);
+        assertEquals(2, segments.size());
         assertEquals(290_000, segments.get(0).presentationTimeMs());
         assertEquals(298_000, segments.get(1).presentationTimeMs());
-        assertEquals(4, segments.size());
     }
 
     @Test void keepsAPlaylistThatPlexAlreadyRebasedAtTheRequestedOffset() {

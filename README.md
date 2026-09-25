@@ -8,16 +8,16 @@ Cinemarr is a required client-and-server Minecraft mod for server-authoritative 
 
 This checkout targets **Cinemarr 1.0.0**, with custom TV display controls and
 independent streams across the **16-artifact / 21-runtime** matrix.
-The [latest frozen checkpoint](docs/1.0_CANDIDATE_LEDGER.md#current-work-bounded-audio-recovery)
-passed reproducible builds, all ten GameTests, eighteen hosted jobs, artifact
-parity, all fourteen real-Plex cases, and packaged native decoder checks.
-Its local matrix failed on NeoForge 1.21.1 audio recovery after reconnect.
-The bounded audio-recovery repair passed a complete development build and
-modern/legacy main-profile checks with measured reload and reconnect audio.
-This is still a prerelease awaiting frozen-commit certification. Final readiness
-requires the complete local matrix, two fresh legacy
-runs, direct image/audio review, exact-artifact live/native evidence, scans,
-cleanup, and matching green CI on the final containing commit.
+The [current ledger](docs/1.0_CANDIDATE_LEDGER.md#current-work-plex-segment-timestamps)
+records candidate `7266eac`: two identical builds, all ten GameTests, all 62 local
+cases and two fresh legacy runs accepted. Real-Plex review then found that a
+quality replacement could show content seven seconds behind its reported clock.
+The shared HLS parser now preserves each segment's original VOD start time;
+development regressions pass, but the repaired artifacts need fresh acceptance.
+The candidate's hosted run also failed Forge 1.20.2 startup; an older green run
+does not certify this repair. Final readiness requires the complete frozen-commit
+build/runtime matrix, direct image/audio review, exact-artifact live/native
+evidence, scans, cleanup, and matching green CI and downloaded artifacts.
 No tag or publication is part of this work.
 
 Protocol 11 separates watch-party and TV-stream identities. Saved-data migration

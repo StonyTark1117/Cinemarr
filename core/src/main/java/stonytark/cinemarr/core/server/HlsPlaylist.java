@@ -111,14 +111,22 @@ public final class HlsPlaylist {
         // A non-zero media sequence is authoritative evidence that Plex has
         // already returned a seek-relative window. A zero/absent sequence may
         // still describe the complete VOD timeline with pre-seek placeholders.
-        if (!(offset > 0 && mediaSequence > 0)) {
+        boolean seekRelative = offset > 0 && mediaSequence > 0;
+        if (!seekRelative) {
             while (first < parsed.size() && parsed.get(first).endMs <= offset) first++;
         }
         // Some Plex versions return the complete pre-seek timeline with tiny
         // placeholder segments; others return a playlist already based at the
         // requested offset. Do not discard an entire seek-relative playlist.
-        if (first == parsed.size() && offset > 0 && !parsed.isEmpty()) first = 0;
-        long presentation = offset;
+        if (first == parsed.size() && offset > 0 && !parsed.isEmpty()) {
+            first = 0;
+            seekRelative = true;
+        }
+        // A complete VOD playlist preserves the original segment boundaries.
+        // Seeking to 31s selects the 24-32s segment; relabeling its first sample
+        // as 31s would leave this TV seven seconds behind its watch party.
+        long presentation = seekRelative || parsed.isEmpty() ? offset
+                : parsed.get(first).endMs - parsed.get(first).durationMs;
         List<MediaSegment> segments = new ArrayList<MediaSegment>();
         for (int index = first; index < parsed.size(); index++) {
             ParsedSegment value = parsed.get(index);
