@@ -1,0 +1,37 @@
+# Cinemarr 1.0.0
+
+Server-authoritative Plex movies and television on player-built Minecraft screens. Install the matching Cinemarr JAR on both the server and every client.
+
+## Features and fixes
+
+- Persistent custom screens, Quick TV kits, controllers, remotes, speakers and redstone receivers.
+- Named watch parties with synchronized playback, queues, audio/subtitle selection and positional sound.
+- Per-TV Fit / Fill / Stretch, Detailed / One pixel per block, and Auto / preset / custom quality controls. Independent TVs use separate stream slots; viewers of the same TV share a slot.
+- Server-owned Plex credentials, library allowlists, bounded media relay and recovery from transient media failures.
+- Corrected HLS segment-origin handling so a quality replacement uses the original movie timeline. Final real-Plex paused-frame checks stayed within 0.169 seconds of original content.
+- Video-only release; the old Plex-music queue and music transport are removed. Jammarr is not required.
+
+## Installation and compatibility
+
+16 JARs cover Forge 1.7.10 plus Fabric, Quilt (using the Fabric JAR), Forge and NeoForge on Minecraft 1.20.1, 1.20.2, 1.21.1, 26.1.2 and 26.2. Choose exactly one JAR matching your Minecraft version and loader. Fabric and Quilt require Fabric API; the tested minimum Fabric Loader is 0.19.2.
+
+Java: 8 for 1.7.10; 17 for 1.20.1/1.20.2; 21 for 1.21.1; 25 for 26.1.2/26.2. Protocol 11 requires matching clients and server; protocol 10 and cross-version/cross-loader networking are unsupported.
+
+Packaged native targets: Linux x86-64, Linux ARM64 and Windows x86-64. macOS is unsupported. Linux needs libudev.so.1, libdrm.so.2, libva.so.2 and libva-drm.so.2. Software decoding is the supported default; auto and VAAPI remain experimental with software fallback. Windows/ARM validation covers native decoding, not full Minecraft playback or physical ARM performance.
+
+## Testing caveats and known incidents
+
+- **Fabric / Minecraft 26.2:** One Linux test captured a 3.272-second client stall with audible interruption and failed audio correlation. It did not reproduce in the unchanged-code focused rerun or later required display, capacity and real-Plex checks. The original cause is unknown; no product fix is claimed. Report recurrence with client logs and host/JVM details.
+- **Forge / Minecraft 1.7.10:** One automated display test failed to deliver its intended invalid text and submitted the existing valid dimensions. An observed follow-up entered the invalid text and verified rejection; later real-Plex controls/display checks passed. This is an unreproduced input-delivery incident, not evidence that invalid dimensions are accepted.
+- **NeoForge / Minecraft 1.20.2 on Linux:** Testing found an LWJGL 3.3.2 native-loader deadlock. Explicitly selecting the host OpenGL library resolved the tested startup path: `-Dorg.lwjgl.opengl.libname=/absolute/path/to/libGL.so.1`. Use your distribution's actual library path. This is a host workaround, not a change to Cinemarr's JAR.
+- Requested quality is a bounding box, not a guarantee: source resolution/aspect ratio, server limits and per-TV memory bounds may reduce the decoded result. Each active TV needs a stream slot. Literal Quick TV construction above 65,536 pixels is refused.
+
+The two unreproduced incidents above are disclosed and accepted for this release; subsequent passing tests do not establish their root causes or erase the original captures. A black NeoForge reconnect screenshot was traced to the source movie's black-to-picture transition. A legacy recovery diagnostic used a supported short ready format; independent runtime evidence confirmed recovery. Neither finding required a product change.
+
+## Verification and provenance
+
+Released binaries are the already-tested artifacts from source commit `3ad77156aaa4edbc0e435478246bd188799b3fe7`; they were not rebuilt for publication. Two builds matched across all 18 bundle files. Required validation includes 16 JAR inspections, 10 GameTests, 62 local runtime cases, two fresh legacy runs, native decoder checks and 14 real-Plex controls/display/recovery/lifecycle cases. The exact-commit hosted run passed all 18 jobs and its artifacts matched locally.
+
+[Verified CI run](https://github.com/StonyTark1117/Cinemarr/actions/runs/36153827517) · [Source](https://github.com/StonyTark1117/Cinemarr/tree/3ad77156aaa4edbc0e435478246bd188799b3fe7) · [Setup guide](https://github.com/StonyTark1117/Cinemarr/blob/3ad77156aaa4edbc0e435478246bd188799b3fe7/README.md)
+
+The source README and earlier acceptance ledgers preserve prerelease checkpoints; these release notes record the final release disposition. `manifest.json` identifies exact targets and `SHA256SUMS` verifies the 16 JARs. Detailed certification is attached to the source commit in Git notes under `refs/notes/cinemarr-certification-20260925`.
