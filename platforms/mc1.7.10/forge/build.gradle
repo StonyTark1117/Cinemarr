@@ -80,10 +80,6 @@ dependencies {
     compileOnly("org.bytedeco:javacv:${javaCvVersion}") { transitive = false }
     embeddedLibraries("org.bytedeco:javacpp:${javaCppVersion}") { transitive = false }
     embeddedLibraries("org.bytedeco:ffmpeg:${ffmpegVersion}") { transitive = false }
-    ['linux-x86_64', 'linux-arm64', 'windows-x86_64'].each { platform ->
-        embeddedLibraries(group: 'org.bytedeco', name: 'javacpp', version: javaCppVersion, classifier: platform) { transitive = false }
-        embeddedLibraries(group: 'org.bytedeco', name: 'ffmpeg', version: ffmpegVersion, classifier: platform) { transitive = false }
-    }
     testImplementation(platform('org.junit:junit-bom:5.10.2'))
     testImplementation('org.junit.jupiter:junit-jupiter')
     testRuntimeOnly('org.junit.platform:junit-platform-launcher')
@@ -95,7 +91,7 @@ sourceSets {
             srcDirs = ['src/main/java', '../../../core/src/main/java']
         }
         resources {
-            srcDirs = ['src/main/resources', '../../../src/main/resources']
+            srcDirs = ['src/main/resources', '../../../src/main/resources', '../../../core/src/main/resources']
             exclude 'cinemarr.mixins.json'
         }
     }
@@ -224,7 +220,7 @@ tasks.register('verifyRelease') {
             String metadata = zip.getInputStream(zip.getEntry('mcmod.info')).getText('UTF-8')
             [
                     '"modid": "cinemarr"',
-                    '"version": "1.0.0"',
+                    '"version": "1.0.1"',
                     '"mcversion": "1.7.10"'
             ].each { required ->
                 if (!metadata.contains(required)) throw new GradleException("Legacy metadata is missing ${required}")
@@ -238,3 +234,12 @@ tasks.register('verifyRelease') {
         }
     }
 }
+
+// All shipping archives must be Java-only, including every nested dependency.
+def verifyNoNativePayloads = tasks.register('verifyNoNativePayloads', Exec) {
+    inputs.file(releaseArchive)
+    commandLine 'python3', file('../../../scripts/verify-no-native-payloads.py'), releaseArchive.get().asFile
+}
+tasks.named('verifyRelease') { dependsOn(verifyNoNativePayloads) }
+
+apply from: file('../../../gradle/external-runtime-test-fixtures.gradle')

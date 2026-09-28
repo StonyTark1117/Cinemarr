@@ -38,6 +38,7 @@ public final class LegacyFfmpegVideoDecoder implements LegacyMediaSegmentDecoder
     private static final BoundedWorkExecutor PROBE_EXECUTOR =
             new BoundedWorkExecutor(1, 8, "Cinemarr legacy FFmpeg hardware probe ");
     private static final Map<String, CompletableFuture<String>> PROBES = new ConcurrentHashMap<String, CompletableFuture<String>>();
+    private boolean runtimePrepared;
     private final VideoDecoderBackend requestedBackend;
     private final String requestedDevice;
     private final String sanitizedDeviceType;
@@ -59,7 +60,13 @@ public final class LegacyFfmpegVideoDecoder implements LegacyMediaSegmentDecoder
         requestedDevice = device == null ? "" : device.trim();
         sanitizedDeviceType = sanitizedDeviceType(requestedDevice);
         effectiveBackend = requestedBackend == VideoDecoderBackend.SOFTWARE ? VideoDecoderBackend.SOFTWARE : null;
-        preloadHostHardwareLibraries(requestedBackend);
+    }
+
+    private synchronized void prepareRuntime() throws FrameGrabber.Exception {
+        try { stonytark.cinemarr.core.client.runtime.NativeRuntime.ensureReady(requestedBackend); }
+        catch (java.io.IOException error) { throw new FrameGrabber.Exception(error.getMessage(), error); }
+        if (runtimePrepared) return;
+        runtimePrepared = true;
         if (requestedBackend != VideoDecoderBackend.SOFTWARE) {
             List<VideoDecoderBackend> candidates = candidates();
             if (candidates.isEmpty()) effectiveBackend = VideoDecoderBackend.SOFTWARE;
@@ -69,6 +76,7 @@ public final class LegacyFfmpegVideoDecoder implements LegacyMediaSegmentDecoder
 
     @Override public LegacyDecodedMediaSegment decode(byte[] mpegTs) throws FrameGrabber.Exception {
         validate(mpegTs);
+        prepareRuntime();
         long started = System.nanoTime();
         long cpuStarted = currentThreadCpuTime();
         if (requestedBackend != VideoDecoderBackend.SOFTWARE && effectiveBackend != VideoDecoderBackend.SOFTWARE) {
@@ -217,20 +225,6 @@ public final class LegacyFfmpegVideoDecoder implements LegacyMediaSegmentDecoder
         if ("0x8086".equals(value)) return "intel";
         if ("0x1002".equals(value)) return "amd";
         return value;
-    }
-
-    private static void preloadHostHardwareLibraries(VideoDecoderBackend backend) {
-        if (backend != VideoDecoderBackend.VAAPI && backend != VideoDecoderBackend.QSV && backend != VideoDecoderBackend.AUTO) return;
-        if (!System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("linux")) return;
-        try {
-            if (!loadFirstExisting("/usr/lib/libva.so.2", "/usr/lib/x86_64-linux-gnu/libva.so.2", "/usr/lib/aarch64-linux-gnu/libva.so.2")) System.loadLibrary("va");
-            if (!loadFirstExisting("/usr/lib/libva-drm.so.2", "/usr/lib/x86_64-linux-gnu/libva-drm.so.2", "/usr/lib/aarch64-linux-gnu/libva-drm.so.2")) System.loadLibrary("va-drm");
-        } catch (UnsatisfiedLinkError ignored) { }
-    }
-
-    private static boolean loadFirstExisting(String... paths) {
-        for (String path : paths) if (Files.isRegularFile(Paths.get(path))) { System.load(path); return true; }
-        return false;
     }
 
     private static String sanitize(String value) {

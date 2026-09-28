@@ -26,6 +26,12 @@ public final class VideoDecoderBenchmark {
     private static final long MAXIMUM_TIMING_DELTA_US = 1_000L;
 
     public static void main(String[] args) throws Exception {
+        String game = System.getProperty("cinemarr.test.runtimeGameDirectory");
+        if (game == null) throw new IllegalStateException("Set cinemarr.test.runtimeGameDirectory to a game directory with user-supplied decoder libraries");
+        stonytark.cinemarr.core.platform.CinemarrSettings.installClient(
+                stonytark.cinemarr.core.platform.CanonicalConfigFiles.loadClient(
+                        java.nio.file.Paths.get(game, "config", "cinemarr-client.toml")));
+        stonytark.cinemarr.core.client.runtime.NativeRuntime.ensureReady();
         Options options = Options.parse(args);
         Files.createDirectories(options.output);
         List<Row> rows = new ArrayList<>();

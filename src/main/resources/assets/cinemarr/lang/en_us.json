@@ -1,4 +1,6 @@
 {
+  "cinemarr.config.library_folder": "Library folder",
+  "cinemarr.config.library_retry": "Retry libraries",
   "key.cinemarr.open": "Show Cinemarr controls hint",
   "key.categories.cinemarr": "Cinemarr",
   "cinemarr.screen.go": "Go",

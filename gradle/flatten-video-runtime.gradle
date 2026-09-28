@@ -3,7 +3,7 @@
 // modules which depend on the classifier-free base modules. JarJar resolves one
 // coordinate winner, so a multi-OS nested set can omit the base module and fail
 // before Minecraft starts. Keep the loader-neutral dependencies nested, but
-// flatten JavaCPP/FFmpeg classes and native resources into the Cinemarr module.
+// flatten JavaCPP/FFmpeg Java classes and resources into the Cinemarr module.
 
 def javaCppVersion = '1.5.14'
 def ffmpegVersion = '8.1.2-1.5.14'
@@ -13,10 +13,6 @@ def bundledVideoRuntime = configurations.maybeCreate('bundledVideoRuntime')
 dependencies {
     add('bundledVideoRuntime', "org.bytedeco:javacpp:${javaCppVersion}") { transitive = false }
     add('bundledVideoRuntime', "org.bytedeco:ffmpeg:${ffmpegVersion}") { transitive = false }
-    ['linux-x86_64', 'linux-arm64', 'windows-x86_64'].each { platform ->
-        add('bundledVideoRuntime', "org.bytedeco:javacpp:${javaCppVersion}:${platform}") { transitive = false }
-        add('bundledVideoRuntime', "org.bytedeco:ffmpeg:${ffmpegVersion}:${platform}") { transitive = false }
-    }
 }
 
 def jarJarConfiguration = configurations.findByName('jarJar')
@@ -103,12 +99,6 @@ def verifyFlattenedVideoRuntime = tasks.register('verifyFlattenedVideoRuntime') 
         def required = [
                 'org/bytedeco/javacpp/Loader.class',
                 'org/bytedeco/ffmpeg/global/avcodec.class',
-                'org/bytedeco/javacpp/linux-x86_64/libjnijavacpp.so',
-                'org/bytedeco/javacpp/linux-arm64/libjnijavacpp.so',
-                'org/bytedeco/javacpp/windows-x86_64/jnijavacpp.dll',
-                'org/bytedeco/ffmpeg/linux-x86_64/libjniavutil.so',
-                'org/bytedeco/ffmpeg/linux-arm64/libjniavutil.so',
-                'org/bytedeco/ffmpeg/windows-x86_64/avcodec-62.dll',
                 isolatedCoreEntry
         ]
         new java.util.zip.ZipFile(inputs.files.singleFile).withCloseable { zip ->

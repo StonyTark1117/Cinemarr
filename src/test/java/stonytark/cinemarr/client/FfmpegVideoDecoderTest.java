@@ -13,6 +13,15 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.bytedeco.ffmpeg.global.avcodec.avcodec_license;
 
 final class FfmpegVideoDecoderTest {
+    @org.junit.jupiter.api.BeforeAll static void installLocalRuntime() throws Exception {
+        String game = System.getProperty("cinemarr.test.runtimeGameDirectory");
+        if (game == null) throw new IllegalStateException("Set cinemarr.test.runtimeGameDirectory to a game directory with user-supplied decoder libraries");
+        stonytark.cinemarr.core.platform.CinemarrSettings.installClient(
+                stonytark.cinemarr.core.platform.CanonicalConfigFiles.loadClient(
+                        java.nio.file.Paths.get(game, "config", "cinemarr-client.toml")));
+        stonytark.cinemarr.core.client.runtime.NativeRuntime.ensureReady();
+    }
+
     @Test void cancelledDecodeDoesNotStartNativeWorkOrClearInterrupt() {
         FfmpegVideoDecoder decoder = new FfmpegVideoDecoder();
         byte[] fixture = DecoderProbeFixture.bytes();

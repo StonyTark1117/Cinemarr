@@ -91,22 +91,6 @@ dependencies {
             metadata.setRange('[8.1.2-1.5.14,8.1.3)')
         }
     }
-    ['linux-x86_64', 'linux-arm64', 'windows-x86_64'].each { platform ->
-        implementation("org.bytedeco:javacpp:${javaCppVersion}:${platform}") { transitive = false }
-        jarJar(group: 'org.bytedeco', name: 'javacpp', version: javaCppVersion, classifier: platform) { dependency ->
-            dependency.transitive = false
-            project.extensions.getByName('jarJar').configure(dependency) { metadata ->
-                metadata.setRange('[1.5.14,1.5.15)')
-            }
-        }
-        implementation("org.bytedeco:ffmpeg:${ffmpegVersion}:${platform}") { transitive = false }
-        jarJar(group: 'org.bytedeco', name: 'ffmpeg', version: ffmpegVersion, classifier: platform) { dependency ->
-            dependency.transitive = false
-            project.extensions.getByName('jarJar').configure(dependency) { metadata ->
-                metadata.setRange('[8.1.2-1.5.14,8.1.3)')
-            }
-        }
-    }
     testImplementation platform(libs.junit.bom)
     testImplementation libs.junit.jupiter
     testRuntimeOnly libs.junit.launcher
@@ -238,3 +222,12 @@ tasks.register('verifyRelease') {
 
 ext.cinemarrReleaseArchiveTask = 'jarJar'
 apply from: file('../../../gradle/flatten-video-runtime.gradle')
+
+// All shipping archives must be Java-only, including every nested dependency.
+def verifyNoNativePayloads = tasks.register('verifyNoNativePayloads', Exec) {
+    inputs.file(releaseArchive)
+    commandLine 'python3', file('../../../scripts/verify-no-native-payloads.py'), releaseArchive.get().asFile
+}
+tasks.named('verifyRelease') { dependsOn(verifyNoNativePayloads) }
+
+apply from: file('../../../gradle/external-runtime-test-fixtures.gradle')

@@ -80,16 +80,12 @@ dependencies {
     implementation "net.neoforged:neoforge:${libs.versions.neoforge.loader.get()}"
     implementation sharedCoreDependency
     jarJar(sharedCoreDependency)
-    jarJar.pin(sharedCoreDependency, '1.0.0')
-    jarJar.ranged(sharedCoreDependency, '[1.0.0,1.0.1)')
+    jarJar.pin(sharedCoreDependency, project.version.toString())
+    jarJar.ranged(sharedCoreDependency, "[${project.version},1.0.2)")
     javacvFacade("org.bytedeco:javacv:${javaCvVersion}") { transitive = false }
     compileOnly("org.bytedeco:javacv:${javaCvVersion}") { transitive = false }
     jarJar(implementation("org.bytedeco:javacpp:${javaCppVersion}") { transitive = false })
     jarJar(implementation("org.bytedeco:ffmpeg:${ffmpegVersion}") { transitive = false })
-    ['linux-x86_64', 'linux-arm64', 'windows-x86_64'].each { platform ->
-        jarJar(implementation("org.bytedeco:javacpp:${javaCppVersion}:${platform}") { transitive = false })
-        jarJar(implementation("org.bytedeco:ffmpeg:${ffmpegVersion}:${platform}") { transitive = false })
-    }
     testImplementation platform(libs.junit.bom)
     testImplementation libs.junit.jupiter
     testRuntimeOnly libs.junit.launcher
@@ -225,3 +221,12 @@ tasks.register('verifyRelease') {
 
 ext.cinemarrReleaseArchiveTask = 'jarJar'
 apply from: file('../../../gradle/flatten-video-runtime.gradle')
+
+// All shipping archives must be Java-only, including every nested dependency.
+def verifyNoNativePayloads = tasks.register('verifyNoNativePayloads', Exec) {
+    inputs.file(releaseArchive)
+    commandLine 'python3', file('../../../scripts/verify-no-native-payloads.py'), releaseArchive.get().asFile
+}
+tasks.named('verifyRelease') { dependsOn(verifyNoNativePayloads) }
+
+apply from: file('../../../gradle/external-runtime-test-fixtures.gradle')

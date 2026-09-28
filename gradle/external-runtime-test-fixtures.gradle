@@ -1,0 +1,29 @@
+// Development/test fixtures only. These archives never enter a mod's classpath or shipping JAR.
+def nativeDecoderTestRuntime = configurations.maybeCreate('nativeDecoderTestRuntime')
+nativeDecoderTestRuntime.transitive = false
+if (plugins.hasPlugin('com.gtnewhorizons.retrofuturagradle')) {
+    // These are byte-pinned data archives, not Java dependencies to deobfuscate.
+    nativeDecoderTestRuntime.attributes.attribute(
+            org.gradle.api.attributes.Attribute.of('rfgDeobfuscatorTransformed', Boolean), false)
+}
+nativeDecoderTestRuntime.resolutionStrategy.deactivateDependencyLocking()
+def runtimeOs = System.getProperty('os.name').toLowerCase(java.util.Locale.ROOT).startsWith('windows') ? 'windows' : 'linux'
+def runtimeArch = System.getProperty('os.arch').toLowerCase(java.util.Locale.ROOT)
+def runtimeCpu = runtimeArch in ['amd64', 'x86_64'] ? 'x86_64' : runtimeArch in ['aarch64', 'arm64'] ? 'arm64' : runtimeArch
+dependencies {
+    add('nativeDecoderTestRuntime', "org.bytedeco:javacpp:1.5.14:${runtimeOs}-${runtimeCpu}")
+    add('nativeDecoderTestRuntime', "org.bytedeco:ffmpeg:8.1.2-1.5.14:${runtimeOs}-${runtimeCpu}")
+}
+def testRuntimeGame = layout.buildDirectory.dir('external-decoder-test-game')
+def prepareExternalDecoderTestRuntime = tasks.register('prepareExternalDecoderTestRuntime', Sync) {
+    from(nativeDecoderTestRuntime)
+    into(testRuntimeGame.map { it.dir('cinemarr-libraries') })
+}
+tasks.withType(Test).configureEach {
+    dependsOn(prepareExternalDecoderTestRuntime)
+    systemProperty 'cinemarr.test.runtimeGameDirectory', testRuntimeGame.get().asFile.absolutePath
+}
+tasks.matching { it.name == 'benchmarkVideoDecoder' }.configureEach {
+    dependsOn(prepareExternalDecoderTestRuntime)
+    systemProperty 'cinemarr.test.runtimeGameDirectory', testRuntimeGame.get().asFile.absolutePath
+}

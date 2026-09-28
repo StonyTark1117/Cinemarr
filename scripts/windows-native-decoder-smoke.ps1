@@ -92,17 +92,15 @@ try {
     Publish-File (Join-Path $work "bundle-verification.json") "bundle-verification.json"
     $classpath = @(
         (Join-Path $bundle "classes"),
-        (Join-Path $bundle "lib\core-1.0.0.jar"),
+        (Join-Path $bundle "lib\core-1.0.1.jar"),
         (Join-Path $bundle "lib\javacpp-1.5.14.jar"),
-        (Join-Path $bundle "lib\javacpp-1.5.14-windows-x86_64.jar"),
-        (Join-Path $bundle "lib\ffmpeg-8.1.2-1.5.14.jar"),
-        (Join-Path $bundle "lib\ffmpeg-8.1.2-1.5.14-windows-x86_64.jar")
+        (Join-Path $bundle "lib\ffmpeg-8.1.2-1.5.14.jar")
     ) -join ';'
     $output = Join-Path $work "evidence"
     New-Item -ItemType Directory -Path $output -Force | Out-Null
     $console = Join-Path $output "console.txt"
     $arguments = @(
-        '-Xmx3g', '-cp', $classpath, 'stonytark.cinemarr.client.VideoDecoderBenchmark',
+        '-Xmx3g', "-Dcinemarr.test.runtimeGameDirectory=$bundle", '-cp', $classpath, 'stonytark.cinemarr.client.VideoDecoderBenchmark',
         '--backend', 'software', '--expected-effective', 'software', '--output', $output,
         '--warmups', '0', '--runs', '1', '--seconds', '0.6', '--require-hardware', 'false',
         '--expect-fallback', 'false', '--fail-on-acceptance', 'true', '--gpu', 'none',
@@ -132,7 +130,7 @@ try {
     }
 
     Add-Type -AssemblyName System.IO.Compression.FileSystem
-    $nativeJar = Join-Path $bundle "lib\ffmpeg-8.1.2-1.5.14-windows-x86_64.jar"
+    $nativeJar = Join-Path $bundle "cinemarr-libraries\ffmpeg-8.1.2-1.5.14-windows-x86_64.jar"
     $nativeDll = Join-Path $work "avcodec-62.dll"
     $zip = [IO.Compression.ZipFile]::OpenRead($nativeJar)
     try {

@@ -30,6 +30,12 @@ public final class CinemarrConfig {
             CLIENT_BUILDER.define("videoDecoderBackend", "software");
     public static final ModConfigSpec.ConfigValue<String> VIDEO_DECODER_DEVICE =
             CLIENT_BUILDER.define("videoDecoderDevice", "");
+    public static final ModConfigSpec.ConfigValue<String> NATIVE_RUNTIME_MODE = CLIENT_BUILDER
+            .comment("Local decoder runtime: local-only or disabled. No automatic downloads.")
+            .define("nativeRuntimeMode", "local-only");
+    public static final ModConfigSpec.ConfigValue<String> NATIVE_RUNTIME_DIRECTORY = CLIENT_BUILDER
+            .comment("Optional local runtime directory, relative to game directory or absolute. Blank detects installed libraries. Restart after changes.")
+            .define("nativeRuntimeDirectory", "");
     public static final ModConfigSpec CLIENT_SPEC = CLIENT_BUILDER.build();
 
     private static final CinemarrSettings.ServerValues SERVER_VALUES = new CinemarrSettings.ServerValues() {
@@ -40,6 +46,9 @@ public final class CinemarrConfig {
     };
 
     private static final CinemarrSettings.ClientValues CLIENT_VALUES = new CinemarrSettings.ClientValues() {
+        @Override public String nativeRuntimeMode() { return NATIVE_RUNTIME_MODE.get(); }
+        @Override public String nativeRuntimeDirectory() { return NATIVE_RUNTIME_DIRECTORY.get(); }
+        @Override public java.nio.file.Path gameDirectory() { return net.neoforged.fml.loading.FMLPaths.GAMEDIR.get(); }
         @Override public boolean enabled() { return ENABLED.get(); }
         @Override public void enabled(boolean value) { ENABLED.set(value); }
         @Override public void saveEnabled() { ENABLED.save(); }

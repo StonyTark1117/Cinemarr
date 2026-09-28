@@ -8,6 +8,7 @@ import argparse
 import hashlib
 import json
 import os
+import platform
 from pathlib import Path
 import re
 import shlex
@@ -42,6 +43,34 @@ def install_mod(source, target, expected):
     assert digest(target) == expected
 
 
+def decoder_inputs(directory, game):
+    """Stage user-supplied test dependencies through the same drop-in path players use."""
+    if directory is None:
+        return []
+    arch = platform.machine().lower()
+    classifier = 'linux-' + ('x86_64' if arch in ('amd64', 'x86_64') else 'arm64' if arch in ('aarch64', 'arm64') else arch)
+    manifest = ROOT / 'core/src/main/resources/stonytark/cinemarr/runtime' / (classifier + '.properties')
+    assert manifest.is_file(), 'Unsupported external decoder test platform'
+    pins = dict(line.split('=', 1) for line in manifest.read_text().splitlines() if line.startswith('archive.'))
+    planned = []
+    for artifact in ('javacpp', 'ffmpeg'):
+        name, size, checksum = pins['archive.' + artifact].split(',')
+        source = directory.resolve() / name
+        assert source.is_file() and not source.is_symlink(), 'Missing local decoder package: ' + name
+        assert source.stat().st_size == int(size) and digest(source) == checksum, 'Invalid local decoder package: ' + name
+        target = game / 'cinemarr-libraries' / name
+        assert target.resolve().is_relative_to(game), 'Decoder packages must stay in the owned instance'
+        if target.exists():
+            assert not target.is_symlink() and digest(target) == checksum, 'Conflicting local decoder package'
+        planned.append((source, target, checksum))
+    config = game / 'config/cinemarr-client.toml'
+    if config.exists():
+        settings = tomllib.loads(config.read_text())
+        assert settings.get('nativeRuntimeMode', 'local-only') == 'local-only', 'Decoder disabled in test instance'
+        assert not settings.get('nativeRuntimeDirectory', ''), 'Test drop-in packages conflict with explicit runtime override'
+    return planned
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('profile')
@@ -52,6 +81,8 @@ def main():
     parser.add_argument('--runtime-root', type=Path, default=os.environ.get('CINEMARR_PACKAGED_CLIENT_RUNTIME_ROOT'),
                         help='Parent containing prepared profile/runtime.json; alternatively CINEMARR_PACKAGED_CLIENT_RUNTIME_ROOT')
     parser.add_argument('--java-home', type=Path, help='Otherwise CINEMARR_PACKAGED_JAVA<runtimeJava>_HOME or system OpenJDK')
+    parser.add_argument('--decoder-libraries', type=Path, default=os.environ.get('CINEMARR_TEST_NATIVE_RUNTIME_DIRECTORY'),
+                        help='Directory of manually supplied native packages; copied to the owned game instance, never downloaded')
     parser.add_argument('--check-only', action='store_true', help='Validate inputs without writing game files or opening X')
     parser.add_argument('--bundle-dir', type=Path, default=ROOT / 'build/releases')
     parser.add_argument('--gradle-cache', type=Path,
@@ -133,6 +164,7 @@ def main():
         assert source.is_file() and not source.is_symlink() and digest(source) == checksum
         if destination.exists():
             assert not destination.is_symlink() and digest(destination) == checksum, 'Conflicting installed mod'
+    planned_decoder = decoder_inputs(args.decoder_libraries, game)
     metadata = runtime['launchMetadata']
     offline_uuid = uuid.UUID(bytes=hashlib.md5(('OfflinePlayer:' + args.username).encode()).digest(), version=3)
     values = {'auth_player_name': args.username, 'version_name': target['minecraft'],
@@ -174,12 +206,16 @@ def main():
     mods.mkdir(exist_ok=True)
     for source, destination, checksum in planned_mods:
         install_mod(source, destination, checksum)
+    for source, destination, checksum in planned_decoder:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        install_mod(source, destination, checksum)
     records = game / 'packaged-launch-records'
     records.mkdir(exist_ok=True)
     record = records / ('launch-' + uuid.uuid4().hex + '.json')
     record.write_text(json.dumps({'scope': 'Production launch recipe; launch success and runtime acceptance are separate',
         'profile': args.profile, 'runtimeManifestSha256': digest(runtime_file), 'candidateSha256': expected,
-        'classpath': runtime['classpath'], 'java': java, 'modsSha256': {p.name: digest(p) for p in mods.glob('*.jar')}}, indent=2) + '\n')
+        'classpath': runtime['classpath'], 'java': java,
+        'externalDecoderPackages': {p.name: sha for _, p, sha in planned_decoder}, 'modsSha256': {p.name: digest(p) for p in mods.glob('*.jar')}}, indent=2) + '\n')
     print('Packaged Cinemarr client recipe: ' + args.profile + ' candidateSha256=' + expected, flush=True)
     private = ['bash', str(ROOT / 'scripts/run-private-xvfb.sh'),
                str(args.width) + 'x' + str(args.height) + 'x24']

@@ -53,7 +53,6 @@ repositories { mavenCentral(); maven { url = 'https://maven.neoforged.net/releas
 
 configurations {
     javacvFacade
-    bundledNatives
 }
 configurations.configureEach {
     // NeoForge 47.1 carries a dynamic 2.11.+ transitive declaration. Keep the
@@ -80,7 +79,7 @@ dependencies {
     def javaCppVersion='1.5.14',ffmpegVersion='8.1.2-1.5.14',javaCvVersion='1.5.14'
     minecraft "net.neoforged:forge:${libs.versions.minecraft.get()}-${libs.versions.neoforge.loader.get()}"
     implementation project(':core')
-    jarJar(project(':core')) { dependency -> jarJar.ranged(dependency, '[1.0.0,1.0.1)') }
+    jarJar(project(':core')) { dependency -> jarJar.ranged(dependency, "[${project.version},1.0.2)") }
     javacvFacade("org.bytedeco:javacv:${javaCvVersion}"){transitive=false};compileOnly("org.bytedeco:javacv:${javaCvVersion}"){transitive=false}
     implementation("org.bytedeco:javacpp:${javaCppVersion}") { transitive = false }
     minecraftLibrary("org.bytedeco:javacpp:${javaCppVersion}")
@@ -91,16 +90,6 @@ dependencies {
     minecraftLibrary("org.bytedeco:ffmpeg:${ffmpegVersion}")
     jarJar("org.bytedeco:ffmpeg:${ffmpegVersion}") { dependency ->
         jarJar.ranged(dependency, '[8.1.2-1.5.14,8.1.3)')
-    }
-    ['linux-x86_64', 'linux-arm64', 'windows-x86_64'].each { platform ->
-        implementation("org.bytedeco:javacpp:${javaCppVersion}:${platform}") { transitive = false }
-        minecraftLibrary("org.bytedeco:javacpp:${javaCppVersion}:${platform}")
-        bundledNatives("org.bytedeco:javacpp:${javaCppVersion}:${platform}") { transitive = false }
-        jarJar(group: 'org.bytedeco', name: 'javacpp', version: '[1.5.14,1.5.15)', classifier: platform)
-        implementation("org.bytedeco:ffmpeg:${ffmpegVersion}:${platform}") { transitive = false }
-        minecraftLibrary("org.bytedeco:ffmpeg:${ffmpegVersion}:${platform}")
-        bundledNatives("org.bytedeco:ffmpeg:${ffmpegVersion}:${platform}") { transitive = false }
-        jarJar(group: 'org.bytedeco', name: 'ffmpeg', version: '[8.1.2-1.5.14,8.1.3)', classifier: platform)
     }
     testImplementation platform(libs.junit.bom)
     testImplementation libs.junit.jupiter
@@ -173,7 +162,6 @@ tasks.named('jar', Jar) {
 tasks.named('jarJar') {
     archiveFileName = expectedReleaseName
     manifest.attributes('MixinConfigs': 'cinemarr.mixins.json')
-    from(project.configurations.bundledNatives) { into('META-INF/jarjar') }
     from('../../../THIRD_PARTY_NOTICES.md') { into('META-INF') }
     from('../../../LICENSE') {
         into('META-INF')
@@ -234,3 +222,12 @@ tasks.register('verifyRelease') {
 
 ext.cinemarrReleaseArchiveTask = 'jarJar'
 apply from: file('../../../gradle/flatten-video-runtime.gradle')
+
+// All shipping archives must be Java-only, including every nested dependency.
+def verifyNoNativePayloads = tasks.register('verifyNoNativePayloads', Exec) {
+    inputs.file(releaseArchive)
+    commandLine 'python3', file('../../../scripts/verify-no-native-payloads.py'), releaseArchive.get().asFile
+}
+tasks.named('verifyRelease') { dependsOn(verifyNoNativePayloads) }
+
+apply from: file('../../../gradle/external-runtime-test-fixtures.gradle')

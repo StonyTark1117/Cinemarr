@@ -18,7 +18,7 @@ for tool in sshpass ssh scp curl jq sha256sum genisoimage python3 tr; do
   command -v "$tool" >/dev/null || { echo "Missing required tool: $tool" >&2; exit 2; }
 done
 [[ -f "$password_file" && -d "$bundle/classes" \
-   && -f "$bundle/lib/ffmpeg-8.1.2-1.5.14-windows-x86_64.jar" ]] || exit 2
+   && -f "$bundle/cinemarr-libraries/ffmpeg-8.1.2-1.5.14-windows-x86_64.jar" ]] || exit 2
 [[ "$host" =~ ^[A-Za-z0-9.-]+$ ]] || exit 2
 [[ "$state_dir" =~ ^/var/lib/cinemarr-hwtest/[A-Za-z0-9._/-]+$ && "$state_dir" != *'..'* ]] || exit 2
 
@@ -105,9 +105,12 @@ printf '%s  %s\n' "$jre_sha" "$payload_dir/jre.zip" | sha256sum -c -
 
 cp -a "$bundle/classes/." "$payload_dir/bundle/classes/"
 cp -a "$bundle/fixtures/." "$payload_dir/bundle/fixtures/"
-for library in core-1.0.0.jar javacpp-1.5.14.jar javacpp-1.5.14-windows-x86_64.jar \
-    ffmpeg-8.1.2-1.5.14.jar ffmpeg-8.1.2-1.5.14-windows-x86_64.jar; do
+for library in core-1.0.1.jar javacpp-1.5.14.jar ffmpeg-8.1.2-1.5.14.jar; do
   cp "$bundle/lib/$library" "$payload_dir/bundle/lib/"
+done
+mkdir -p "$payload_dir/bundle/cinemarr-libraries"
+for library in javacpp-1.5.14-windows-x86_64.jar ffmpeg-8.1.2-1.5.14-windows-x86_64.jar; do
+  cp "$bundle/cinemarr-libraries/$library" "$payload_dir/bundle/cinemarr-libraries/"
 done
 printf '%s\n' "$stamp" > "$payload_dir/run-id.txt"
 cp "$repo_root/scripts/windows-native-decoder-smoke.ps1" "$payload_dir/"

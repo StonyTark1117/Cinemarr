@@ -4,23 +4,11 @@
 
 Cinemarr is a required client-and-server Minecraft mod for server-authoritative Plex movie and television playback on player-built screens. The server owns Plex credentials, library policy, transcodes, timelines, and media relay. Clients receive bounded HLS media, decode each visible TV stream once, and render it across that television's dynamic texture.
 
-## 1.0 prerelease status
+## 1.0.1 development status
 
-This checkout targets **Cinemarr 1.0.0**, with custom TV display controls and
-independent streams across the **16-artifact / 21-runtime** matrix.
-The [current ledger](docs/1.0_CANDIDATE_LEDGER.md#current-work-plex-segment-timestamps)
-records candidate `7266eac`: two identical builds, all ten GameTests, all 62 local
-cases and two fresh legacy runs accepted. Real-Plex review then found that a
-quality replacement could show content seven seconds behind its reported clock.
-The shared HLS parser now preserves each segment's original VOD start time;
-its full development build and modern/legacy packaged display reviews pass,
-including original-movie frame comparisons and measured audio. These scoped
-checks do not replace final certification of the repaired artifacts.
-The candidate's hosted run also failed Forge 1.20.2 startup; an older green run
-does not certify this repair. Final readiness requires the complete frozen-commit
-build/runtime matrix, direct image/audio review, exact-artifact live/native
-evidence, scans, cleanup, and matching green CI and downloaded artifacts.
-No tag or publication is part of this work.
+This checkout targets **Cinemarr 1.0.1** across the **16-artifact / 21-runtime** matrix, retaining the existing decoder while moving native libraries to a user-installed dependency. The mod does not download them. Each playback client needs the matching libraries; dedicated servers do not.
+
+Read the [decoder installation instructions](docs/INSTALLING_DECODER_LIBRARIES.md) and [1.0.1 release notes](docs/1.0.1_RELEASE_NOTES.md). Implementation and bounded validation are complete; see the [validation record](docs/validation/1.0.1-external-runtime-progress.md) for coverage and limits. No 1.0.1 release has been published. Historical 1.0 certification records below describe their original candidates and do not certify this update.
 
 Protocol 11 separates watch-party and TV-stream identities. Saved-data migration
 preserves existing screens; new custom TVs default to Fit, Detailed, Auto, and
@@ -44,7 +32,7 @@ Implemented release foundations include:
 - Eight Quick TV recipes from 144p through 8K. `bounded` mode is the safe default. `literal` mode permits only a footprint that fits the 65,536-pixel ceiling; larger literal presets are refused before placement.
 - Software video decoding by default. The only public decoder modes are `software`, `auto`, and `vaapi`; hardware failure falls back to software.
 
-Supported packaged native targets are Linux x86-64, Linux ARM64, and Windows x86-64. Linux clients require the standard libudev, libdrm, and libva runtime libraries; see [compatibility](docs/COMPATIBILITY.md). macOS is not supported by the 1.0 artifact set.
+Supported external decoder platforms are Linux x86-64, Linux ARM64, and Windows x86-64. Linux clients also need host graphics/audio libraries; see the [installation requirements](docs/INSTALLING_DECODER_LIBRARIES.md). macOS is not supported.
 
 ## Display Settings
 

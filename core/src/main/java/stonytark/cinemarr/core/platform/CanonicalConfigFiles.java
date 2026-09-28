@@ -80,6 +80,8 @@ public final class CanonicalConfigFiles {
                 decimal(values, "volume", 1.0, 0.0, 1.0),
                 VideoDecoderBackend.parse(string(values, "videoDecoderBackend", "software", 32)),
                 string(values, "videoDecoderDevice", "", 256),
+                string(values, "nativeRuntimeMode", "local-only", 32),
+                string(values, "nativeRuntimeDirectory", "", 4096),
                 source != null && !source.equals(canonical) ? source : null);
         config.save();
         return config;
@@ -195,17 +197,24 @@ public final class CanonicalConfigFiles {
         private double volume;
         private VideoDecoderBackend videoDecoderBackend;
         private String videoDecoderDevice;
+        private final String nativeRuntimeMode;
+        private final String nativeRuntimeDirectory;
 
         private ClientConfig(Path path, boolean enabled, double volume, VideoDecoderBackend videoDecoderBackend,
-                             String videoDecoderDevice, Path importedFrom) {
+                             String videoDecoderDevice, String nativeRuntimeMode, String nativeRuntimeDirectory, Path importedFrom) {
             this.path = path;
             this.enabled = enabled;
             this.volume = volume;
             this.videoDecoderBackend = videoDecoderBackend;
             this.videoDecoderDevice = videoDecoderDevice;
+            this.nativeRuntimeMode = nativeRuntimeMode;
+            this.nativeRuntimeDirectory = nativeRuntimeDirectory;
             this.importedFrom = importedFrom;
         }
 
+        @Override public String nativeRuntimeMode() { return nativeRuntimeMode; }
+        @Override public String nativeRuntimeDirectory() { return nativeRuntimeDirectory; }
+        @Override public Path gameDirectory() { return path.toAbsolutePath().getParent().getParent(); }
         public Path path() { return path; }
         public Path importedFrom() { return importedFrom; }
         @Override public synchronized boolean enabled() { return enabled; }
@@ -228,7 +237,11 @@ public final class CanonicalConfigFiles {
             write(path, Arrays.asList("# Cinemarr local client settings.", "enabled = " + enabled,
                     "volume = " + number(volume),
                     "videoDecoderBackend = " + quoted(videoDecoderBackend.configValue()),
-                    "videoDecoderDevice = " + quoted(videoDecoderDevice)));
+                    "videoDecoderDevice = " + quoted(videoDecoderDevice),
+                    "# Local libraries only: local-only or disabled. Cinemarr never downloads native libraries.",
+                    "nativeRuntimeMode = " + quoted(nativeRuntimeMode),
+                    "# Blank detects local libraries; otherwise use this directory only. Restart after changes.",
+                    "nativeRuntimeDirectory = " + quoted(nativeRuntimeDirectory)));
         }
 
         private void saveUnchecked() {
@@ -452,7 +465,8 @@ public final class CanonicalConfigFiles {
             normalize("quickTv480pEnabled"), normalize("quickTv720pEnabled"), normalize("quickTv1080pEnabled"),
             normalize("quickTv1440pEnabled"), normalize("quickTv4KEnabled"), normalize("quickTv8KEnabled"));
     private static final List<String> CLIENT_KEYS = Arrays.asList(normalize("enabled"), normalize("volume"),
-            normalize("videoDecoderBackend"), normalize("videoDecoderDevice"));
+            normalize("videoDecoderBackend"), normalize("videoDecoderDevice"),
+            normalize("nativeRuntimeMode"), normalize("nativeRuntimeDirectory"));
 
     public static final class ConfigValidationException extends IOException {
         public ConfigValidationException(String message) { super(message); }

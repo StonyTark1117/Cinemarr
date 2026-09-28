@@ -26,7 +26,7 @@ def verify(expected, used, benchmark):
     assert used['workDirectory'] == 'C:\\CinemarrNativeSmoke\\runs\\' + run_id, 'Shared or stale work directory'
     inputs, actual = indexed_files(expected), indexed_files(used)
     assert actual == inputs, 'Used native bundle differs from the current payload'
-    assert 'lib/core-1.0.0.jar' in inputs and any(name.startswith('classes/') for name in inputs)
+    assert 'lib/core-1.0.1.jar' in inputs and any(name.startswith('classes/') for name in inputs)
     rows = benchmark['rows']
     assert [row['resolution'] for row in rows] == ['144p', '480p', '1080p']
     for row in rows:

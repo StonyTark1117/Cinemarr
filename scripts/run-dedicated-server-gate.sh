@@ -686,6 +686,10 @@ client_bootstrap_failed() {
 
 configure_acceptance_loader() {
   local label=$1 client_dir=$2
+  if [[ -n "${CINEMARR_TEST_NATIVE_RUNTIME_DIRECTORY:-}" ]]; then
+    python3 "$repo_root/scripts/stage-decoder-test-libraries.py" \
+      "$CINEMARR_TEST_NATIVE_RUNTIME_DIRECTORY" "$client_dir" || return 1
+  fi
   case "$label" in
     1.20.1-forge|1.20.2-forge|1.21.1-forge|26.1.2-forge|26.2-forge|1.20.1-neoforge|1.20.2-neoforge|1.21.1-neoforge) ;;
     *) return 0 ;;
@@ -3832,7 +3836,7 @@ run_target() {
     result=1
   fi
   if [[ "$label" == "1.7.10-forge" ]]; then
-    if ! grep -q 'Initializing Cinemarr 1.0.0 for Forge 1.7.10 protocol 11' "$run_dir/logs/fml-server-latest.log"; then
+    if ! grep -q 'Initializing Cinemarr 1.0.1 for Forge 1.7.10 protocol 11' "$run_dir/logs/fml-server-latest.log"; then
       echo "$label: FML log does not prove Cinemarr initialized" >&2
       result=1
     fi

@@ -1,5 +1,13 @@
 # Compatibility
 
+## 1.0.1 external decoder update
+
+1.0.1 retains the Minecraft/loader/Java target matrix and protocol 11 below, but distributes no native binaries. Each playback client must supply the pinned JavaCPP/FFmpeg libraries; dedicated servers do not need them. Follow the [manual installation instructions](INSTALLING_DECODER_LIBRARIES.md), including Linux host dependencies. There are no automatic downloads.
+
+Current implementation validation is recorded [separately](validation/1.0.1-external-runtime-progress.md). The historical certification claims below refer to their original 1.0.0 artifact hashes and do not certify 1.0.1.
+
+## Historical 1.0.0 compatibility and certification
+
 Cinemarr 1.0.0 requires the mod on both the server and every client. The integrated development tree uses protocol 11 for display settings and separate watch-party/TV stream identities. Protocol 10 clients are incompatible. The recorded candidate has adapter runtime evidence; final release readiness also requires the exact-commit acceptance gate. Cross-version or cross-loader networking is not supported.
 
 | Minecraft | Loaders / runtime profiles | Java |

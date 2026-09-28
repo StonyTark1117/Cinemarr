@@ -12,6 +12,7 @@ import struct
 import sys
 import zipfile
 import base64
+from native_payloads import inspect_archive
 from pathlib import Path, PurePosixPath
 
 
@@ -330,13 +331,7 @@ def verify_metadata(archive: zipfile.ZipFile, names: set[str], minecraft: str, l
         expected_jars = {
             f"META-INF/jars/core-{PRODUCT_VERSION}.jar",
             "META-INF/jars/javacpp-1.5.14.jar",
-            "META-INF/jars/javacpp-1.5.14-linux-x86_64.jar",
-            "META-INF/jars/javacpp-1.5.14-linux-arm64.jar",
-            "META-INF/jars/javacpp-1.5.14-windows-x86_64.jar",
             "META-INF/jars/ffmpeg-8.1.2-1.5.14.jar",
-            "META-INF/jars/ffmpeg-8.1.2-1.5.14-linux-x86_64.jar",
-            "META-INF/jars/ffmpeg-8.1.2-1.5.14-linux-arm64.jar",
-            "META-INF/jars/ffmpeg-8.1.2-1.5.14-windows-x86_64.jar",
         }
         declared_jars = {value.get("file") for value in metadata.get("jars", [])}
         if declared_jars != expected_jars:
@@ -370,8 +365,23 @@ def verify_metadata(archive: zipfile.ZipFile, names: set[str], minecraft: str, l
         fail(f"{filename} does not require a matching remote mod version")
 
 
+def verify_external_runtime(archive: zipfile.ZipFile, filename: str) -> None:
+    for name in ("LocalRuntimeResolver", "NativeRuntime"):
+        entry = "stonytark/cinemarr/core/client/runtime/" + name + ".class"
+        if entry not in archive.namelist() or class_major(archive.read(entry), filename + ":" + entry) != 52:
+            fail(f"{filename} is missing the Java 8 external-runtime bootstrap: {entry}")
+    for platform in ("linux-x86_64", "linux-arm64", "windows-x86_64"):
+        entry = f"stonytark/cinemarr/runtime/{platform}.properties"
+        expected = REPOSITORY_ROOT / "core/src/main/resources" / entry
+        if entry not in archive.namelist() or archive.read(entry) != expected.read_bytes():
+            fail(f"{filename} is missing or has stale pinned runtime metadata: {entry}")
+
+
 def verify_jar(path: Path, minecraft: str, loader: str, java: int, expected_major: int) -> None:
     filename = path.name
+    native_payloads = inspect_archive(path)
+    if native_payloads:
+        fail(f"{filename} contains forbidden native payloads: {native_payloads}")
     with zipfile.ZipFile(path) as archive:
         names = safe_entries(archive, filename)
         missing = COMMON_ENTRIES - names
@@ -410,6 +420,7 @@ def verify_jar(path: Path, minecraft: str, loader: str, java: int, expected_majo
             fail(f"{filename} targets class major {main_major}, expected {expected_major} for Java {java}")
 
         if minecraft == "1.7.10":
+            verify_external_runtime(archive, filename)
             required_legacy = {
                 "assets/cinemarr/lang/en_US.lang",
                 "stonytark/cinemarr/core/server/ChunkTransferPolicy.class",
@@ -465,12 +476,6 @@ def verify_jar(path: Path, minecraft: str, loader: str, java: int, expected_majo
                 flattened_video_runtime = {
                     "org/bytedeco/javacpp/Loader.class",
                     "org/bytedeco/ffmpeg/global/avcodec.class",
-                    "org/bytedeco/javacpp/linux-x86_64/libjnijavacpp.so",
-                    "org/bytedeco/javacpp/linux-arm64/libjnijavacpp.so",
-                    "org/bytedeco/javacpp/windows-x86_64/jnijavacpp.dll",
-                    "org/bytedeco/ffmpeg/linux-x86_64/libjniavutil.so",
-                    "org/bytedeco/ffmpeg/linux-arm64/libjniavutil.so",
-                    "org/bytedeco/ffmpeg/windows-x86_64/avcodec-62.dll",
                 }
                 if flattened_video_runtime - names:
                     fail(f"{filename} is missing flattened JavaCPP/FFmpeg runtime entries")
@@ -496,6 +501,7 @@ def verify_jar(path: Path, minecraft: str, loader: str, java: int, expected_majo
             if core_candidates != [expected_core]:
                 fail(f"{filename} must bundle its isolated shared core JAR, found {core_candidates}")
             with zipfile.ZipFile(io.BytesIO(archive.read(core_candidates[0]))) as nested_core:
+                verify_external_runtime(nested_core, filename + ":" + core_candidates[0])
                 for entry in nested_core.infolist():
                     expected_mode = 0o755 if entry.is_dir() else 0o644
                     # Loom adds this descriptor after the core JAR is built and

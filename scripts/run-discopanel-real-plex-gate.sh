@@ -25,28 +25,28 @@ case "$label" in
     target_dir="$repo_root/platforms/mc1.7.10/forge"
     java_home=${CINEMARR_JAVA26_HOME:-/usr/lib/jvm/java-26-openjdk}
     packaged_java_home=${CINEMARR_PACKAGED_JAVA8_HOME:-/usr/lib/jvm/java-8-openjdk}
-    expected_jar='cinemarr-1.0.0+mc1.7.10-forge.jar'
+    expected_jar='cinemarr-1.0.1+mc1.7.10-forge.jar'
     ;;
   1.20.1-quilt)
     server_name='Jammarr 1.20.1 Quilt Test'
     target_dir="$repo_root/platforms/mc1.20.1/fabric"
     java_home=${CINEMARR_JAVA21_HOME:-/usr/lib/jvm/java-21-openjdk}
     packaged_java_home=${CINEMARR_PACKAGED_JAVA17_HOME:-/usr/lib/jvm/java-17-openjdk}
-    expected_jar='cinemarr-1.0.0+mc1.20.1-fabric.jar'
+    expected_jar='cinemarr-1.0.1+mc1.20.1-fabric.jar'
     ;;
   1.21.1-neoforge)
     server_name='Jammarr 1.21.1 NeoForge Test'
     target_dir="$repo_root"
     java_home=${CINEMARR_JAVA21_HOME:-/usr/lib/jvm/java-21-openjdk}
     packaged_java_home=${CINEMARR_PACKAGED_JAVA21_HOME:-/usr/lib/jvm/java-21-openjdk}
-    expected_jar='cinemarr-1.0.0+mc1.21.1-neoforge.jar'
+    expected_jar='cinemarr-1.0.1+mc1.21.1-neoforge.jar'
     ;;
   26.2-fabric)
     server_name='Jammarr 26.2 Fabric Test'
     target_dir="$repo_root/platforms/mc26.2/fabric"
     java_home=${CINEMARR_JAVA26_HOME:-/usr/lib/jvm/java-26-openjdk}
     packaged_java_home=${CINEMARR_PACKAGED_JAVA25_HOME:-/usr/lib/jvm/java-25-openjdk}
-    expected_jar='cinemarr-1.0.0+mc26.2-fabric.jar'
+    expected_jar='cinemarr-1.0.1+mc26.2-fabric.jar'
     ;;
   *)
     echo "Usage: $0 {1.7.10-forge|1.20.1-quilt|1.21.1-neoforge|26.2-fabric}" >&2
@@ -76,6 +76,9 @@ python3 "$repo_root/scripts/launch-packaged-client.py" "$label" --check-only \
   --java-home "$packaged_java_home" \
   --game-dir "$repo_root/build/packaged-client-focus/preflight-$label" \
   --username CinemarrVideoA --server "$server_host:1" --expected-server-host "$server_host"
+
+[[ -d "${CINEMARR_TEST_NATIVE_RUNTIME_DIRECTORY:-}" ]] \
+  || { echo 'Set CINEMARR_TEST_NATIVE_RUNTIME_DIRECTORY to manually supplied decoder packages' >&2; exit 2; }
 
 for tool in curl jq base64 pactl parec ffmpeg xvfb-run sha256sum python3; do
   command -v "$tool" >/dev/null || { echo "Missing required tool: $tool" >&2; exit 2; }

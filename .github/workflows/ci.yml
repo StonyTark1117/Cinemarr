@@ -35,6 +35,7 @@ jobs:
           python3 scripts/test-client-exit.py
           python3 scripts/check-fabric-loader-version.py --self-test
           python3 scripts/test-packaged-client.py
+          python3 scripts/test-no-native-payloads.py
           python3 scripts/test-native-bundle-evidence.py
           python3 scripts/test-owner-timeline.py
           python3 scripts/test-post-reconnect-capture.py
@@ -181,6 +182,15 @@ jobs:
       - name: Run GameTests
         if: ${{ matrix.game_tests }}
         run: bash scripts/run-gametest-gate.sh
+      - name: Supply local decoder libraries for acceptance clients
+        env:
+          CINEMARR_ARTIFACT_PATH: ${{ matrix.artifact }}
+        run: |
+          artifact="$GITHUB_WORKSPACE/$CINEMARR_ARTIFACT_PATH"
+          libraries="${artifact%/build/libs/*}/build/external-decoder-test-game/cinemarr-libraries"
+          test -f "$libraries/javacpp-1.5.14-linux-x86_64.jar"
+          test -f "$libraries/ffmpeg-8.1.2-1.5.14-linux-x86_64.jar"
+          echo "CINEMARR_TEST_NATIVE_RUNTIME_DIRECTORY=$libraries" >> "$GITHUB_ENV"
       - name: Validate ${{ matrix.runtime }} runtime
         env:
           CINEMARR_ALSA_PCM_TYPE: pulse
@@ -358,7 +368,7 @@ jobs:
             build/release-rerun-tests/*.json
 
   release-gate:
-    name: 1.0 release gate
+    name: Release gate
     needs: [matrix, artifact]
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -389,7 +399,7 @@ jobs:
       - name: Upload verified CI bundle
         uses: actions/upload-artifact@v7
         with:
-          name: cinemarr-1.0.0-ci-bundle-${{ github.sha }}
+          name: cinemarr-ci-bundle-${{ github.sha }}
           path: build/releases
           if-no-files-found: error
           retention-days: 14

@@ -14,7 +14,7 @@ class NativeBundleEvidenceTest(unittest.TestCase):
         self.run = '20260909T023852Z'
         self.expected = {'schema': 1, 'runId': self.run, 'files': [
             {'path': name, 'sha256': str(i) * 64} for i, name in enumerate([
-                'lib/core-1.0.0.jar', 'classes/Benchmark.class',
+                'lib/core-1.0.1.jar', 'classes/Benchmark.class',
                 'fixtures/144p.ts', 'fixtures/480p.ts', 'fixtures/1080p.ts'])]}
         self.used = copy.deepcopy(self.expected)
         self.used['workDirectory'] = 'C:\\CinemarrNativeSmoke\\runs\\' + self.run

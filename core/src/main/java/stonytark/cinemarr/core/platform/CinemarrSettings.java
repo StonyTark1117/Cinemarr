@@ -40,6 +40,9 @@ public final class CinemarrSettings {
         default String videoDecoderDevice() { return ""; }
         default void videoDecoderDevice(String value) {}
         default void saveVideoDecoder() {}
+        default String nativeRuntimeMode() { return "local-only"; }
+        default String nativeRuntimeDirectory() { return ""; }
+        default java.nio.file.Path gameDirectory() { return java.nio.file.Paths.get("").toAbsolutePath(); }
     }
 
     private static volatile ServerValues server = new DefaultServerValues();
@@ -102,6 +105,10 @@ public final class CinemarrSettings {
     public static String videoDecoderDevice() { return safe(client.videoDecoderDevice(), "").trim(); }
     public static void videoDecoderDevice(String value) { client.videoDecoderDevice(safe(value, "").trim()); }
     public static void saveVideoDecoder() { client.saveVideoDecoder(); }
+
+    public static String nativeRuntimeMode() { return safe(client.nativeRuntimeMode(), "local-only").trim(); }
+    public static String nativeRuntimeDirectory() { return safe(client.nativeRuntimeDirectory(), "").trim(); }
+    public static java.nio.file.Path gameDirectory() { return client.gameDirectory(); }
 
     private static String safe(String value, String fallback) { return value == null ? fallback : value; }
     private static int clamp(int value, int minimum, int maximum) { return Math.max(minimum, Math.min(maximum, value)); }

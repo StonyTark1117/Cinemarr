@@ -38,6 +38,7 @@ public final class FfmpegVideoDecoder implements MediaSegmentDecoder {
     private static final BoundedWorkExecutor PROBE_EXECUTOR =
             new BoundedWorkExecutor(1, 8, "Cinemarr FFmpeg hardware probe ");
     private static final Map<String, CompletableFuture<String>> PROBES = new ConcurrentHashMap<>();
+    private boolean runtimePrepared;
     private final VideoDecoderBackend requestedBackend;
     private final String requestedDevice;
     private final String sanitizedDeviceType;
@@ -59,38 +60,18 @@ public final class FfmpegVideoDecoder implements MediaSegmentDecoder {
         requestedDevice = device == null ? "" : device.trim();
         sanitizedDeviceType = sanitizedDeviceType(requestedDevice);
         effectiveBackend = requestedBackend == VideoDecoderBackend.SOFTWARE ? VideoDecoderBackend.SOFTWARE : null;
-        preloadHostHardwareLibraries(requestedBackend);
+    }
+
+    private synchronized void prepareRuntime() throws FrameGrabber.Exception {
+        try { stonytark.cinemarr.core.client.runtime.NativeRuntime.ensureReady(requestedBackend); }
+        catch (java.io.IOException error) { throw new FrameGrabber.Exception(error.getMessage(), error); }
+        if (runtimePrepared) return;
+        runtimePrepared = true;
         if (requestedBackend != VideoDecoderBackend.SOFTWARE) {
             List<VideoDecoderBackend> candidates = candidates();
             if (candidates.isEmpty()) effectiveBackend = VideoDecoderBackend.SOFTWARE;
             else for (VideoDecoderBackend candidate : candidates) probe(candidate);
         }
-    }
-
-    private static void preloadHostHardwareLibraries(VideoDecoderBackend backend) {
-        if (backend != VideoDecoderBackend.VAAPI && backend != VideoDecoderBackend.QSV
-                && backend != VideoDecoderBackend.AUTO) return;
-        if (!System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("linux")) return;
-        try {
-            // JavaCPP's portable FFmpeg bundle includes a conservative libva ABI. Loading the
-            // host ABI first lets current Mesa/Intel drivers resolve their matching entry point.
-            if (!loadFirstExisting("/usr/lib/libva.so.2", "/usr/lib/x86_64-linux-gnu/libva.so.2",
-                    "/usr/lib/aarch64-linux-gnu/libva.so.2")) System.loadLibrary("va");
-            if (!loadFirstExisting("/usr/lib/libva-drm.so.2", "/usr/lib/x86_64-linux-gnu/libva-drm.so.2",
-                    "/usr/lib/aarch64-linux-gnu/libva-drm.so.2")) System.loadLibrary("va-drm");
-        } catch (UnsatisfiedLinkError ignored) {
-            // The ordinary probe/fallback path reports an unavailable backend without crashing.
-        }
-    }
-
-    private static boolean loadFirstExisting(String... paths) {
-        for (String path : paths) {
-            if (Files.isRegularFile(Path.of(path))) {
-                System.load(path);
-                return true;
-            }
-        }
-        return false;
     }
 
     @Override public DecodedMediaSegment decode(byte[] mpegTs) throws FrameGrabber.Exception {
@@ -102,6 +83,7 @@ public final class FfmpegVideoDecoder implements MediaSegmentDecoder {
     /** Decodes only program audio so startup runway does not retain future RGBA frames. */
     List<DecodedAudioFrame> decodeAudio(byte[] mpegTs) throws FrameGrabber.Exception {
         validate(mpegTs);
+        prepareRuntime();
         List<DecodedAudioFrame> audio = new ArrayList<>();
         DecodedBufferBudget audioBudget = new DecodedBufferBudget();
         try (FFmpegFrameGrabber grabber = new FFmpegFrameGrabber(new ByteArrayInputStream(mpegTs), 0)) {
@@ -121,6 +103,7 @@ public final class FfmpegVideoDecoder implements MediaSegmentDecoder {
     /** Decodes video while retaining a temporally even, byte-bounded frame set. */
     VideoDecodeResult decodeVideoBounded(byte[] mpegTs) throws FrameGrabber.Exception {
         validate(mpegTs);
+        prepareRuntime();
         long started = System.nanoTime();
         long cpuStarted = currentThreadCpuTime();
         if (requestedBackend != VideoDecoderBackend.SOFTWARE && effectiveBackend != VideoDecoderBackend.SOFTWARE) {

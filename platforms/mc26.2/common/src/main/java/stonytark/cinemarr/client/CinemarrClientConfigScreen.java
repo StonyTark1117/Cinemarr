@@ -6,11 +6,14 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import stonytark.cinemarr.core.platform.CinemarrSettings;
+import stonytark.cinemarr.core.client.runtime.NativeRuntime;
 import stonytark.cinemarr.core.platform.VideoDecoderBackend;
 
 /** Local settings exposed by NeoForge's Mod List before joining a server. */
 public final class CinemarrClientConfigScreen extends Screen {
     private final Screen parent;
+    private Button runtimeRetryButton;
+    private String runtimeTooltipMessage;
 
     public CinemarrClientConfigScreen(Screen parent) {
         super(Component.translatable("cinemarr.config.title"));
@@ -23,23 +26,40 @@ public final class CinemarrClientConfigScreen extends Screen {
             CinemarrSettings.enabled(!CinemarrSettings.enabled());
             CinemarrSettings.saveEnabled();
             rebuildWidgets();
-        }).bounds(center - 100, height / 2 - 28, 200, 20).build());
-        addRenderableWidget(new VolumeSlider(center - 100, height / 2, 200, 20));
+        }).bounds(center - 100, height / 2 - 66, 200, 20).build());
+        addRenderableWidget(new VolumeSlider(center - 100, height / 2 - 38, 200, 20));
         addRenderableWidget(Button.builder(decoderLabel(), button -> {
             VideoDecoderBackend next = CinemarrSettings.videoDecoderBackend().next();
             CinemarrSettings.videoDecoderBackend(next);
             CinemarrSettings.saveVideoDecoder();
             rebuildWidgets();
-        }).bounds(center - 100, height / 2 + 28, 200, 20).build());
+        }).bounds(center - 100, height / 2 - 10, 200, 20).build());
+        addRenderableWidget(Button.builder(Component.translatable("cinemarr.config.library_folder"), button ->
+                NativeRuntime.openLibraryDirectory()).bounds(center - 100, height / 2 + 18, 98, 20).build());
+        runtimeTooltipMessage = NativeRuntime.message();
+        runtimeRetryButton = addRenderableWidget(Button.builder(Component.translatable("cinemarr.config.library_retry"), button ->
+                NativeRuntime.requestRescan()).bounds(center + 2, height / 2 + 18, 98, 20)
+                .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(runtimeTooltipMessage))).build());
         addRenderableWidget(Button.builder(Component.translatable("cinemarr.config.done"), button -> onClose())
                 .bounds(center - 100, height / 2 + 58, 200, 20).build());
+    }
+
+    @Override public void tick() {
+        super.tick();
+        String currentMessage = NativeRuntime.message();
+        if (runtimeRetryButton != null && !currentMessage.equals(runtimeTooltipMessage)) {
+            runtimeTooltipMessage = currentMessage;
+            runtimeRetryButton.setTooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(currentMessage)));
+        }
     }
 
     @Override public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         extractBackground(graphics, mouseX, mouseY, partialTick);
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
-        graphics.centeredText(font, title, width / 2, height / 2 - 62, 0xFFFFFF);
-        graphics.centeredText(font, Component.translatable("cinemarr.config.local_only"), width / 2, height / 2 - 46, 0xA0D8FF);
+        graphics.centeredText(font, title, width / 2, height / 2 - 100, 0xFFFFFF);
+        graphics.centeredText(font, Component.translatable("cinemarr.config.local_only"), width / 2, height / 2 - 84, 0xA0D8FF);
+        graphics.centeredText(font, Component.literal(NativeRuntime.statusLabel()),
+                width / 2, height / 2 + 44, 0xA0D8FF);
         if (CinemarrSettings.videoDecoderBackend() != VideoDecoderBackend.SOFTWARE) {
             graphics.centeredText(font, Component.translatable("cinemarr.config.video_decoder_warning"),
                     width / 2, height / 2 + 84, 0xFFB060);

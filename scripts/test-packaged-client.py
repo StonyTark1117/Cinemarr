@@ -82,6 +82,42 @@ class LaunchTests(unittest.TestCase):
             self.invoke()
         self.run.assert_not_called()
 
+    def native_packages(self):
+        directory = self.root / 'supplied'
+        directory.mkdir()
+        manifest = self.root / 'core/src/main/resources/stonytark/cinemarr/runtime/linux-x86_64.properties'
+        manifest.parent.mkdir(parents=True)
+        lines = []
+        for artifact in ('javacpp', 'ffmpeg'):
+            path = directory / (artifact + '-native.jar')
+            path.write_bytes(artifact.encode())
+            lines.append('archive.' + artifact + '=' + path.name + ',' + str(path.stat().st_size) + ',' + launch.digest(path))
+        manifest.write_text('\n'.join(lines))
+        self.args.extend(['--decoder-libraries', str(directory)])
+        return directory
+
+    @patch.object(launch.platform, 'machine', return_value='x86_64')
+    def test_external_packages_validate_without_preflight_writes(self, unused):
+        self.native_packages()
+        self.assertEqual(0, self.invoke())
+        self.assertFalse(self.game.exists())
+
+    @patch.object(launch.platform, 'machine', return_value='x86_64')
+    def test_external_packages_are_copied_outside_mods_and_classpath(self, unused):
+        self.native_packages()
+        self.assertEqual(0, self.invoke(preflight=False))
+        self.assertTrue((self.game / 'cinemarr-libraries/ffmpeg-native.jar').is_file())
+        self.assertFalse((self.game / 'mods/ffmpeg-native.jar').exists())
+        record = json.loads(next((self.game / 'packaged-launch-records').glob('*.json')).read_text())
+        self.assertEqual(2, len(record['externalDecoderPackages']))
+        self.assertFalse(any('native.jar' in entry for entry in record['classpath']))
+
+    @patch.object(launch.platform, 'machine', return_value='x86_64')
+    def test_changed_native_archive_fails_before_launch(self, unused):
+        directory = self.native_packages()
+        (directory / 'ffmpeg-native.jar').write_bytes(b'wrong')
+        self.rejected()
+
     def test_read_only_preflight_does_not_create_game_or_open_x(self):
         self.assertEqual(0, self.invoke())
         self.assertFalse(self.game.exists())

@@ -19,7 +19,7 @@ known_hosts_file=${key_file}.known_hosts
 for tool in sshpass ssh scp ssh-keygen tar jq sha256sum python3 getent; do
   command -v "$tool" >/dev/null || { echo "Missing required tool: $tool" >&2; exit 2; }
 done
-[[ -d "$bundle/classes" && -f "$bundle/lib/ffmpeg-8.1.2-1.5.14-linux-arm64.jar" ]] \
+[[ -d "$bundle/classes" && -f "$bundle/cinemarr-libraries/ffmpeg-8.1.2-1.5.14-linux-arm64.jar" ]] \
   || { echo 'Run ./gradlew prepareDecoderBenchmarkBundle first' >&2; exit 2; }
 [[ -f "$password_file" && "$host" =~ ^[A-Za-z0-9.-]+$ ]] || exit 2
 [[ "$state_dir" =~ ^/var/lib/cinemarr-hwtest/[A-Za-z0-9._/-]+$ && "$state_dir" != *'..'* ]] || exit 2
@@ -130,6 +130,9 @@ packages:
   - libva-drm2
   - libdrm2
   - libudev1
+  - libxcb1
+  - libxcb-shm0
+  - libpulse0
 runcmd:
   - [sh, -c, 'touch /home/cinemarr/cinemarr-cloud-ready && chown cinemarr:cinemarr /home/cinemarr/cinemarr-cloud-ready']
 EOF
@@ -191,6 +194,18 @@ until ssh -p "$port" "${guest_options[@]}" -i "$key_file" \
   sleep 10
 done
 
+# This is test-guest provisioning, not a mod download path. Match the documented Linux host dependencies.
+ssh -p "$port" "${guest_options[@]}" -i "$key_file" "cinemarr@$host" 'bash -s' <<'HOST_DEPENDENCIES'
+set -eu
+if ! dpkg-query -W -f='${Status}\n' libxcb1 libxcb-shm0 libpulse0 2>/dev/null | grep -qv '^install ok installed$' \
+    && dpkg-query -W libxcb1 libxcb-shm0 libpulse0 >/dev/null 2>&1; then
+  :
+else
+  sudo apt-get update -qq
+  sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libxcb1 libxcb-shm0 libpulse0
+fi
+HOST_DEPENDENCIES
+
 ssh -p "$port" "${guest_options[@]}" -i "$key_file" "cinemarr@$host" \
   'rm -rf -- ~/bundle ~/evidence; mkdir -p ~/bundle ~/evidence'
 tar -C "$bundle" -czf - . | ssh -p "$port" "${guest_options[@]}" \
@@ -207,13 +222,13 @@ native_entry=org/bytedeco/ffmpeg/linux-arm64/libavcodec.so.62
 python3 - "$native_entry" <<'PY'
 import sys, zipfile
 entry = sys.argv[1]
-with zipfile.ZipFile('bundle/lib/ffmpeg-8.1.2-1.5.14-linux-arm64.jar') as archive:
+with zipfile.ZipFile('bundle/cinemarr-libraries/ffmpeg-8.1.2-1.5.14-linux-arm64.jar') as archive:
     with archive.open(entry) as source, open('/tmp/cinemarr-libavcodec.so.62', 'wb') as target:
         target.write(source.read())
 PY
 file /tmp/cinemarr-libavcodec.so.62 | grep -Eq 'ARM aarch64|ARM64'
-classpath='bundle/classes:bundle/lib/core-1.0.0.jar:bundle/lib/javacpp-1.5.14.jar:bundle/lib/javacpp-1.5.14-linux-arm64.jar:bundle/lib/ffmpeg-8.1.2-1.5.14.jar:bundle/lib/ffmpeg-8.1.2-1.5.14-linux-arm64.jar'
-java -Xmx3g -cp "$classpath" stonytark.cinemarr.client.VideoDecoderBenchmark \
+classpath='bundle/classes:bundle/lib/core-1.0.1.jar:bundle/lib/javacpp-1.5.14.jar:bundle/lib/ffmpeg-8.1.2-1.5.14.jar'
+java -Xmx3g -Duser.home="$PWD/isolated-decoder-home" -Dorg.bytedeco.javacpp.cachedir="$PWD/isolated-decoder-home/cache" -Dcinemarr.test.runtimeGameDirectory="$PWD/bundle" -cp "$classpath" stonytark.cinemarr.client.VideoDecoderBenchmark \
   --backend software --expected-effective software --output evidence \
   --warmups 0 --runs 1 --seconds 0.6 --require-hardware false \
   --expect-fallback false --fail-on-acceptance true --gpu none --driver none \
