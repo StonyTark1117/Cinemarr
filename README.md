@@ -91,7 +91,21 @@ Keep the Plex token server-side. `CINEMARR_PLEX_TOKEN` overrides the server file
 
 Important server settings include `quickTvBuildMode`, `maximumVideoWidth`, `maximumVideoHeight`, `maximumVideoBitrateKbps`, screen/owner/stream limits, and global/per-preset Quick TV switches.
 
-Example allowlist:
+### Choosing which Plex libraries players can browse
+
+Edit `cinemarr-libraries.toml` in the active Minecraft world's `serverconfig` folder. This is the **server's Plex library allowlist**: it controls which Plex movie and TV libraries appear in the TV Controller. Each world has its own list, and nothing is exposed by default.
+
+For a dedicated server with the default world name, the file is `world/serverconfig/cinemarr-libraries.toml`. If you use another world name, substitute that world's folder. In singleplayer, use `saves/<your-world>/serverconfig/cinemarr-libraries.toml` inside your Minecraft instance. The client decoder-library folder and `cinemarr-client.toml` are separate settings; they do not select Plex content.
+
+1. Start the server or open the singleplayer world once to generate the files, then stop the server or exit the world before editing.
+2. In the same world's `cinemarr-server.toml`, set `plexUrl` to your Plex server's base address, including its port when needed. Supply its token through `CINEMARR_PLEX_TOKEN` in the Minecraft server process's environment, or through `plexToken` in that server file. The token must have access to the Plex libraries you choose. Keep credentials out of `cinemarr-libraries.toml`.
+3. In Plex, find the name of the movie or TV library you want to expose, such as `Movies` or `TV Shows`. Use that name for `section`. It is a Plex library, not a movie title, playlist, collection, or media folder path.
+4. Add an entry like the ones below to `cinemarr-libraries.toml`. The generated example is commented out: remove the leading `#` from **every line of the entry**, including `[[libraries]]`, to enable it. Leave explanatory comments commented. Replace the example names with your own.
+5. Save the file and restart the Minecraft server or reopen the singleplayer world. Open a TV Controller and browse its libraries. Changes are read when the world starts; `/cinemarr retry` retries the existing connection settings and does **not** reload this file.
+
+### Library entries and their fields
+
+This example exposes a Plex library named `Movies` as **Family Movies** to all players, filtering its movies to Cinemarr's `PG-13` rating ceiling. A second entry exposes a Plex library named `TV Shows` as **Television**, with a `TV-14` ceiling. Keep only the entries for libraries that actually exist on your Plex server.
 
 ```toml
 [[libraries]]
@@ -102,9 +116,54 @@ allowMovies = true
 allowShows = false
 maximumContentRating = "PG-13"
 permissionLevel = 0
+
+[[libraries]]
+id = "television"
+section = "TV Shows"
+displayName = "Television"
+allowMovies = false
+allowShows = true
+maximumContentRating = "TV-14"
+permissionLevel = 0
 ```
 
-No library is visible until an operator adds an allowlist entry. Every adapter reports the redacted `disabled`, `connecting`, `ready`, or `degraded` Plex state through `/cinemarr diagnostics`, retries degraded connections automatically, and exposes operator-only `/cinemarr retry`.
+Repeat the full `[[libraries]]` block for each additional library. Use double quotes around text, unquoted `true`/`false` for switches, and an unquoted integer for `permissionLevel`.
+
+| Setting | What to enter |
+| --- | --- |
+| `id` | A nonempty identifier you choose for this Cinemarr entry, such as `family_movies`. Use a different ID for each entry and keep it stable: saved playback refers to it. This is not a Plex ID or token. Required. |
+| `section` | The existing Plex library's name, matched without regard to letter case, or its numeric Plex section key written as text, such as `"3"`. If two Plex libraries have the same name, use their distinct section keys. A section key identifies a whole library, not an individual media item's rating key. Required. |
+| `displayName` | The label players see in Cinemarr. It can differ from the Plex name. If omitted, it defaults to `section`; an explicitly empty name is invalid. |
+| `allowMovies` | Whether this entry allows movie items. Use `true` for a movie library and `false` for a TV library. Defaults to `true` if omitted. |
+| `allowShows` | Whether this entry allows shows, seasons, and episodes. Use `true` for a TV library and `false` for a movie library. Defaults to `true` if omitted. At least one of the two switches must be `true`. |
+| `maximumContentRating` | The highest rating allowed by Cinemarr's comparison below. Use `""` to disable rating filtering; that is also the default if omitted. |
+| `permissionLevel` | Minimum Minecraft command permission level for browsing this library and selecting its media. `0` allows ordinary players; `2` requires level 2 or higher. Accepted values are `0` through `4`, with default `0`. This is a Minecraft permission level, not a Plex account role or a permission-plugin node. |
+
+The movie/show switches filter the chosen Plex library; they do not combine separate libraries. Music and photo libraries are unsupported. Library selection permissions also do not make a screen private: other players can watch a TV already playing that content.
+
+### How rating limits work
+
+Cinemarr compares Plex's content-rating metadata using the following groups, from lowest to highest. A configured ceiling includes its own group and all groups above it in this table.
+
+| Order | Ratings treated as equivalent |
+| --- | --- |
+| Lowest | Missing/empty rating, `NR`, `UNRATED`, `NOT RATED`, `TV-Y` |
+| 1 | `G`, `TV-G`, `TV-Y7`, `TV-Y7-FV` |
+| 2 | `PG`, `TV-PG` |
+| 3 | `PG-13`, `TV-14` |
+| 4 | `R`, `TV-MA` |
+| Highest | `NC-17`, `X` |
+
+For example, `maximumContentRating = "PG-13"` excludes `R` and `NC-17` movies, but **still allows unrated or missing-rating items**. It is not a way to exclude unrated content. When a ceiling is set, unrecognized item ratings are excluded, and an unrecognized ceiling excludes all items. Ratings are case-insensitive; a prefix ending in `/` is removed before comparison (for example, `us/PG-13` becomes `PG-13`). Other regional rating systems are not automatically translated. A blank ceiling allows all ratings.
+
+### Checking the configuration
+
+Use `/cinemarr diagnostics` to check the redacted Plex connection state: `disabled`, `connecting`, `ready`, or `degraded`. Degraded connections retry automatically; operators can also use `/cinemarr retry` after a temporary Plex outage.
+
+- **No libraries appear:** check that your blocks are uncommented, you edited the active world's file, and you restarted the server or reopened the world. Also check the Plex URL/token and the player's `permissionLevel`.
+- **No matching Plex library:** check `section` against the libraries visible to the configured token. Every configured entry must resolve to an existing movie or TV library; one invalid entry can prevent the connection becoming ready.
+- **Library appears but has no expected titles:** check `allowMovies`/`allowShows` and Plex's rating metadata against `maximumContentRating`. If testing with `maximumContentRating = ""`, remember that this allows all ratings.
+- **Server reports a configuration error:** check spelling, required `id`/`section` values, permission range, and that both content switches are not `false`. Unknown setting names are rejected. Do not remove the `[[libraries]]` line above each entry.
 
 ## Verification
 
