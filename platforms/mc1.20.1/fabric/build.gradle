@@ -202,13 +202,7 @@ def releaseEntries = [coreReleaseEntry, 'META-INF/LICENSE-Cinemarr-CC0-1.0.txt',
                       'stonytark/cinemarr/client/FfmpegVideoDecoder.class', 'stonytark/cinemarr/client/FfmpegHardwareVideoDecoder.class',
                       'stonytark/cinemarr/registry/CinemarrBlocks.class',
                       'org/bytedeco/javacv/FFmpegFrameGrabber.class', 'org/bytedeco/javacv/Frame.class',
-                      'META-INF/jars/javacpp-1.5.14.jar', 'META-INF/jars/ffmpeg-8.1.2-1.5.14.jar',
-                      'META-INF/jars/javacpp-1.5.14-linux-x86_64.jar',
-                      'META-INF/jars/javacpp-1.5.14-linux-arm64.jar',
-                      'META-INF/jars/javacpp-1.5.14-windows-x86_64.jar',
-                      'META-INF/jars/ffmpeg-8.1.2-1.5.14-linux-x86_64.jar',
-                      'META-INF/jars/ffmpeg-8.1.2-1.5.14-linux-arm64.jar',
-                      'META-INF/jars/ffmpeg-8.1.2-1.5.14-windows-x86_64.jar']
+                      'META-INF/jars/javacpp-1.5.14.jar', 'META-INF/jars/ffmpeg-8.1.2-1.5.14.jar']
 
 tasks.register('verifyRelease') {
     group = 'verification'
